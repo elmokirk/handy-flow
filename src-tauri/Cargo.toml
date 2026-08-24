@@ -211,3 +211,7 @@ path = "tests/migrations/legacy_fixture_migration.rs"
 [[test]]
 name = "rollback_backup"
 path = "tests/migrations/rollback_backup.rs"
+
+[[test]]
+name = "stt_output_contract"
+path = "tests/transcription_pipeline/stt_output_contract.rs"

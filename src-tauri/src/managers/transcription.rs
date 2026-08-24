@@ -39,6 +39,34 @@ use transcribe_rs::{
 const STREAM_PERF_LOG_INTERVAL: Duration = Duration::from_secs(5);
 const STREAM_FINALIZE_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Version of the deterministic normalization pipeline that produced a
+/// given `normalized_stt`. Bump on any semantic change to custom-word
+/// correction, filler removal or output normalization (planning/04).
+pub const NORMALIZER_VERSION: &str = "1";
+
+/// Exact engine output plus the deterministic normalized result
+/// (STT-103). `engine_raw` must be persisted immutably and never
+/// rewritten; `normalized_stt` is the durable knowledge "raw" text.
+#[derive(Clone, Debug, Serialize, Type)]
+pub struct TranscriptionOutput {
+    pub engine_raw: String,
+    pub normalized_stt: String,
+    pub model_id: Option<String>,
+    pub language: Option<String>,
+    pub normalizer_version: String,
+}
+
+fn output_language_code(evidence: &OutputLanguageEvidence) -> Option<String> {
+    match evidence {
+        OutputLanguageEvidence::UserSelected(code)
+        | OutputLanguageEvidence::ModelConstrained(code)
+        | OutputLanguageEvidence::ModelDetected(code)
+        | OutputLanguageEvidence::TextDetected(code) => Some(code.clone()),
+        OutputLanguageEvidence::TranslatedToEnglish => Some("en".to_string()),
+        OutputLanguageEvidence::Unknown => None,
+    }
+}
+
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(message) = payload.downcast_ref::<&str>() {
         (*message).to_string()
@@ -1103,6 +1131,14 @@ impl TranscriptionManager {
     /// A timeout may still leave the worker holding the engine, so callers
     /// should surface it instead of immediately starting a batch fallback.
     pub fn finalize_stream(&self) -> Result<Option<String>> {
+        Ok(self
+            .finalize_stream_detailed()?
+            .map(|out| out.normalized_stt))
+    }
+
+    /// Finalize a live stream and return engine output + normalized result
+    /// separately (STT-103). See [`TranscriptionOutput`] for semantics.
+    pub fn finalize_stream_detailed(&self) -> Result<Option<TranscriptionOutput>> {
         let Some(tx) = self.router.take() else {
             return Ok(None);
         };
@@ -1126,8 +1162,9 @@ impl TranscriptionManager {
         let settings = get_settings(&self.app_handle);
         // Streaming models do not receive a decode prompt, so custom words
         // always go through the shared fuzzy post-correction path.
+        let engine_raw = finalized.text;
         let filtered = post_process_transcription_text(
-            finalized.text,
+            engine_raw.clone(),
             &settings,
             false,
             &finalized.output_language,
@@ -1135,7 +1172,13 @@ impl TranscriptionManager {
         );
 
         self.maybe_unload_immediately("streaming transcription");
-        Ok(Some(filtered))
+        Ok(Some(TranscriptionOutput {
+            engine_raw,
+            normalized_stt: filtered,
+            model_id: None,
+            language: output_language_code(&finalized.output_language),
+            normalizer_version: NORMALIZER_VERSION.to_string(),
+        }))
     }
 
     /// Abandon any active stream without producing text (e.g. on cancel).
@@ -1164,6 +1207,28 @@ impl TranscriptionManager {
     }
 
     pub fn transcribe(&self, audio: Vec<f32>) -> Result<String> {
+        Ok(self.transcribe_detailed(audio)?.normalized_stt)
+    }
+
+    /// Transcribe and return BOTH the exact engine output (before any
+    /// cleanup) and the deterministic normalized result (STT-103).
+    ///
+    /// `engine_raw` is captured before custom-word correction, filler
+    /// removal or normalization run; it must never be overwritten by a
+    /// later pipeline stage. `normalized_stt` is the durable "raw"
+    /// knowledge text per planning/04.
+    pub fn transcribe_detailed(&self, audio: Vec<f32>) -> Result<TranscriptionOutput> {
+        let output = self.transcribe_inner(audio)?;
+        Ok(output.unwrap_or_else(|| TranscriptionOutput {
+            engine_raw: String::new(),
+            normalized_stt: String::new(),
+            model_id: None,
+            language: None,
+            normalizer_version: NORMALIZER_VERSION.to_string(),
+        }))
+    }
+
+    fn transcribe_inner(&self, audio: Vec<f32>) -> Result<Option<TranscriptionOutput>> {
         #[cfg(debug_assertions)]
         if std::env::var("HANDY_FORCE_TRANSCRIPTION_FAILURE").is_ok() {
             return Err(anyhow::anyhow!(
@@ -1182,7 +1247,7 @@ impl TranscriptionManager {
         if audio.is_empty() {
             debug!("Empty audio vector");
             self.maybe_unload_immediately("empty audio");
-            return Ok(String::new());
+            return Ok(None);
         }
 
         // Check if model is loaded, if not try to load it
@@ -1483,8 +1548,12 @@ impl TranscriptionManager {
         // family). We don't pass a prompt to non-whisper models (it requires the
         // whisper-kind run extension), so they still get fuzzy correction here,
         // same as the ONNX engines.
+        // STT-103: exact engine output is captured BEFORE any deterministic
+        // correction/cleanup so it can be persisted immutably.
+        let engine_raw = result;
+
         let filtered_result = post_process_transcription_text(
-            result,
+            engine_raw.clone(),
             &settings,
             model_is_whisper,
             &output_language,
@@ -1518,7 +1587,13 @@ impl TranscriptionManager {
 
         self.maybe_unload_immediately("transcription");
 
-        Ok(final_result)
+        Ok(Some(TranscriptionOutput {
+            engine_raw,
+            normalized_stt: final_result,
+            model_id: None,
+            language: output_language_code(&output_language),
+            normalizer_version: NORMALIZER_VERSION.to_string(),
+        }))
     }
 }
 
@@ -2143,6 +2218,43 @@ mod tests {
 
     fn languages(codes: &[&str]) -> Vec<String> {
         codes.iter().map(|code| (*code).to_string()).collect()
+    }
+
+    #[test]
+    fn normalizer_version_is_stable_semver_like() {
+        // Contract: the first shipped deterministic pipeline is "1".
+        assert_eq!(NORMALIZER_VERSION, "1");
+        assert!(NORMALIZER_VERSION.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn output_language_code_maps_all_evidence_variants() {
+        assert_eq!(
+            output_language_code(&OutputLanguageEvidence::UserSelected("de".into())),
+            Some("de".to_string())
+        );
+        assert_eq!(
+            output_language_code(&OutputLanguageEvidence::ModelDetected("fr".into())),
+            Some("fr".to_string())
+        );
+        assert_eq!(
+            output_language_code(&OutputLanguageEvidence::TranslatedToEnglish),
+            Some("en".to_string())
+        );
+        assert_eq!(output_language_code(&OutputLanguageEvidence::Unknown), None);
+    }
+
+    #[test]
+    fn transcription_output_keeps_engine_raw_and_normalized_separate() {
+        let out = TranscriptionOutput {
+            engine_raw: "  hallo welt  ".to_string(),
+            normalized_stt: "hallo welt".to_string(),
+            model_id: Some("whisper-small".into()),
+            language: Some("de".into()),
+            normalizer_version: NORMALIZER_VERSION.into(),
+        };
+        assert_ne!(out.engine_raw, out.normalized_stt);
+        assert_eq!(out.normalizer_version, NORMALIZER_VERSION);
     }
 
     #[test]

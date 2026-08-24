@@ -28,6 +28,8 @@ mod tray_i18n;
 mod utils;
 
 pub use cli::CliArgs;
+// STT-103 public contract for persistence layers (Integrator wiring).
+pub use managers::transcription::{TranscriptionOutput, NORMALIZER_VERSION};
 #[cfg(debug_assertions)]
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use tauri_specta::{collect_commands, collect_events, Builder};
