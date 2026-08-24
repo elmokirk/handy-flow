@@ -79,3 +79,37 @@ impl RepresentationStatus {
         }
     }
 }
+
+/// Which immutable text source a delivery event refers to (DATA-107).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeliverySourceKind {
+    NormalizedStt,
+    Representation,
+}
+
+impl DeliverySourceKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DeliverySourceKind::NormalizedStt => "normalized_stt",
+            DeliverySourceKind::Representation => "representation",
+        }
+    }
+}
+
+/// Where delivered text went.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeliveryDestination {
+    FocusedApp,
+    Scratchpad,
+    Clipboard,
+}
+
+impl DeliveryDestination {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DeliveryDestination::FocusedApp => "focused_app",
+            DeliveryDestination::Scratchpad => "scratchpad",
+            DeliveryDestination::Clipboard => "clipboard",
+        }
+    }
+}

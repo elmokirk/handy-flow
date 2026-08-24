@@ -8,6 +8,7 @@
 //! The physical database file keeps Handy's `history.db` name; it is
 //! exposed internally as [`database::AppDatabase`].
 
+pub mod audio_files;
 pub mod database;
 pub mod ids;
 pub mod migrations;

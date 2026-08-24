@@ -20,7 +20,7 @@ use rusqlite::Connection;
 use super::database::{AppDatabase, StorageError};
 use super::ids;
 
-pub const TARGET_VERSION: i64 = 5;
+pub const TARGET_VERSION: i64 = 6;
 /// `query_contract_version` advertised to REST/MCP companions later on.
 pub const QUERY_CONTRACT_VERSION: i64 = 1;
 
@@ -209,6 +209,33 @@ fn apply_migrations(
                 tx.execute_batch(CANONICAL_SCHEMA)?;
                 backfilled = backfill_legacy_entries(&tx)?;
                 seed_app_meta(&tx, app_version)?;
+            }
+            6 => {
+                // DATA-107: append-only delivery audit. Events reference
+                // immutable sources by id + content hash, never bodies.
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS delivery_events (
+                        id TEXT PRIMARY KEY,
+                        capture_id TEXT REFERENCES captures(id),
+                        source_attempt_id TEXT NOT NULL
+                            REFERENCES transcription_attempts(id),
+                        representation_id TEXT REFERENCES representations(id),
+                        source_kind TEXT NOT NULL CHECK (source_kind IN (
+                            'normalized_stt', 'representation'
+                        )),
+                        destination TEXT CHECK (destination IN (
+                            'focused_app', 'scratchpad', 'clipboard'
+                        )),
+                        text_sha256 TEXT NOT NULL,
+                        success INTEGER NOT NULL CHECK (success IN (0, 1)),
+                        error TEXT,
+                        created_at_ms INTEGER NOT NULL
+                    );
+                    CREATE INDEX idx_delivery_events_capture
+                        ON delivery_events (capture_id);
+                    CREATE INDEX idx_delivery_events_created
+                        ON delivery_events (created_at_ms DESC);",
+                )?;
             }
             other => {
                 return Err(StorageError::CorruptData(format!(
