@@ -12,3 +12,4 @@ pub mod database;
 pub mod ids;
 pub mod migrations;
 pub mod models;
+pub mod repositories;

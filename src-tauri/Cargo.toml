@@ -215,3 +215,7 @@ path = "tests/migrations/rollback_backup.rs"
 [[test]]
 name = "stt_output_contract"
 path = "tests/transcription_pipeline/stt_output_contract.rs"
+
+[[test]]
+name = "attempts_test"
+path = "tests/transcription_repositories/attempts_test.rs"
