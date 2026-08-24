@@ -1,4 +1,4 @@
-﻿//! DATA-101 acceptance tests: connection policy + concurrent access.
+//! DATA-101 acceptance tests: connection policy + concurrent access.
 //!
 //! These are cargo integration tests: they exercise the storage module
 //! exactly like future repositories will (public API only).
@@ -7,11 +7,8 @@ use handy_app_lib::storage::database::{AppDatabase, BUSY_TIMEOUT_MS};
 use handy_app_lib::storage::ids;
 
 fn temp_db_path(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "handy-storage-test-{}-{}",
-        std::process::id(),
-        tag
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("handy-storage-test-{}-{}", std::process::id(), tag));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     dir.join("history.db")
 }
@@ -38,8 +35,7 @@ fn write_policy_pragmas_are_applied() {
         .query_row("PRAGMA busy_timeout", [], |r| r.get(0))
         .unwrap();
     assert_eq!(
-        timeout as u64,
-        BUSY_TIMEOUT_MS,
+        timeout as u64, BUSY_TIMEOUT_MS,
         "busy timeout must match policy constant"
     );
 
@@ -65,10 +61,11 @@ fn open_read_only_enforces_immutability() {
         .unwrap();
     assert_eq!(value, "v");
 
-    let write_attempt = ro
-        .conn()
-        .execute("INSERT INTO t VALUES('nope')", []);
-    assert!(write_attempt.is_err(), "read-only connection must reject writes");
+    let write_attempt = ro.conn().execute("INSERT INTO t VALUES('nope')", []);
+    assert!(
+        write_attempt.is_err(),
+        "read-only connection must reject writes"
+    );
 }
 
 #[test]
@@ -93,7 +90,10 @@ fn concurrent_reader_and_writer_do_not_fail_within_busy_timeout() {
         for i in 0..200u32 {
             second_writer
                 .conn()
-                .execute("INSERT INTO events(payload) VALUES (?1)", [format!("row-{i}")])
+                .execute(
+                    "INSERT INTO events(payload) VALUES (?1)",
+                    [format!("row-{i}")],
+                )
                 .expect("bounded writes must succeed within busy timeout");
         }
     });
@@ -118,7 +118,10 @@ fn concurrent_reader_and_writer_do_not_fail_within_busy_timeout() {
         std::thread::spawn(move || {
             for i in 200..300u32 {
                 db.conn()
-                    .execute("INSERT INTO events(payload) VALUES (?1)", [format!("row-{i}")])
+                    .execute(
+                        "INSERT INTO events(payload) VALUES (?1)",
+                        [format!("row-{i}")],
+                    )
                     .expect("same-handle writes succeed");
             }
         })
@@ -137,7 +140,10 @@ fn corrupt_file_is_reported_as_corrupt_data() {
 
     let err = AppDatabase::open(&path).expect_err("must fail on non-sqlite file");
     assert!(
-        matches!(err, handy_app_lib::storage::database::StorageError::CorruptData(_)),
+        matches!(
+            err,
+            handy_app_lib::storage::database::StorageError::CorruptData(_)
+        ),
         "expected CorruptData, got: {err:?}"
     );
 }
