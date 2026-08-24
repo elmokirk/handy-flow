@@ -1,0 +1,19 @@
+{
+  "captured_at": "2026-08-21T19:53:00+02:00",
+  "refreshed_at": "2026-08-24T00:00:00+02:00",
+  "upstream_repository": "cjpais/Handy",
+  "upstream_branch": "main",
+  "baseline_commit": "af48dd68a64d58aad128fdbb920492a03da53c79",
+  "baseline_commit_date": "2026-08-24T15:01:27+08:00",
+  "source_version": "0.9.6",
+  "latest_tagged_release_observed": "v0.9.6",
+  "reference_platform": "windows",
+  "policy": "pinned-baseline-on-custom-main-unless-explicit-refresh",
+  "baseline_id": "handy-main-2026-08-24-af48dd68",
+  "previous_baseline_id": "handy-main-2026-08-24-af48dd68",
+  "previous_baseline_commit": "0e5036721ef6f26c3b89ab31bc10cd2ffd6096fb",
+  "refresh_commits_ahead": 5,
+  "release_commit_observed": "af48dd6",
+  "release_observed_at": "2026-08-24",
+  "canonical_custom_base_branch": "custom/main"
+}

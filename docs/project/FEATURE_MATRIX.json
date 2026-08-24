@@ -1,0 +1,180 @@
+{
+  "schema_version": "1.0",
+  "baseline_id": "handy-main-2026-08-24-af48dd68",
+  "features": [
+    {
+      "feature": "Durable capture/audio",
+      "priority": "P0",
+      "gate": "G1",
+      "tickets": [
+        "DATA-101",
+        "AUDIO-104",
+        "DATA-106"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Raw provenance",
+      "priority": "P0",
+      "gate": "G1",
+      "tickets": [
+        "DATA-102",
+        "STT-103",
+        "DATA-105"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Trash/restore/purge",
+      "priority": "P0",
+      "gate": "G1",
+      "tickets": [
+        "HIST-109"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Dictionary",
+      "priority": "P0",
+      "gate": "G2",
+      "tickets": [
+        "DICT-201",
+        "DICT-202"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Snippets",
+      "priority": "P0",
+      "gate": "G2",
+      "tickets": [
+        "SNIP-211",
+        "SNIP-212"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Styles",
+      "priority": "P0",
+      "gate": "G2",
+      "tickets": [
+        "PROMPT-221",
+        "PROMPT-222"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Dictation transforms",
+      "priority": "P0",
+      "gate": "G2",
+      "tickets": [
+        "PROMPT-221",
+        "PROMPT-222"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "History search/version UI",
+      "priority": "P0",
+      "gate": "G2",
+      "tickets": [
+        "HIST-231"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Scratchpad",
+      "priority": "P0",
+      "gate": "G3",
+      "tickets": [
+        "NOTE-301",
+        "PAD-302",
+        "PAD-303",
+        "NOTE-304"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Markdown knowledge export",
+      "priority": "P1",
+      "gate": "G4",
+      "tickets": [
+        "KB-401",
+        "KB-402",
+        "KB-403",
+        "KB-404"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "QueryService",
+      "priority": "P1",
+      "gate": "G5",
+      "tickets": [
+        "QUERY-501"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "REST read API",
+      "priority": "P1",
+      "gate": "G5",
+      "tickets": [
+        "REST-511",
+        "REST-512",
+        "INT-530"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "MCP read tools",
+      "priority": "P1",
+      "gate": "G5",
+      "tickets": [
+        "MCP-521",
+        "MCP-522",
+        "INT-530"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Release/upgrade/security",
+      "priority": "P1",
+      "gate": "G6",
+      "tickets": [
+        "REL-601",
+        "REL-602",
+        "REL-603",
+        "REL-604"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "7-day UAT",
+      "priority": "P1",
+      "gate": "G6",
+      "tickets": [
+        "UAT-605"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Local Integrations settings",
+      "priority": "P1",
+      "gate": "G5",
+      "tickets": [
+        "INT-590"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    },
+    {
+      "feature": "Delivery provenance",
+      "priority": "P0",
+      "gate": "G1",
+      "tickets": [
+        "DATA-107"
+      ],
+      "acceptance_state": "NOT_VERIFIED"
+    }
+  ]
+}

@@ -1,0 +1,561 @@
+{
+  "contract_version": "1",
+  "timestamps": "RFC3339 UTC",
+  "source_window_external_default": false,
+  "schemas": {
+    "Error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "contract_version"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_input",
+            "unauthorized",
+            "not_found",
+            "contract_mismatch",
+            "storage_unavailable",
+            "internal"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "contract_version": {
+          "const": "1"
+        }
+      }
+    },
+    "TranscriptionSummary": {
+      "type": "object",
+      "required": [
+        "capture_id",
+        "created_at",
+        "preview",
+        "has_audio",
+        "representation_count"
+      ],
+      "properties": {
+        "capture_id": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "preview": {
+          "type": "string"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_app": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "has_audio": {
+          "type": "boolean"
+        },
+        "representation_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "RecordingMetadata": {
+      "type": "object",
+      "required": [
+        "capture_id",
+        "integrity_state"
+      ],
+      "properties": {
+        "capture_id": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sample_rate_hz": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "audio_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "audio_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "integrity_state": {
+          "enum": [
+            "pending_audio",
+            "audio_valid",
+            "audio_missing",
+            "audio_corrupt",
+            "recovered_orphan"
+          ]
+        }
+      }
+    },
+    "AttemptMetadata": {
+      "type": "object",
+      "required": [
+        "attempt_id",
+        "attempt_no",
+        "status",
+        "is_canonical",
+        "created_at"
+      ],
+      "properties": {
+        "attempt_id": {
+          "type": "string"
+        },
+        "attempt_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "running",
+            "success",
+            "failed"
+          ]
+        },
+        "model_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "is_canonical": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "Representation": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "text",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "processor_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "processor_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "TranscriptionDetail": {
+      "type": "object",
+      "required": [
+        "capture_id",
+        "created_at",
+        "normalized_stt",
+        "attempts",
+        "representations",
+        "recording"
+      ],
+      "properties": {
+        "capture_id": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "title": {
+          "type": "string"
+        },
+        "normalized_stt": {
+          "type": "string"
+        },
+        "engine_raw": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "x-exposure": "opt-in; external default disabled"
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/schemas/AttemptMetadata"
+          }
+        },
+        "representations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/schemas/Representation"
+          }
+        },
+        "recording": {
+          "$ref": "#/schemas/RecordingMetadata"
+        }
+      }
+    },
+    "TranscriptVersion": {
+      "type": "object",
+      "required": [
+        "id",
+        "source_type",
+        "text",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "source_type": {
+          "enum": [
+            "normalized_stt",
+            "representation"
+          ]
+        },
+        "kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "model_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "processor_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "NoteSummary": {
+      "type": "object",
+      "required": [
+        "note_id",
+        "title",
+        "preview",
+        "updated_at",
+        "version_count"
+      ],
+      "properties": {
+        "note_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "preview": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "version_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "NoteDetail": {
+      "type": "object",
+      "required": [
+        "note_id",
+        "title",
+        "content",
+        "updated_at",
+        "version_count"
+      ],
+      "properties": {
+        "note_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "version_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "DictionaryEntry": {
+      "type": "object",
+      "required": [
+        "id",
+        "canonical_value",
+        "aliases",
+        "scope",
+        "priority",
+        "enabled"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "canonical_value": {
+          "type": "string"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Snippet": {
+      "type": "object",
+      "required": [
+        "id",
+        "trigger",
+        "replacement",
+        "scope",
+        "case_sensitive",
+        "enabled"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "string"
+        },
+        "replacement": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "case_sensitive": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "PromptProfileSummary": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "enabled"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "style",
+            "transform"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "model_override": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "SearchTranscriptionsQuery": {
+      "type": "object",
+      "properties": {
+        "q": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_app": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "has_audio": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "representation_kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "SearchNotesQuery": {
+      "type": "object",
+      "properties": {
+        "q": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "page_envelope": {
+    "type": "object",
+    "required": [
+      "data",
+      "next_cursor",
+      "contract_version"
+    ],
+    "properties": {
+      "data": {
+        "type": "array"
+      },
+      "next_cursor": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "contract_version": {
+        "const": "1"
+      }
+    }
+  }
+}

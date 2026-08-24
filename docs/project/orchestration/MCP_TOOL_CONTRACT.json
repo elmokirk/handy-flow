@@ -1,0 +1,303 @@
+{
+  "contract_version": "1.0",
+  "transport": "stdio",
+  "read_only": true,
+  "default_limit": 50,
+  "max_limit": 200,
+  "audio_path_tool_enabled_by_default": false,
+  "tools": {
+    "search_transcriptions": {
+      "input": [
+        "q?",
+        "from?",
+        "to?",
+        "language?",
+        "source_app?",
+        "has_audio?",
+        "representation_kind?",
+        "limit?",
+        "cursor?"
+      ],
+      "output": "Page<TranscriptionSummary>",
+      "output_schema": "#/schemas/TranscriptionSummary (paged)",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_app": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_audio": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "representation_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "list_transcriptions": {
+      "input": [
+        "limit?",
+        "cursor?"
+      ],
+      "output": "Page<TranscriptionSummary>",
+      "output_schema": "#/schemas/TranscriptionSummary (paged)",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "get_transcription": {
+      "input": [
+        "capture_id"
+      ],
+      "output": "TranscriptionDetail|null",
+      "output_schema": "#/schemas/TranscriptionDetail|null",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "capture_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "capture_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "get_transcript_versions": {
+      "input": [
+        "capture_id"
+      ],
+      "output": "TranscriptVersionDto[]",
+      "output_schema": "#/schemas/TranscriptVersion[]",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "capture_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "capture_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "get_recording_metadata": {
+      "input": [
+        "capture_id"
+      ],
+      "output": "RecordingMetadata|null",
+      "output_schema": "#/schemas/RecordingMetadata|null",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "capture_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "capture_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "search_notes": {
+      "input": [
+        "q?",
+        "limit?",
+        "cursor?"
+      ],
+      "output": "Page<NoteSummary>",
+      "output_schema": "#/schemas/NoteSummary (paged)",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "list_notes": {
+      "input": [
+        "limit?",
+        "cursor?"
+      ],
+      "output": "Page<NoteSummary>",
+      "output_schema": "#/schemas/NoteSummary (paged)",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "get_note": {
+      "input": [
+        "note_id"
+      ],
+      "output": "NoteDetail|null",
+      "output_schema": "#/schemas/NoteDetail|null",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "note_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "list_dictionary_entries": {
+      "input": [],
+      "output": "DictionaryEntryDto[]",
+      "output_schema": "#/schemas/DictionaryEntry[]",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "list_snippets": {
+      "input": [],
+      "output": "SnippetDto[]",
+      "output_schema": "#/schemas/Snippet[]",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "list_prompt_profiles": {
+      "input": [],
+      "output": "PromptProfileDto[]",
+      "output_schema": "#/schemas/PromptProfileSummary[]",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  "forbidden": [
+    "create",
+    "update",
+    "delete",
+    "purge",
+    "run_transform",
+    "raw_sql",
+    "unbounded_list",
+    "default_audio_path_disclosure"
+  ],
+  "compatibility": {
+    "on_mismatch": "fail_closed_with_clear_error"
+  },
+  "dto_contract": "QUERY_DTO_CONTRACT.json"
+}

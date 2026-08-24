@@ -1,0 +1,12 @@
+{
+  "status": "UNLOCKED",
+  "baseline_id": "handy-main-2026-08-24-af48dd68",
+  "observed_on": "2026-08-21",
+  "observed": {
+    "rmcp": "3.1.2",
+    "axum": "0.8.9"
+  },
+  "selected": {},
+  "locked_by_ticket": "DEP-510",
+  "rule": "DEP-510 must select compatible exact versions before REST/MCP tickets dispatch"
+}

@@ -1,0 +1,158 @@
+openapi: 3.1.0
+info:
+  title: Custom Handy Local Query API
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:{port}/api/v1
+    variables:
+      port: {default: "8765"}
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      summary: Service and compatibility health only
+      security: []
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, api_version, query_contract_version]
+                properties:
+                  status: {type: string, const: ok}
+                  api_version: {type: string, const: v1}
+                  query_contract_version: {type: string}
+  /transcriptions:
+    get:
+      summary: Search/list active transcriptions
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: language, in: query, schema: {type: string}}
+        - {name: source_app, in: query, schema: {type: string}}
+        - {name: has_audio, in: query, schema: {type: boolean}}
+        - {name: representation_kind, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: Page of summaries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './QUERY_DTO_CONTRACT.json#/page_envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/TranscriptionSummary'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "409": {$ref: '#/components/responses/ContractMismatch'}
+  /transcriptions/{capture_id}:
+    get:
+      parameters:
+        - {name: capture_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Transcription detail
+          content:
+            application/json:
+              schema: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/TranscriptionDetail'}
+        "404": {$ref: '#/components/responses/NotFound'}
+  /transcriptions/{capture_id}/versions:
+    get:
+      parameters:
+        - {name: capture_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Transcript versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/TranscriptVersion'}
+  /notes:
+    get:
+      summary: Search/list active notes
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: Page of notes
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './QUERY_DTO_CONTRACT.json#/page_envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/NoteSummary'}
+  /notes/{note_id}:
+    get:
+      parameters:
+        - {name: note_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Note detail
+          content:
+            application/json:
+              schema: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/NoteDetail'}
+        "404": {$ref: '#/components/responses/NotFound'}
+  /dictionary:
+    get:
+      responses:
+        "200":
+          description: Dictionary entries
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/DictionaryEntry'}}
+  /snippets:
+    get:
+      responses:
+        "200":
+          description: Snippets
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/Snippet'}}
+  /prompt-profiles:
+    get:
+      responses:
+        "200":
+          description: Prompt profile summaries; no secret/provider keys
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/PromptProfileSummary'}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  responses:
+    BadRequest:
+      description: Invalid input
+      content: {application/json: {schema: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/Error'}}}
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content: {application/json: {schema: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/Error'}}}
+    NotFound:
+      description: Not found
+      content: {application/json: {schema: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/Error'}}}
+    ContractMismatch:
+      description: Schema/query contract mismatch
+      content: {application/json: {schema: {$ref: './QUERY_DTO_CONTRACT.json#/schemas/Error'}}}
+x-custom-handy-contract:
+  dto_contract: QUERY_DTO_CONTRACT.json
+  timestamps: RFC3339 UTC
+  cursor: opaque base64url versioned cursor; clients MUST NOT parse
+  ordering: created_at DESC, id DESC
+  mutation_routes: forbidden
+  cors_wildcard: forbidden
+  bind: 127.0.0.1 only
