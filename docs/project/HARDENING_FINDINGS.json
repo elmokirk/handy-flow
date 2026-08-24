@@ -1,0 +1,239 @@
+{
+  "review_version": "1.1",
+  "review_date": "2026-08-21",
+  "baseline_id": "handy-main-2026-08-24-af48dd68",
+  "p0": [
+    {
+      "id": "P0-01",
+      "finding": "Stale release metadata",
+      "status": "RESOLVED",
+      "resolution": "Corrected latest observed tagged release to v0.9.5 while preserving pinned source commit."
+    },
+    {
+      "id": "P0-02",
+      "finding": "Fork/main baseline drift",
+      "status": "RESOLVED",
+      "resolution": "Introduced canonical `custom/main` pinned to baseline; all phase branches derive from it."
+    },
+    {
+      "id": "P0-03",
+      "finding": "Planning artifacts outside Git history",
+      "status": "RESOLVED",
+      "resolution": "Bootstrap imports the full control plane into `repo/docs/project/` and versions it."
+    },
+    {
+      "id": "P0-04",
+      "finding": "Human-only ticket metadata",
+      "status": "RESOLVED",
+      "resolution": "Added `TICKET_CATALOG.json`, `FEATURE_MATRIX.json`, validators and catalog refs."
+    },
+    {
+      "id": "P0-05",
+      "finding": "Semantic rather than exact file ownership",
+      "status": "RESOLVED",
+      "resolution": "Added exact per-ticket allowed/forbidden paths plus Implementation Map."
+    },
+    {
+      "id": "P0-06",
+      "finding": "Ambiguous destructive delete semantics",
+      "status": "RESOLVED",
+      "resolution": "Captures/Notes use Trash/Soft Delete; Purge is explicit and separately confirmed."
+    },
+    {
+      "id": "P0-07",
+      "finding": "Unsafe WAL database backup possibility",
+      "status": "RESOLVED",
+      "resolution": "Migration requires verified SQLite online backup + integrity check before write migration."
+    },
+    {
+      "id": "P0-08",
+      "finding": "Raw/Dictionary pipeline ambiguity",
+      "status": "RESOLVED",
+      "resolution": "Dictionary/custom-word correction is frozen inside deterministic `normalized_stt`; snapshot hash/version recorded."
+    },
+    {
+      "id": "P0-09",
+      "finding": "Snippet overlap/recursion ambiguity",
+      "status": "RESOLVED",
+      "resolution": "Frozen single-pass, left-to-right, longest-match-first, non-recursive matcher."
+    },
+    {
+      "id": "P0-10",
+      "finding": "Companion process database discovery ambiguity",
+      "status": "RESOLVED",
+      "resolution": "GUI generates explicit absolute `--data-dir`; companions never guess DB location."
+    },
+    {
+      "id": "P0-11",
+      "finding": "Connector schema drift",
+      "status": "RESOLVED",
+      "resolution": "Added `app_meta` schema/query contract versions and fail-closed connector startup."
+    },
+    {
+      "id": "P0-12",
+      "finding": "Missing Tauri command contract",
+      "status": "RESOLVED",
+      "resolution": "Added fixed Tauri command names/boundaries and Integrator-only registration."
+    },
+    {
+      "id": "P0-13",
+      "finding": "Hosted CI cannot prove Windows native behavior",
+      "status": "RESOLVED",
+      "resolution": "Interactive Windows evidence is required for mic/hotkey/clipboard/window gates."
+    },
+    {
+      "id": "P0-14",
+      "finding": "Free-text state-machine drift",
+      "status": "RESOLVED",
+      "resolution": "Added frozen state machines, Rust enums and DB CHECK constraint requirement."
+    },
+    {
+      "id": "P0-15",
+      "finding": "Autonomous destructive Git recovery risk",
+      "status": "RESOLVED",
+      "resolution": "Added Agent Safety Policy prohibiting force/reset/clean/direct integration pushes and bounding retries."
+    }
+  ],
+  "p1": [
+    {
+      "id": "P1-01",
+      "finding": "No record of exact text actually delivered",
+      "status": "RESOLVED",
+      "resolution": "Added append-only `delivery_events` with immutable source reference, text hash, destination and outcome."
+    },
+    {
+      "id": "P1-02",
+      "finding": "PromptProfile edits break historical provenance",
+      "status": "RESOLVED",
+      "resolution": "Representations snapshot effective prompt/provider/model/processor metadata."
+    },
+    {
+      "id": "P1-03",
+      "finding": "REST wire schema underdefined",
+      "status": "RESOLVED",
+      "resolution": "Added OpenAPI 3.1 contract plus shared machine-readable Query DTO schema."
+    },
+    {
+      "id": "P1-04",
+      "finding": "REST token lifecycle underdefined",
+      "status": "RESOLVED",
+      "resolution": "Defined generation, rotation, current-user storage/ACL, no query-string token and no secret logging."
+    },
+    {
+      "id": "P1-05",
+      "finding": "MCP input/output schemas underdefined",
+      "status": "RESOLVED",
+      "resolution": "Added machine-readable MCP tool contract with exact JSON Schema inputs and shared DTO outputs."
+    },
+    {
+      "id": "P1-06",
+      "finding": "Connector dependency version drift",
+      "status": "RESOLVED",
+      "resolution": "Added Phase-5 Dependency Lock Policy and explicit `DEP-510` Integrator ticket."
+    },
+    {
+      "id": "P1-07",
+      "finding": "Shortcut IDs/default/conflicts underdefined",
+      "status": "RESOLVED",
+      "resolution": "Added Shortcut Contract with stable IDs, conflict behavior and explicit routing."
+    },
+    {
+      "id": "P1-08",
+      "finding": "UI placement left to Integrator discretion",
+      "status": "RESOLVED",
+      "resolution": "Added UI Information Architecture for History, Dictionary, Snippets, Profiles, Scratchpad and Local Integrations."
+    },
+    {
+      "id": "P1-09",
+      "finding": "Performance gate too subjective",
+      "status": "RESOLVED",
+      "resolution": "Pure-STT median end-to-paste regression hard budget set to \u226410% vs G0 baseline."
+    },
+    {
+      "id": "P1-10",
+      "finding": "Window title metadata privacy risk",
+      "status": "RESOLVED",
+      "resolution": "`source_window` is opt-in/disabled by default and excluded from external DTOs by default."
+    },
+    {
+      "id": "P1-11",
+      "finding": "Private transcript/prompt logging risk before release",
+      "status": "RESOLVED",
+      "resolution": "Logging privacy policy starts in Phase 0, not only release review."
+    },
+    {
+      "id": "P1-12",
+      "finding": "FTS synchronization strategy left open",
+      "status": "RESOLVED",
+      "resolution": "Frozen repository-managed transactional FTS updates plus explicit full rebuild command/test."
+    },
+    {
+      "id": "P1-13",
+      "finding": "Mutable note current-version pointer can drift",
+      "status": "RESOLVED",
+      "resolution": "Removed current-version pointer contract; highest monotonic `version_no` is canonical current version."
+    },
+    {
+      "id": "P1-14",
+      "finding": "Duplicate capture transcription state can drift",
+      "status": "RESOLVED",
+      "resolution": "Capture transcription state is derived from attempts rather than duplicated mutable state."
+    },
+    {
+      "id": "P1-15",
+      "finding": "Backup scope could expand MVP unexpectedly",
+      "status": "RESOLVED",
+      "resolution": "MVP backup obligation is safe migration/upgrade backup+restore verification, not a general consumer backup feature."
+    },
+    {
+      "id": "P1-16",
+      "finding": "Autonomous retry/token runaway",
+      "status": "RESOLVED",
+      "resolution": "One implementation + two focused fix cycles, then E2 escalation; attempt/context usage is observable."
+    }
+  ],
+  "p2": [
+    {
+      "id": "P2-01",
+      "finding": "Baseline metadata repetition",
+      "status": "RESOLVED",
+      "resolution": "Frontmatter uses one `baseline_id`; exact baseline details live in `BASELINE_LOCK.json`."
+    },
+    {
+      "id": "P2-02",
+      "finding": "Large repetitive Markdown execution metadata",
+      "status": "RESOLVED",
+      "resolution": "Execution metadata moved to JSON control plane while Markdown retains rationale."
+    },
+    {
+      "id": "P2-03",
+      "finding": "Manual master checklist drift",
+      "status": "RESOLVED",
+      "resolution": "`render_execution_status.py` generates status from catalog + per-ticket RUN_STATE frontmatter."
+    },
+    {
+      "id": "P2-04",
+      "finding": "Reference audio export is not portable",
+      "status": "ACCEPTED",
+      "resolution": "Default remains `reference` to avoid duplicate storage; `copy` is documented for portable vaults."
+    },
+    {
+      "id": "P2-05",
+      "finding": "Baseline refresh comparison not automated",
+      "status": "DEFERRED",
+      "resolution": "Optional maintenance automation; explicit BASELINE-REFRESH procedure is sufficient for MVP."
+    },
+    {
+      "id": "P2-06",
+      "finding": "No app-level encryption",
+      "status": "DEFERRED",
+      "resolution": "MVP threat model relies on Windows account/full-disk encryption; revisit only if threat model changes."
+    },
+    {
+      "id": "P2-07",
+      "finding": "No Wispr history import",
+      "status": "DEFERRED",
+      "resolution": "Excluded until real migration demand justifies format-specific importer complexity."
+    }
+  ]
+}

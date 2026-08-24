@@ -1,0 +1,46 @@
+{
+  "starter_kit_version": "1.1.0-hardened",
+  "baseline_id": "handy-main-2026-08-24-af48dd68",
+  "canonical_base_branch": "custom/main",
+  "markdown_files": 136,
+  "starter_validation_errors": [],
+  "tickets": 47,
+  "features": 17,
+  "control_plane_errors": [],
+  "hardening_findings": {
+    "p0": {
+      "total": 15,
+      "status": {
+        "RESOLVED": 15
+      }
+    },
+    "p1": {
+      "total": 16,
+      "status": {
+        "RESOLVED": 16
+      }
+    },
+    "p2": {
+      "total": 7,
+      "status": {
+        "ACCEPTED": 1,
+        "DEFERRED": 3,
+        "RESOLVED": 3
+      }
+    }
+  },
+  "scores": {
+    "software_planning_quality": 9.6,
+    "autonomous_execution_readiness": 9.4,
+    "combined": 9.5,
+    "assessment_stage": "PRE_BOOTSTRAP"
+  },
+  "pre_bootstrap_unproven_evidence": [
+    "actual checkout source-map verification",
+    "baseline build/test result on target Windows machine",
+    "GitHub branch protection/rules permission behavior",
+    "interactive Windows native QA runner/smoke evidence",
+    "Phase-5 exact connector dependency compatibility locks"
+  ],
+  "result": "PASS_PRE_BOOTSTRAP_PLANNING_HARDENING"
+}

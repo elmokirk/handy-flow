@@ -1,0 +1,52 @@
+{
+  "metric_version": "1.1-hardening-final",
+  "assessed_on": "2026-08-21",
+  "assessment_stage": "PRE_BOOTSTRAP",
+  "software_planning_quality": {
+    "score": 9.6,
+    "max": 10,
+    "dimensions": {
+      "product_scope_non_goals": 1.0,
+      "architecture_boundaries": 1.5,
+      "data_migration_recovery": 1.5,
+      "security_privacy": 0.95,
+      "qa_measurable_gates": 1.45,
+      "roadmap_decisions": 1.0,
+      "integration_contracts": 1.0,
+      "operations_release": 0.65,
+      "research_baseline_reproducibility": 0.55
+    },
+    "residual": "Remaining uncertainty is mostly runtime/environmental: actual Windows native behavior, real repository compatibility at Bootstrap, and final release identity/signing choices."
+  },
+  "autonomous_execution_readiness": {
+    "score": 9.4,
+    "max": 10,
+    "dimensions": {
+      "machine_readable_ticket_dag": 1.5,
+      "exact_ownership_implementation_map": 1.5,
+      "architecture_freeze_escalation": 1.25,
+      "persistent_state_observability": 0.95,
+      "worktree_branch_pr_safety": 1.25,
+      "independent_evaluator_gates": 1.2,
+      "context_token_efficiency": 0.75,
+      "retry_stop_policy": 0.75,
+      "reproducible_bootstrap_control_plane": 0.25
+    },
+    "residual": "Bootstrap has not yet empirically proven GitHub permissions/rules, pinned source-map fit, baseline build, or interactive Windows QA execution."
+  },
+  "combined_score": 9.5,
+  "prior_assessment": {
+    "software_planning_quality": 8.0,
+    "autonomous_execution_readiness_range": "6.5–7.0"
+  },
+  "score_cap_before_bootstrap_pass": 9.5,
+  "post_bootstrap_target_if_BG_passes": "9.7–9.8 autonomous readiness; must be evidence-based, not pre-awarded",
+  "hard_checks": {
+    "p0_findings_resolved": "15/15",
+    "p1_findings_resolved": "16/16",
+    "wiki_links": "must be 0 errors",
+    "frontmatter_ids": "must be 0 errors",
+    "ticket_dag": "must be acyclic",
+    "control_plane": "must be 0 errors"
+  }
+}
