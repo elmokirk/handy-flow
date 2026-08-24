@@ -57,8 +57,8 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 | 6 | REL-603 | G6 | NOT_STARTED | 0 | `` |
 | 6 | REL-604 | G6 | NOT_STARTED | 0 | `` |
 | 6 | UAT-605 | G6 | NOT_STARTED | 0 | `` |
-| BOOT | BOOT-001 | BG | NOT_STARTED | 0 | `` |
-| BOOT | BOOT-002 | BG | NOT_STARTED | 0 | `` |
-| BOOT | BOOT-003 | BG | NOT_STARTED | 0 | `` |
-| BOOT | BOOT-004 | BG | NOT_STARTED | 0 | `` |
-| BOOT | BOOT-005 | BG | NOT_STARTED | 0 | `` |
+| BOOT | BOOT-001 | BG | DONE | 1 | `bootstrap/control-plane` |
+| BOOT | BOOT-002 | BG | DONE | 1 | `bootstrap/control-plane` |
+| BOOT | BOOT-003 | BG | DONE | 3 | `bootstrap/control-plane` |
+| BOOT | BOOT-004 | BG | DONE | 1 | `bootstrap/control-plane` |
+| BOOT | BOOT-005 | BG | DONE | 1 | `bootstrap/control-plane` |
