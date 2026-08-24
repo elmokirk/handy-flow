@@ -1,0 +1,7 @@
+{
+  "_comment": "Per-platform clippy warning ceilings (custom gate ratchet, QA-001). Baseline captures upstream v0.9.6 warning state; custom code must not increase it. Lower values over time; raise only with owner approval.",
+  "captured_at_baseline": "handy-main-2026-08-24-af48dd68",
+  "windows": {
+    "max_warnings": 22
+  }
+}
