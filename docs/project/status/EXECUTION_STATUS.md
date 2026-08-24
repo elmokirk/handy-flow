@@ -15,9 +15,9 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 
 | Phase | Ticket | Gate | Status | Attempt | Branch |
 |---|---|---|---|---:|---|
-| 0 | ARCH-001 | G0 | NOT_STARTED | 0 | `` |
-| 0 | BASE-001 | G0 | NOT_STARTED | 0 | `` |
-| 0 | QA-001 | G0 | NOT_STARTED | 0 | `` |
+| 0 | ARCH-001 | G0 | DONE | 1 | `phase/00-baseline-harness` |
+| 0 | BASE-001 | G0 | DONE | 1 | `phase/00-baseline-harness` |
+| 0 | QA-001 | G0 | DONE | 2 | `phase/00-baseline-harness` |
 | 1 | AUDIO-104 | G1 | NOT_STARTED | 0 | `` |
 | 1 | DATA-101 | G1 | NOT_STARTED | 0 | `` |
 | 1 | DATA-102 | G1 | NOT_STARTED | 0 | `` |
