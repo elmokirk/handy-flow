@@ -26,8 +26,8 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 | 1 | DATA-107 | G1 | IN_REVIEW | 2 | `phase/01-data-core` |
 | 1 | DATA-108 | G1 | IN_REVIEW | 2 | `phase/01-data-core` |
 | 1 | DEP-100 | G1 | IN_REVIEW | 1 | `phase/01-data-core` |
-| 1 | HIST-107 | G1 | BLOCKED_DEPENDENCY | 0 | `` |
-| 1 | HIST-109 | G1 | BLOCKED_DEPENDENCY | 0 | `` |
+| 1 | HIST-107 | G1 | IN_REVIEW | 0 | `` |
+| 1 | HIST-109 | G1 | IN_REVIEW | 0 | `` |
 | 1 | STT-103 | G1 | IN_REVIEW | 3 | `phase/01-data-core` |
 | 2 | DICT-201 | G2 | NOT_STARTED | 0 | `` |
 | 2 | DICT-202 | G2 | NOT_STARTED | 0 | `` |
