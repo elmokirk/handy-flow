@@ -153,3 +153,46 @@ pub fn referenced_audio_names(db: &AppDatabase) -> Result<Vec<String>, rusqlite:
     let rows = stmt.query_map([], |r| r.get(0))?;
     rows.collect()
 }
+
+/// Deterministic, bounded page over ACTIVE (non-trashed) captures,
+/// newest first. Ordering contract: (created_at_ms DESC, id DESC).
+pub fn list_active_captures(
+    db: &AppDatabase,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<CaptureRecord>, rusqlite::Error> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM captures WHERE deleted_at_ms IS NULL \
+         ORDER BY created_at_ms DESC, id DESC LIMIT ?1 OFFSET ?2"
+    ))?;
+    let rows = stmt.query_map(params![limit.clamp(1, 200), offset.max(0)], row_to_record)?;
+    rows.collect()
+}
+
+/// Canonical attempt + derived representations for one capture, in a
+/// single transaction-consistent read. `None` when the capture is unknown.
+pub fn capture_detail(
+    db: &AppDatabase,
+    capture_id: &str,
+) -> Result<
+    Option<(
+        CaptureRecord,
+        Vec<crate::storage::repositories::transcriptions::AttemptRecord>,
+        Vec<crate::storage::repositories::representations::RepresentationRecord>,
+    )>,
+    rusqlite::Error,
+> {
+    use crate::storage::repositories::representations as reps;
+    use crate::storage::repositories::transcriptions as att;
+
+    let Some(capture) = get_capture(db, capture_id)? else {
+        return Ok(None);
+    };
+    let attempts = att::attempts_for_capture(db, capture_id)?;
+    let mut all_reps = Vec::new();
+    for a in &attempts {
+        all_reps.extend(reps::representations_for_attempt(db, &a.id)?);
+    }
+    Ok(Some((capture, attempts, all_reps)))
+}

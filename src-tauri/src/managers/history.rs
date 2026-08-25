@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local, Utc};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use rusqlite::{params, Connection, OptionalExtension};
 use rusqlite_migration::{Migrations, M};
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,9 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri_specta::Event;
+
+use crate::storage::database::AppDatabase;
+use crate::storage::repositories::captures::CaptureRecord;
 
 /// Database migrations for transcription history.
 /// Each migration is applied in order. The library tracks which migrations
@@ -130,6 +133,23 @@ impl HistoryManager {
             );
         } else {
             debug!("Database already at latest version {}", version_after);
+        }
+
+        // HIST-107: canonical layers (V5+) run through the storage module's
+        // verified-backup migration chain. The upstream chain above stays
+        // responsible for V1..V4 incl. the tauri-plugin-sql conversion;
+        // both runners agree on user_version numbering by design.
+        let db = crate::storage::database::AppDatabase::open(&self.db_path)?;
+        match db.migrate(env!("CARGO_PKG_VERSION"), None) {
+            Ok(report) if report.to_version > report.from_version => info!(
+                "Canonical schema migrated {} -> {} (legacy rows backfilled: {}, backup: {:?})",
+                report.from_version,
+                report.to_version,
+                report.legacy_rows_backfilled,
+                report.backup_path
+            ),
+            Ok(_) => debug!("Canonical schema already at target version"),
+            Err(e) => return Err(anyhow::anyhow!("Canonical migration failed: {e}")),
         }
 
         Ok(())
@@ -647,8 +667,159 @@ impl HistoryManager {
             format!("Recording {}", timestamp)
         }
     }
+
+    // ---- HIST-107: canonical capture/attempt/representation queries ----
+
+    /// Bounded page (default 50 / max 200) over active captures,
+    /// newest first. Legacy rows appear here too — they were backfilled
+    /// into captures by migration V5 and keep their legacy id.
+    pub async fn get_canonical_entries(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<CanonicalEntry>> {
+        let db = self.canonical_db()?;
+        let captures =
+            crate::storage::repositories::captures::list_active_captures(&db, limit, offset)?;
+        let mut out = Vec::with_capacity(captures.len());
+        for c in &captures {
+            out.push(Self::to_canonical_entry(&db, c)?);
+        }
+        Ok(out)
+    }
+
+    /// Full detail for one capture including per-attempt engine_raw —
+    /// used by a future detail view and by REST/MCP later on.
+    pub async fn get_capture_detail(
+        &self,
+        capture_id: String,
+    ) -> Result<Option<CanonicalCaptureDetail>> {
+        let db = self.canonical_db()?;
+        let Some((capture, attempts, reps)) =
+            crate::storage::repositories::captures::capture_detail(&db, &capture_id)?
+        else {
+            return Ok(None);
+        };
+        let mut entry = Self::to_canonical_entry(&db, &capture)?;
+        entry.derived = reps
+            .iter()
+            .map(|r| DerivedTextSummary {
+                representation_id: r.id.clone(),
+                kind: r.kind.clone(),
+                text: r.text.clone(),
+                created_at_ms: r.created_at_ms,
+            })
+            .collect();
+        Ok(Some(CanonicalCaptureDetail {
+            entry,
+            attempts: attempts
+                .iter()
+                .map(|a| CanonicalAttemptView {
+                    attempt_id: a.id.clone(),
+                    attempt_number: a.attempt_number,
+                    engine_raw: a.engine_raw.clone(),
+                    normalized_stt: a.normalized_stt.clone(),
+                    provenance: a.provenance.clone(),
+                    status: a.status.clone(),
+                    is_canonical: a.is_canonical,
+                })
+                .collect(),
+            representations: reps
+                .iter()
+                .map(|r| DerivedTextSummary {
+                    representation_id: r.id.clone(),
+                    kind: r.kind.clone(),
+                    text: r.text.clone(),
+                    created_at_ms: r.created_at_ms,
+                })
+                .collect(),
+        }))
+    }
+
+    /// Resolve an audio file name to its absolute path (playback keeps
+    /// working against the same recordings directory as upstream).
+    pub fn canonical_audio_path(&self, file_name: &str) -> PathBuf {
+        self.get_audio_file_path(file_name)
+    }
+
+    fn to_canonical_entry(db: &AppDatabase, c: &CaptureRecord) -> Result<CanonicalEntry> {
+        use crate::storage::repositories::{representations as reps, transcriptions as att};
+        let raw = att::canonical_attempt(db, &c.id)?.and_then(|a| a.normalized_stt);
+        let derived = match att::canonical_attempt(db, &c.id)? {
+            Some(a) => reps::representations_for_attempt(db, &a.id)?
+                .into_iter()
+                .map(|r| DerivedTextSummary {
+                    representation_id: r.id,
+                    kind: r.kind,
+                    text: r.text,
+                    created_at_ms: r.created_at_ms,
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        Ok(CanonicalEntry {
+            capture_id: c.id.clone(),
+            legacy_history_id: c.legacy_history_id,
+            title: c.title.clone(),
+            created_at_ms: c.created_at_ms,
+            integrity_state: c.integrity_state.clone(),
+            trashed: c.deleted_at_ms.is_some(),
+            audio_file_name: c.audio_file_name.clone(),
+            raw_text: raw,
+            derived,
+        })
+    }
+
+    fn canonical_db(&self) -> Result<AppDatabase> {
+        Ok(AppDatabase::open(&self.db_path)?)
+    }
+
 }
 
+/// One derived text version shown next to — never instead of — the raw.
+#[derive(Clone, Debug, Serialize, Type)]
+pub struct DerivedTextSummary {
+    pub representation_id: String,
+    pub kind: String,
+    pub text: String,
+    pub created_at_ms: i64,
+}
+
+/// A history row in the canonical model: immutable RAW text plus every
+/// derived version, so the UI can always distinguish the two.
+#[derive(Clone, Debug, Serialize, Type)]
+pub struct CanonicalEntry {
+    pub capture_id: String,
+    pub legacy_history_id: Option<i64>,
+    pub title: String,
+    pub created_at_ms: i64,
+    pub integrity_state: String,
+    pub trashed: bool,
+    /// Relative audio file name; resolve via `canonical_audio_path`.
+    pub audio_file_name: Option<String>,
+    pub raw_text: Option<String>,
+    pub derived: Vec<DerivedTextSummary>,
+}
+
+/// Per-attempt view including the immutable engine output (STT-103).
+#[derive(Clone, Debug, Serialize, Type)]
+pub struct CanonicalAttemptView {
+    pub attempt_id: String,
+    pub attempt_number: i64,
+    pub engine_raw: Option<String>,
+    pub normalized_stt: Option<String>,
+    pub provenance: String,
+    pub status: String,
+    pub is_canonical: bool,
+}
+
+/// Full detail for one capture.
+#[derive(Clone, Debug, Serialize, Type)]
+pub struct CanonicalCaptureDetail {
+    pub entry: CanonicalEntry,
+    pub attempts: Vec<CanonicalAttemptView>,
+    pub representations: Vec<DerivedTextSummary>,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
