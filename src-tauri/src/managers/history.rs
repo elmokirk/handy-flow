@@ -774,6 +774,52 @@ impl HistoryManager {
         Ok(AppDatabase::open(&self.db_path)?)
     }
 
+    // ---- HIST-109: Trash / Restore / explicit Purge --------------------
+
+    /// Soft-delete a capture (Trash). Reversible; excluded from normal
+    /// queries immediately.
+    pub async fn trash_capture_entry(&self, capture_id: String) -> Result<bool> {
+        let db = self.canonical_db()?;
+        Ok(crate::storage::repositories::captures::trash_capture(
+            &db,
+            &capture_id,
+        )?)
+    }
+
+    /// Restore a trashed capture back to active history.
+    pub async fn restore_capture_entry(&self, capture_id: String) -> Result<bool> {
+        let db = self.canonical_db()?;
+        Ok(crate::storage::repositories::captures::restore_capture(
+            &db,
+            &capture_id,
+        )?)
+    }
+
+    /// Explicit, separately confirmed purge of ONE trashed capture:
+    /// repository removes canonical rows in FK order, then the audio file
+    /// is deleted here (filesystem is the manager's responsibility).
+    /// A missing file is logged but does not fail the purge; a DB failure
+    /// aborts before any filesystem change, so state stays consistent.
+    pub async fn purge_trashed_entry(&self, capture_id: String) -> Result<()> {
+        let db = self.canonical_db()?;
+        let purged = crate::storage::repositories::captures::purge_trashed(&db, &capture_id)
+            .map_err(|e| anyhow!("Purge refused for {capture_id}: {e}"))?;
+
+        if let Some(name) = &purged.audio_file_name {
+            let path = self.get_audio_file_path(name);
+            match fs::remove_file(&path) {
+                Ok(()) => debug!("Purged audio file {:?}", path),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    warn!("Purge: audio file {:?} already gone", path);
+                }
+                Err(e) => {
+                    error!("Purge: could not delete audio file {:?}: {}", path, e);
+                }
+            }
+        }
+        info!("Capture {} purged (explicit)", capture_id);
+        Ok(())
+    }
 }
 
 /// One derived text version shown next to — never instead of — the raw.

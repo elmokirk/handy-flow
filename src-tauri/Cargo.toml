@@ -236,3 +236,7 @@ path = "tests/recovery/orphan_recovery_test.rs"
 name = "canonical_history_test"
 path = "tests/history/canonical_history_test.rs"
 
+[[test]]
+name = "trash_purge_test"
+path = "tests/history/trash_purge_test.rs"
+
