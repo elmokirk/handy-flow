@@ -247,3 +247,7 @@ path = "tests/history/canonical_history_test.rs"
 name = "trash_purge_test"
 path = "tests/history/trash_purge_test.rs"
 
+[[test]]
+name = "dictionary_test"
+path = "tests/dictionary/dictionary_test.rs"
+

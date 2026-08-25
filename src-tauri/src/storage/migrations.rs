@@ -20,7 +20,7 @@ use rusqlite::Connection;
 use super::database::{AppDatabase, StorageError};
 use super::ids;
 
-pub const TARGET_VERSION: i64 = 6;
+pub const TARGET_VERSION: i64 = 7;
 /// `query_contract_version` advertised to REST/MCP companions later on.
 pub const QUERY_CONTRACT_VERSION: i64 = 1;
 
@@ -235,6 +235,24 @@ fn apply_migrations(
                         ON delivery_events (capture_id);
                     CREATE INDEX idx_delivery_events_created
                         ON delivery_events (created_at_ms DESC);",
+                )?;
+            }
+            7 => {
+                // DICT-201: durable dictionary entries with aliases and an
+                // explicit enabled state. Terms are unique (case-insensitive
+                // via COLLATE NOCASE) so legacy custom-word imports stay
+                // idempotent.
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS dictionary_entries (
+                        id TEXT PRIMARY KEY,
+                        term TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        aliases TEXT NOT NULL DEFAULT '[]',
+                        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                        created_at_ms INTEGER NOT NULL,
+                        updated_at_ms INTEGER NOT NULL
+                    );
+                    CREATE INDEX idx_dictionary_enabled
+                        ON dictionary_entries (enabled);",
                 )?;
             }
             other => {

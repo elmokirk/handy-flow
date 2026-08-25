@@ -30,6 +30,13 @@ mod utils;
 pub use cli::CliArgs;
 // STT-103 public contract for persistence layers (Integrator wiring).
 pub use managers::transcription::{TranscriptionOutput, NORMALIZER_VERSION};
+// DICT-201 public contract for tests/UI (Integrator wiring).
+pub use managers::dictionary::DictionaryManager;
+// HIST-107 canonical query types (Integrator wiring; keeps the private
+// managers module's pub structs reachable and dead-code clean).
+pub use managers::history::{
+    CanonicalAttemptView, CanonicalCaptureDetail, CanonicalEntry, DerivedTextSummary,
+};
 #[cfg(debug_assertions)]
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use tauri_specta::{collect_commands, collect_events, Builder};

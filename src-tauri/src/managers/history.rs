@@ -673,6 +673,9 @@ impl HistoryManager {
     /// Bounded page (default 50 / max 200) over active captures,
     /// newest first. Legacy rows appear here too — they were backfilled
     /// into captures by migration V5 and keep their legacy id.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn get_canonical_entries(
         &self,
         limit: i64,
@@ -690,17 +693,22 @@ impl HistoryManager {
 
     /// Full detail for one capture including per-attempt engine_raw —
     /// used by a future detail view and by REST/MCP later on.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn get_capture_detail(
         &self,
         capture_id: String,
     ) -> Result<Option<CanonicalCaptureDetail>> {
         let db = self.canonical_db()?;
-        let Some((capture, attempts, reps)) =
+        let Some(detail) =
             crate::storage::repositories::captures::capture_detail(&db, &capture_id)?
         else {
             return Ok(None);
         };
-        let mut entry = Self::to_canonical_entry(&db, &capture)?;
+        let (capture, attempts, reps) =
+            (&detail.capture, &detail.attempts, &detail.representations);
+        let mut entry = Self::to_canonical_entry(&db, capture)?;
         entry.derived = reps
             .iter()
             .map(|r| DerivedTextSummary {
@@ -738,6 +746,9 @@ impl HistoryManager {
 
     /// Resolve an audio file name to its absolute path (playback keeps
     /// working against the same recordings directory as upstream).
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub fn canonical_audio_path(&self, file_name: &str) -> PathBuf {
         self.get_audio_file_path(file_name)
     }
@@ -778,6 +789,9 @@ impl HistoryManager {
 
     /// Soft-delete a capture (Trash). Reversible; excluded from normal
     /// queries immediately.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn trash_capture_entry(&self, capture_id: String) -> Result<bool> {
         let db = self.canonical_db()?;
         Ok(crate::storage::repositories::captures::trash_capture(
@@ -787,6 +801,9 @@ impl HistoryManager {
     }
 
     /// Restore a trashed capture back to active history.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn restore_capture_entry(&self, capture_id: String) -> Result<bool> {
         let db = self.canonical_db()?;
         Ok(crate::storage::repositories::captures::restore_capture(
@@ -800,6 +817,9 @@ impl HistoryManager {
     /// is deleted here (filesystem is the manager's responsibility).
     /// A missing file is logged but does not fail the purge; a DB failure
     /// aborts before any filesystem change, so state stays consistent.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn purge_trashed_entry(&self, capture_id: String) -> Result<()> {
         let db = self.canonical_db()?;
         let purged = crate::storage::repositories::captures::purge_trashed(&db, &capture_id)

@@ -3,5 +3,6 @@
 
 pub mod captures;
 pub mod deliveries;
+pub mod dictionary;
 pub mod representations;
 pub mod transcriptions;
