@@ -1,0 +1,29 @@
+# Normalize all text files to LF in the repository and on checkout.
+#
+# The Prettier config pins `endOfLine: lf`, so a default Windows clone
+# (core.autocrlf=true) produced CRLF working trees that failed
+# `prettier --check` for every contributor. Explicit attributes make
+# checkouts deterministic on every platform.
+* text=auto eol=lf
+
+# Windows scripts genuinely need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binaries — never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.onnx binary
+*.gguf binary
+*.wav binary
+*.mp3 binary
+*.flac binary
