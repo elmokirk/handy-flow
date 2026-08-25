@@ -14,7 +14,7 @@
         "QA-001"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/storage/mod.rs",
         "src-tauri/src/storage/database.rs",
@@ -277,7 +277,7 @@
         "HIST-107"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/history.rs",
         "src-tauri/src/commands/history.rs",
@@ -575,7 +575,7 @@
         "DATA-101"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/storage/audio_files.rs",
         "src-tauri/src/managers/transcription.rs",
@@ -794,7 +794,7 @@
         "DATA-107"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/history.rs",
         "src-tauri/src/commands/history.rs",
@@ -883,7 +883,7 @@
         "STT-103"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/storage/repositories/transcriptions.rs",
         "src-tauri/src/storage/repositories/representations.rs",
@@ -1338,7 +1338,7 @@
         "DATA-105"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/storage/recovery.rs",
         "src-tauri/src/storage/repositories/captures.rs",
@@ -1592,7 +1592,7 @@
         "DATA-102"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/transcription.rs",
         "src-tauri/tests/transcription_pipeline/**"
@@ -1633,7 +1633,7 @@
         "DATA-102"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/storage/usage.rs",
         "src-tauri/src/storage/repositories/captures.rs",
@@ -1750,7 +1750,7 @@
         "DATA-101"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/storage/migrations.rs",
         "src-tauri/src/storage/models.rs",
@@ -1836,7 +1836,7 @@
         "QA-001"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/Cargo.toml",
         "src-tauri/Cargo.lock"
@@ -1963,7 +1963,7 @@
         "STT-103"
       ],
       "gate": "G1",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/storage/repositories/deliveries.rs",
         "src-tauri/src/storage/models.rs",
