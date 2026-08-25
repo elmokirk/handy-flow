@@ -1061,7 +1061,7 @@
         "DATA-102"
       ],
       "gate": "G2",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/managers/dictionary.rs",
         "src-tauri/src/storage/repositories/dictionary.rs",

@@ -29,7 +29,7 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 | 1 | HIST-107 | G1 | DONE | 2 | `phase/01-data-core` |
 | 1 | HIST-109 | G1 | DONE | 2 | `phase/01-data-core` |
 | 1 | STT-103 | G1 | DONE | 3 | `phase/01-data-core` |
-| 2 | DICT-201 | G2 | NOT_STARTED | 0 | `` |
+| 2 | DICT-201 | G2 | IN_REVIEW | 2 | `phase/02-dictionary-snippets` |
 | 2 | DICT-202 | G2 | NOT_STARTED | 0 | `` |
 | 2 | HIST-231 | G2 | NOT_STARTED | 0 | `` |
 | 2 | PROMPT-221 | G2 | NOT_STARTED | 0 | `` |
