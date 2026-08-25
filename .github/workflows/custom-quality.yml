@@ -28,6 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Runner images ship ~25 GB of preinstalled toolchains we never use;
+      # the full Rust test matrix needs that disk or ld dies with
+      # "signal 7 (Bus error)" once target/ fills the volume.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

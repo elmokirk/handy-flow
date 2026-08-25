@@ -14,7 +14,7 @@
         "QA-001"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/storage/mod.rs",
         "src-tauri/src/storage/database.rs",
@@ -189,7 +189,7 @@
       "owner": "Bootstrap Agent",
       "dependencies": [],
       "gate": "BG",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "docs/project/**"
       ],
@@ -277,7 +277,7 @@
         "HIST-107"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/managers/history.rs",
         "src-tauri/src/commands/history.rs",
@@ -499,7 +499,7 @@
         "BOOT-005"
       ],
       "gate": "G0",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         ".github/workflows/**",
         "tests/**",
@@ -575,7 +575,7 @@
         "DATA-101"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/storage/audio_files.rs",
         "src-tauri/src/managers/transcription.rs",
@@ -794,7 +794,7 @@
         "DATA-107"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/managers/history.rs",
         "src-tauri/src/commands/history.rs",
@@ -883,7 +883,7 @@
         "STT-103"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/storage/repositories/transcriptions.rs",
         "src-tauri/src/storage/repositories/representations.rs",
@@ -1104,7 +1104,7 @@
         "BOOT-001"
       ],
       "gate": "BG",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "docs/project/**"
       ],
@@ -1151,7 +1151,7 @@
         "BOOT-002"
       ],
       "gate": "BG",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "docs/project/status/**"
       ],
@@ -1242,7 +1242,7 @@
         "BOOT-003"
       ],
       "gate": "BG",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "docs/project/status/**"
       ],
@@ -1338,7 +1338,7 @@
         "DATA-105"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/storage/recovery.rs",
         "src-tauri/src/storage/repositories/captures.rs",
@@ -1467,7 +1467,7 @@
         "BOOT-005"
       ],
       "gate": "G0",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "docs/project/status/**",
         "docs/project/research/**"
@@ -1592,7 +1592,7 @@
         "DATA-102"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/managers/transcription.rs",
         "src-tauri/tests/transcription_pipeline/**"
@@ -1633,7 +1633,7 @@
         "DATA-102"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/storage/usage.rs",
         "src-tauri/src/storage/repositories/captures.rs",
@@ -1676,7 +1676,7 @@
         "BOOT-005"
       ],
       "gate": "G0",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/lib.rs",
         "src-tauri/src/managers/mod.rs",
@@ -1750,7 +1750,7 @@
         "DATA-101"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/storage/migrations.rs",
         "src-tauri/src/storage/models.rs",
@@ -1836,7 +1836,7 @@
         "QA-001"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/Cargo.toml",
         "src-tauri/Cargo.lock"
@@ -1927,7 +1927,7 @@
         "BOOT-004"
       ],
       "gate": "BG",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "docs/project/status/**"
       ],
@@ -1963,7 +1963,7 @@
         "STT-103"
       ],
       "gate": "G1",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/storage/repositories/deliveries.rs",
         "src-tauri/src/storage/models.rs",

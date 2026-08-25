@@ -1,8 +1,18 @@
-//! Storage layer skeleton.
+//! Storage layer.
 //!
 //! Owns SQLite persistence (database, migrations, IDs, models,
 //! repositories) per the frozen implementation contracts.
 //!
 //! Ownership: Storage Lead only. Repositories own all SQL; managers and
 //! services call repositories; connectors never touch SQL directly.
-//! Phase 1 (DATA-101) fills this module — intentionally empty here.
+//! The physical database file keeps Handy's `history.db` name; it is
+//! exposed internally as [`database::AppDatabase`].
+
+pub mod audio_files;
+pub mod database;
+pub mod ids;
+pub mod migrations;
+pub mod models;
+pub mod recovery;
+pub mod repositories;
+pub mod usage;

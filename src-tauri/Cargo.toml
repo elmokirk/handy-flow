@@ -69,7 +69,10 @@ regex = "1"
 whatlang = "0.16"
 isolang = "2"
 chrono = "0.4"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "backup"] }
+# Central UUIDv7 provider for all durable custom records (DEP-100):
+# the ONLY approved ID source; no competing ID schemes.
+uuid = { version = "1", features = ["v7"] }
 tar = "0.4.44"
 flate2 = "1.0"
 sha2 = "0.10"
@@ -194,3 +197,53 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "unwind"
+
+# Test binaries carry no debug info: with 11 integration targets each
+# statically linking the full app (incl. ggml), debuginfo blew up the
+# target dir past CI runner disk limits (ld bus error). Local debugging
+# of app code is unaffected ([profile.dev] keeps its defaults).
+[profile.test]
+debug = false
+
+# Integration tests in tests/migrations/** (cargo auto-discovers only
+# tests/*.rs at the root). Wired by Integrator for DATA-102.
+[[test]]
+name = "empty_migration"
+path = "tests/migrations/empty_migration.rs"
+
+[[test]]
+name = "legacy_fixture_migration"
+path = "tests/migrations/legacy_fixture_migration.rs"
+
+[[test]]
+name = "rollback_backup"
+path = "tests/migrations/rollback_backup.rs"
+
+[[test]]
+name = "stt_output_contract"
+path = "tests/transcription_pipeline/stt_output_contract.rs"
+
+[[test]]
+name = "attempts_test"
+path = "tests/transcription_repositories/attempts_test.rs"
+
+[[test]]
+name = "audio_lifecycle"
+path = "tests/audio_persistence/audio_lifecycle.rs"
+
+[[test]]
+name = "deliveries_test"
+path = "tests/transcription_repositories/deliveries_test.rs"
+
+[[test]]
+name = "orphan_recovery_test"
+path = "tests/recovery/orphan_recovery_test.rs"
+
+[[test]]
+name = "canonical_history_test"
+path = "tests/history/canonical_history_test.rs"
+
+[[test]]
+name = "trash_purge_test"
+path = "tests/history/trash_purge_test.rs"
+
