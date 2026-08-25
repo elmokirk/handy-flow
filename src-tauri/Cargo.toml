@@ -198,6 +198,13 @@ codegen-units = 1
 strip = true
 panic = "unwind"
 
+# Test binaries carry no debug info: with 11 integration targets each
+# statically linking the full app (incl. ggml), debuginfo blew up the
+# target dir past CI runner disk limits (ld bus error). Local debugging
+# of app code is unaffected ([profile.dev] keeps its defaults).
+[profile.test]
+debug = false
+
 # Integration tests in tests/migrations/** (cargo auto-discovers only
 # tests/*.rs at the root). Wired by Integrator for DATA-102.
 [[test]]
