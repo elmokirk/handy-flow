@@ -70,6 +70,8 @@ fn failed_migration_leaves_database_untouched_and_backup_verified() {
 
     // Real migration now succeeds and its backup is verified + usable.
     let (db2, report) = open_and_migrate(&path, "0.9.6-test").expect("real migration");
+    db2.integrity_check()
+        .expect("migrated primary database is intact");
     let backup = report.backup_path.expect("backup must exist");
     assert!(backup.exists());
 

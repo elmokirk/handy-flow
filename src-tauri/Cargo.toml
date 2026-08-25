@@ -227,3 +227,7 @@ path = "tests/audio_persistence/audio_lifecycle.rs"
 [[test]]
 name = "deliveries_test"
 path = "tests/transcription_repositories/deliveries_test.rs"
+
+[[test]]
+name = "orphan_recovery_test"
+path = "tests/recovery/orphan_recovery_test.rs"

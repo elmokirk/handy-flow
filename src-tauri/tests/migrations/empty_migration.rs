@@ -1,6 +1,5 @@
 //! DATA-102: empty-database migration test.
 
-use handy_app_lib::storage::database::AppDatabase;
 use handy_app_lib::storage::migrations::{open_and_migrate, TARGET_VERSION};
 
 #[test]

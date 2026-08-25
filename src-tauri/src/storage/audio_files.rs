@@ -144,6 +144,11 @@ pub fn scan_staged(recording_dir: &Path) -> Vec<PathBuf> {
 
 /// Verify an EXISTING finalized recording still matches its recorded hash.
 pub fn verify_finalized(path: &Path, expected_sha256: &str) -> Result<bool, StorageError> {
+    Ok(hash_file(path)? == expected_sha256)
+}
+
+/// Streaming sha256 of any file (used by recovery for orphan adoption).
+pub fn hash_file(path: &Path) -> Result<String, StorageError> {
     let mut file = fs::File::open(path).map_err(io_err)?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 64 * 1024];
@@ -154,7 +159,7 @@ pub fn verify_finalized(path: &Path, expected_sha256: &str) -> Result<bool, Stor
         }
         hasher.update(&buf[..n]);
     }
-    Ok(hex(&hasher.finalize()) == expected_sha256)
+    Ok(hex(&hasher.finalize()))
 }
 
 fn io_err(e: std::io::Error) -> StorageError {
