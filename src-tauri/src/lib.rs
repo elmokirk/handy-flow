@@ -1,48 +1,85 @@
 mod actions;
+
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod apple_intelligence;
+
 mod audio_feedback;
+
 pub mod audio_toolkit;
+
 mod autostart;
+
 mod catalog;
+
 pub mod cli;
+
 mod clipboard;
+
 mod commands;
+
 mod helpers;
+
 mod input;
+
 mod llm_client;
+
 mod managers;
+
 mod memory;
+
 mod overlay;
+
 mod paste_tx;
+
 pub mod portable;
+
 mod secure_input;
+
 mod settings;
+
 mod shortcut;
+
 mod signal_handle;
+
 mod transcription_coordinator;
+
 mod tray;
+
 mod tray_i18n;
+
 mod utils;
 
 pub use cli::CliArgs;
+
 #[cfg(debug_assertions)]
 use specta_typescript::{BigIntExportBehavior, Typescript};
+
 use tauri_specta::{collect_commands, collect_events, Builder};
 
 use env_filter::Builder as EnvFilterBuilder;
+
 use managers::audio::AudioRecordingManager;
+
 use managers::history::HistoryManager;
+
 use managers::model::ModelManager;
+
 use managers::transcription::TranscriptionManager;
+
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+
 use std::sync::Arc;
+
 use tauri::image::Image;
+
 pub use transcription_coordinator::TranscriptionCoordinator;
 
 use tauri::tray::TrayIconBuilder;
+
 use tauri::{AppHandle, Emitter, Listener, Manager};
+
 use tauri_plugin_autostart::MacosLauncher;
+
 use tauri_plugin_log::{Builder as LogBuilder, RotationStrategy, Target, TargetKind};
 
 use crate::settings::get_settings;
@@ -376,21 +413,6 @@ where
             eprintln!("error: headless transcription panicked: {message}");
             1
         }
-    }
-}
-
-#[cfg(test)]
-mod headless_guard_tests {
-    use super::run_headless_guarded;
-
-    #[test]
-    fn preserves_normal_exit_codes() {
-        assert_eq!(run_headless_guarded(|| 2), 2);
-    }
-
-    #[test]
-    fn converts_worker_panics_to_runtime_failures() {
-        assert_eq!(run_headless_guarded(|| panic!("simulated failure")), 1);
     }
 }
 
@@ -1039,4 +1061,19 @@ pub fn run(cli_args: CliArgs) {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod headless_guard_tests {
+    use super::run_headless_guarded;
+
+    #[test]
+    fn preserves_normal_exit_codes() {
+        assert_eq!(run_headless_guarded(|| 2), 2);
+    }
+
+    #[test]
+    fn converts_worker_panics_to_runtime_failures() {
+        assert_eq!(run_headless_guarded(|| panic!("simulated failure")), 1);
+    }
 }

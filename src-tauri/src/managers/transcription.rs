@@ -2,27 +2,43 @@ use crate::audio_toolkit::{
     apply_custom_words, detect_output_language, normalize_transcription_output,
     remove_filler_words, OutputLanguageEvidence,
 };
+
 use crate::managers::audio::AudioRecordingManager;
+
 use crate::managers::model::{EngineType, ModelManager};
+
 use crate::settings::{
     get_settings, AppSettings, ModelUnloadTimeout, OrtAcceleratorSetting,
     TranscribeAcceleratorSetting,
 };
+
 use anyhow::Result;
+
 use log::{debug, error, info, warn};
+
 use serde::{Deserialize, Serialize};
+
 use specta::Type;
+
 use std::panic::{catch_unwind, AssertUnwindSafe};
+
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
 use std::sync::{mpsc, Arc, Condvar, Mutex, MutexGuard, OnceLock};
+
 use std::thread;
+
 use std::time::{Duration, Instant, SystemTime};
+
 use tauri::{AppHandle, Emitter, Manager};
+
 use tauri_specta::Event;
+
 use transcribe_cpp::{
     Backend, Feature, Model, ModelOptions, RunExtension, RunOptions, Session, StreamOptions, Task,
     WhisperRunOptions,
 };
+
 use transcribe_rs::{
     onnx::{
         canary::CanaryModel,
@@ -37,6 +53,7 @@ use transcribe_rs::{
 };
 
 const STREAM_PERF_LOG_INTERVAL: Duration = Duration::from_secs(5);
+
 const STREAM_FINALIZE_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
@@ -1869,6 +1886,7 @@ fn drain_until_finalize(rx: mpsc::Receiver<StreamCmd>) {
 /// Initialize the transcribe-cpp native backend once at startup: route native +
 /// ggml diagnostics into the `log` facade and register compute backend modules.
 /// In a static build (macOS Metal) `init_backends_default` is a harmless no-op;
+///
 /// in a `dynamic-backends` build it loads the per-ISA CPU / GPU modules. Must run
 /// before the first model load.
 pub fn init_transcribe_backend() {
@@ -2134,6 +2152,41 @@ pub fn get_available_accelerators() -> AvailableAccelerators {
         transcribe: transcribe_options,
         ort: ort_options,
         gpu_devices: cached_gpu_devices().to_vec(),
+    }
+}
+
+impl Drop for TranscriptionManager {
+    fn drop(&mut self) {
+        // Skip shutdown unless this is the very last clone. TranscriptionManager
+        // is cloned by initiate_model_load() and the watcher thread — those
+        // clones dropping must not kill the watcher. The watcher thread holds
+        // its own clone, so engine's strong_count is always >= 2 while the
+        // watcher is alive. When it reaches 1, only this instance remains
+        // and we can safely shut down.
+        if Arc::strong_count(&self.engine) > 1 {
+            return;
+        }
+
+        // Signal the watcher thread to shutdown
+        self.shutdown_signal.store(true, Ordering::Relaxed);
+
+        // Wait for the thread to finish gracefully.
+        // Use match instead of unwrap to avoid panicking if the mutex is
+        // poisoned — a panic inside Drop calls abort().
+        let mut guard = match self.watcher_handle.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                warn!("Recovered poisoned watcher_handle mutex during TranscriptionManager drop — a panic occurred earlier this session");
+                e.into_inner()
+            }
+        };
+        if let Some(handle) = guard.take() {
+            if let Err(e) = handle.join() {
+                warn!("Failed to join idle watcher thread: {:?}", e);
+            } else {
+                debug!("Idle watcher thread joined successfully");
+            }
+        }
     }
 }
 
@@ -2454,40 +2507,5 @@ mod tests {
         assert!(matches!(plan.task, Task::Transcribe));
         assert_eq!(plan.language.as_deref(), Some("es"));
         assert_eq!(plan.target_language, None);
-    }
-}
-
-impl Drop for TranscriptionManager {
-    fn drop(&mut self) {
-        // Skip shutdown unless this is the very last clone. TranscriptionManager
-        // is cloned by initiate_model_load() and the watcher thread — those
-        // clones dropping must not kill the watcher. The watcher thread holds
-        // its own clone, so engine's strong_count is always >= 2 while the
-        // watcher is alive. When it reaches 1, only this instance remains
-        // and we can safely shut down.
-        if Arc::strong_count(&self.engine) > 1 {
-            return;
-        }
-
-        // Signal the watcher thread to shutdown
-        self.shutdown_signal.store(true, Ordering::Relaxed);
-
-        // Wait for the thread to finish gracefully.
-        // Use match instead of unwrap to avoid panicking if the mutex is
-        // poisoned — a panic inside Drop calls abort().
-        let mut guard = match self.watcher_handle.lock() {
-            Ok(g) => g,
-            Err(e) => {
-                warn!("Recovered poisoned watcher_handle mutex during TranscriptionManager drop — a panic occurred earlier this session");
-                e.into_inner()
-            }
-        };
-        if let Some(handle) = guard.take() {
-            if let Err(e) = handle.join() {
-                warn!("Failed to join idle watcher thread: {:?}", e);
-            } else {
-                debug!("Idle watcher thread joined successfully");
-            }
-        }
     }
 }
