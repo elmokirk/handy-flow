@@ -62,6 +62,17 @@ Der Nutzer entscheidet; die Entscheidung wird in
 protokolliert. Kein Agent trifft L2+-Entscheidungen alleine
 (siehe [[orchestration/ARCHITECTURE_FREEZE]]).
 
+## Regel 5 — Keine großen Löschaktionen ohne Freigabe
+
+Destruktive Operationen mit potenziell großem Schadensradius (z. B.
+`cargo clean`, Cache-/Temp-Bereinigungen fremder Verzeichnisse,
+Löschen generierter Artefakte anderer Tools) dürfen nur nach
+ausdrücklicher Nutzer-Freigabe erfolgen. Ausgenommen: Artefakte, die
+der Agent selbst in dieser Sitzung erzeugt hat und die eindeutig ihm
+zuordenbar sind — auch dort mit Vorsicht und nach Möglichkeit im
+Namen benannt (z. B. `handy-dict-*` Testverzeichnisse). Bei
+Unsicherheit: Regel 4 (Eskalation) statt löschen.
+
 ## Schnellcheck pro Ticket (Kompakt)
 
 ```text
