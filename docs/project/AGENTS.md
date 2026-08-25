@@ -73,6 +73,31 @@ zuordenbar sind — auch dort mit Vorsicht und nach Möglichkeit im
 Namen benannt (z. B. `handy-dict-*` Testverzeichnisse). Bei
 Unsicherheit: Regel 4 (Eskalation) statt löschen.
 
+**UNUMSTÖSSLICH vor jeder solchen Operation:** ein schriftlicher Plan
+an den Nutzer, enthaltend
+
+1. **Source Map** — jede betroffene Datei/jedes Verzeichnis einzeln,
+   klassifiziert als `PROJEKT` (bleibt), `GENERIERBAR` (regenerierbar,
+   Verlust = Zeitverlust) oder `FREMDE ARTEFAKTE` (gehören nicht zum
+   Projekt, Löschung nur mit Freigabe);
+2. exakten Befehl + erwarteten Effekt;
+3. geschätzte Größe und Rückholweg (was muss neu gebaut werden, wie lange).
+
+Ohne freigegebenen Plan darf nichts gelöscht werden.
+
+### Source Map dieses Workspaces (Referenz)
+
+| Pfad | Klasse | Zweck |
+|---|---|---|
+| Kit-Root: `planning/`, `orchestration/`, `research/`, `scripts/`, `status/`, `escalations/`, `conventions/`, Root-`*.md`/`*.json`, `CHECKSUMS.sha256`, `AGENTS.md` | **PROJEKT** | Control Plane, nie löschen |
+| `repo/` | **PROJEKT** | Git-Clone: Upstream-Code + unser Custom-Code |
+| `repo/src-tauri/target/`, `repo/node_modules/`, `repo/dist/` | **GENERIERBAR** | Build-Artefakte (`bun install` / `cargo build` bauen neu) |
+| `worktrees/` | **PROJEKT** | Ticket-/Phase-Worktrees (nur nach Git-Prüfung berühren) |
+| `%TEMP%\handy-*` (z. B. `handy-dict-*`, `handy-mig-*`) | **EIGENE TESTARTEFAKTE** | Von Tests erzeugt, löschbar |
+| `%TEMP%\opencode\*`, `%TEMP%` sonstiges | **FREMDE ARTEFAKTE** | Nur mit Freigabe |
+| `C:\Users\Kirk\AppData\Local\tcs\` | **GENERIERBAR (fremdes Tool)** | transcribe-cpp CMake-Cache, wird von Builds neu angelegt |
+| `~\.cargo\registry`, `~\.rustup` | **FREMDE ARTEFAKTE** | Toolchain; Löschen = Neuinstallationskosten |
+
 ## Schnellcheck pro Ticket (Kompakt)
 
 ```text
