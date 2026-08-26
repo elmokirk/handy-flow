@@ -785,6 +785,90 @@ impl HistoryManager {
         Ok(AppDatabase::open(&self.db_path)?)
     }
 
+    // ---- HIST-231: full-text search over canonical sources -------------
+
+    /// Rebuild the derived FTS index from canonical tables (recovery
+    /// requirement). Returns the number of indexed documents.
+    // Search/version APIs wire into commands + UI in the Phase-2 bundle.
+    #[allow(dead_code)]
+    pub async fn rebuild_search_index(&self) -> Result<i64> {
+        let db = self.canonical_db()?;
+        let count = crate::storage::repositories::search::rebuild_search_index(&db)?;
+        Ok(count as i64)
+    }
+
+    /// Bounded FTS search. Each hit is expanded to its canonical entry so
+    /// the UI can show raw/derived context; hits whose capture vanished
+    /// (e.g. purged meanwhile) are skipped, never errored.
+    // Search/version APIs wire into commands + UI in the Phase-2 bundle.
+    #[allow(dead_code)]
+    pub async fn search_canonical(
+        &self,
+        query: String,
+        ref_filter: Option<String>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<CanonicalEntry>> {
+        use crate::storage::repositories::{captures as crepo, search as srepo};
+        let db = self.canonical_db()?;
+        let hits = srepo::search(&db, &query, ref_filter.as_deref(), limit, offset)?;
+        let mut out = Vec::with_capacity(hits.len());
+        for hit in hits {
+            let Some(cap_id) = hit.capture_id else {
+                continue;
+            };
+            if let Some(c) = crepo::get_capture(&db, &cap_id)? {
+                out.push(Self::to_canonical_entry(&db, &c)?);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Version navigation for one capture: attempts (oldest→newest) plus
+    /// their successful representations, chronologically flattened.
+    // Search/version APIs wire into commands + UI in the Phase-2 bundle.
+    #[allow(dead_code)]
+    pub async fn get_capture_versions(
+        &self,
+        capture_id: String,
+    ) -> Result<Option<Vec<CanonicalVersionView>>> {
+        let db = self.canonical_db()?;
+        let Some(detail) =
+            crate::storage::repositories::captures::capture_detail(&db, &capture_id)?
+        else {
+            return Ok(None);
+        };
+        let mut versions: Vec<CanonicalVersionView> = Vec::new();
+        for a in &detail.attempts {
+            versions.push(CanonicalVersionView {
+                version_kind: "attempt".into(),
+                version_id: a.id.clone(),
+                attempt_number: Some(a.attempt_number),
+                kind: None,
+                text: a.normalized_stt.clone().unwrap_or_default(),
+                provenance: Some(a.provenance.clone()),
+                created_at_ms: a.created_at_ms,
+            });
+            for r in detail
+                .representations
+                .iter()
+                .filter(|r| r.attempt_id == a.id)
+            {
+                versions.push(CanonicalVersionView {
+                    version_kind: "representation".into(),
+                    version_id: r.id.clone(),
+                    attempt_number: Some(a.attempt_number),
+                    kind: Some(r.kind.clone()),
+                    text: r.text.clone(),
+                    provenance: None,
+                    created_at_ms: r.created_at_ms,
+                });
+            }
+        }
+        versions.sort_by_key(|v| v.created_at_ms);
+        Ok(Some(versions))
+    }
+
     // ---- HIST-109: Trash / Restore / explicit Purge --------------------
 
     /// Soft-delete a capture (Trash). Reversible; excluded from normal
@@ -971,4 +1055,16 @@ mod tests {
         assert_eq!(entry.timestamp, 100);
         assert_eq!(entry.transcription_text, "completed");
     }
+}
+
+/// One navigable version entry of a capture's text history.
+#[derive(Clone, Debug, Serialize, Type)]
+pub struct CanonicalVersionView {
+    pub version_kind: String,
+    pub version_id: String,
+    pub attempt_number: Option<i64>,
+    pub kind: Option<String>,
+    pub text: String,
+    pub provenance: Option<String>,
+    pub created_at_ms: i64,
 }
