@@ -251,3 +251,15 @@ path = "tests/history/trash_purge_test.rs"
 name = "dictionary_test"
 path = "tests/dictionary/dictionary_test.rs"
 
+[[test]]
+name = "snippets_test"
+path = "tests/snippets/snippets_test.rs"
+
+[[test]]
+name = "prompt_profiles_test"
+path = "tests/prompt_profiles/prompt_profiles_test.rs"
+
+[[test]]
+name = "search_test"
+path = "tests/history/search_test.rs"
+

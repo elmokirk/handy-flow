@@ -32,6 +32,11 @@ pub use cli::CliArgs;
 pub use managers::transcription::{TranscriptionOutput, NORMALIZER_VERSION};
 // DICT-201 public contract for tests/UI (Integrator wiring).
 pub use managers::dictionary::DictionaryManager;
+// SNIP-211 / PROMPT-221 public contracts (Integrator wiring).
+pub use managers::prompt_profiles::{
+    LlmTransport, PromptProfileManager, PromptProvenance, KIND_STYLE, KIND_TRANSFORM,
+};
+pub use managers::snippets::SnippetManager;
 // HIST-107 canonical query types (Integrator wiring; keeps the private
 // managers module's pub structs reachable and dead-code clean).
 pub use managers::history::{
