@@ -659,7 +659,7 @@
         "DATA-102"
       ],
       "gate": "G2",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/managers/prompt_profiles.rs",
         "src-tauri/src/storage/repositories/prompt_profiles.rs",
@@ -1199,7 +1199,7 @@
         "HIST-107"
       ],
       "gate": "G2",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/managers/history.rs",
         "src-tauri/src/commands/history.rs",
@@ -1707,7 +1707,7 @@
         "DATA-102"
       ],
       "gate": "G2",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/managers/snippets.rs",
         "src-tauri/src/storage/repositories/snippets.rs",
