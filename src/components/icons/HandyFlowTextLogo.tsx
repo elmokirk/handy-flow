@@ -15,8 +15,8 @@ const HandyFlowTextLogo = ({
   >
     <defs>
       <linearGradient id="hf-wave" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stopColor="#38bdf8" />
-        <stop offset="1" stopColor="#a78bfa" />
+        <stop offset="0" stopColor="var(--hf-primary-500)" />
+        <stop offset="1" stopColor="var(--hf-primary-400)" />
       </linearGradient>
     </defs>
     <text

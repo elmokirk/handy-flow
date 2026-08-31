@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/theme.css";
+@import "./styles/hf-brand.css";
 
 /* Register the shared color tokens (src/styles/theme.css) as Tailwind
    utilities */
@@ -13,6 +14,40 @@
   --color-mid-gray: var(--color-mid-gray);
   --color-warning: var(--color-warning);
   --color-error: var(--color-error);
+
+  --color-hf-primary-50: var(--hf-primary-50);
+  --color-hf-primary-100: var(--hf-primary-100);
+  --color-hf-primary-200: var(--hf-primary-200);
+  --color-hf-primary-300: var(--hf-primary-300);
+  --color-hf-primary-400: var(--hf-primary-400);
+  --color-hf-primary-500: var(--hf-primary-500);
+  --color-hf-primary-600: var(--hf-primary-600);
+  --color-hf-primary-700: var(--hf-primary-700);
+  --color-hf-primary-800: var(--hf-primary-800);
+  --color-hf-primary-900: var(--hf-primary-900);
+  --color-hf-dark-50: var(--hf-dark-50);
+  --color-hf-dark-100: var(--hf-dark-100);
+  --color-hf-dark-200: var(--hf-dark-200);
+  --color-hf-dark-300: var(--hf-dark-300);
+  --color-hf-dark-400: var(--hf-dark-400);
+  --color-hf-dark-500: var(--hf-dark-500);
+  --color-hf-dark-600: var(--hf-dark-600);
+  --color-hf-dark-700: var(--hf-dark-700);
+  --color-hf-dark-800: var(--hf-dark-800);
+  --color-hf-dark-900: var(--hf-dark-900);
+  --color-hf-light-50: var(--hf-light-50);
+  --color-hf-light-100: var(--hf-light-100);
+  --color-hf-light-200: var(--hf-light-200);
+  --color-hf-light-300: var(--hf-light-300);
+  --color-hf-light-400: var(--hf-light-400);
+  --color-hf-light-500: var(--hf-light-500);
+  --color-hf-light-600: var(--hf-light-600);
+  --color-hf-light-700: var(--hf-light-700);
+  --color-hf-light-800: var(--hf-light-800);
+  --color-hf-light-900: var(--hf-light-900);
+  --color-hf-primary: var(--hf-primary);
+  --color-hf-void: var(--hf-void);
+  --color-hf-ghost: var(--hf-ghost);
 }
 
 :root {

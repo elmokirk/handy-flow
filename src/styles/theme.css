@@ -4,14 +4,14 @@
   /* Palette source of truth. Each themed color is defined once as a
      light/dark pair; the active tokens below and the `data-theme` overrides
      in App.css reference these, so a hex value lives in exactly one place. */
-  --light-color-text: #0f0f0f;
-  --light-color-background: #fbfbfb;
-  --light-color-logo-primary: #faa2ca;
+  --light-color-text: var(--hf-dark-500);    /* void as light-mode ink */
+  --light-color-background: var(--hf-light-50); /* ghost surface */
+  --light-color-logo-primary: var(--hf-primary-500); /* orange */
   --light-color-logo-stroke: #382731;
 
-  --dark-color-text: #fbfbfb;
-  --dark-color-background: #2c2b29;
-  --dark-color-logo-primary: #f28cbb;
+  --dark-color-text: var(--hf-light-200);   /* ghost 95% */
+  --dark-color-background: var(--hf-dark-200); /* void ~11.5% */
+  --dark-color-logo-primary: var(--hf-primary-400);
   --dark-color-logo-stroke: #fad1ed;
 
   /* Semantic status colors. First used by SecureInputWarning; intended to
