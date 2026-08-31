@@ -10,6 +10,7 @@
     "secureInputWarning": "⚠ Комбінації клавіш заблоковано Secure Input"
   },
   "sidebar": {
+    "knowledge": "Knowledge",
     "general": "Загальні",
     "models": "Моделі",
     "advanced": "Розширені",
@@ -683,5 +684,17 @@
     "learnMore": "Як це виправити",
     "recorderBlocked": "Зараз неможливо записати комбінацію — Secure Input у macOS блокує події клавіш. Спершу усуньте попередження про Secure Input.",
     "dismiss": "Приховати"
+  },
+  "knowledge": {
+    "title": "Knowledge",
+    "add": "Add",
+    "delete": "delete",
+    "term": "term",
+    "aliases": "aliases (comma)",
+    "triggerPhrase": "trigger phrase",
+    "replacement": "replacement",
+    "importCustomWords": "Import custom words",
+    "exportCopy": "Export copy",
+    "profilesEmpty": "No profiles yet. Styles/Transforms hotkey UI is coming next (PROMPT-222)."
   }
 }
