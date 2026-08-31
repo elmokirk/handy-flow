@@ -13,6 +13,7 @@ fn transcription_output_is_cloneable_and_debuggable() {
     let out = TranscriptionOutput {
         engine_raw: "raw engine text".to_string(),
         normalized_stt: "normalized text".to_string(),
+        delivered_text: "snippet-transformed text".to_string(),
         model_id: None,
         language: None,
         normalizer_version: NORMALIZER_VERSION.to_string(),
@@ -22,6 +23,7 @@ fn transcription_output_is_cloneable_and_debuggable() {
     let cloned = out.clone();
     assert_eq!(cloned.engine_raw, "raw engine text");
     assert_eq!(cloned.normalized_stt, "normalized text");
+    assert_eq!(cloned.delivered_text, "snippet-transformed text");
 
     // Debug formatting must not panic (used in structured logging).
     let _ = format!("{out:?}");

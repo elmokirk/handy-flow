@@ -108,31 +108,41 @@ impl HistoryManager {
         // tauri-plugin-sql used _sqlx_migrations table, rusqlite_migration uses user_version pragma
         self.migrate_from_tauri_plugin_sql(&conn)?;
 
-        // Create migrations object and run to latest version
-        let migrations = Migrations::new(MIGRATIONS.to_vec());
-
-        // Validate migrations in debug builds
-        #[cfg(debug_assertions)]
-        migrations.validate().expect("Invalid migrations");
-
-        // Get current version before migration
-        let version_before: i32 =
+        // HIST-107: the unified canonical chain (storage::migrations) owns
+        // V5+. The upstream chain covers V1..V4 only; when the DB is already
+        // at or beyond 4 (our canonical runner ran earlier), to_latest would
+        // fail with DatabaseTooFarAhead, so short-circuit here and let the
+        // storage module finish the job.
+        let current_version: i32 =
             conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        debug!("Database version before migration: {}", version_before);
 
-        // Apply any pending migrations
-        migrations.to_latest(&mut conn)?;
+        if current_version < 4 {
+            // Create migrations object and run to latest version
+            let migrations = Migrations::new(MIGRATIONS.to_vec());
 
-        // Get version after migration
-        let version_after: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+            // Validate migrations in debug builds
+            #[cfg(debug_assertions)]
+            migrations.validate().expect("Invalid migrations");
 
-        if version_after > version_before {
-            info!(
-                "Database migrated from version {} to {}",
-                version_before, version_after
-            );
-        } else {
-            debug!("Database already at latest version {}", version_after);
+            // Get current version before migration
+            let version_before: i32 = current_version;
+            debug!("Database version before migration: {}", version_before);
+
+            // Apply any pending migrations
+            migrations.to_latest(&mut conn)?;
+
+            // Get version after migration
+            let version_after: i32 =
+                conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+
+            if version_after > version_before {
+                info!(
+                    "Database migrated from version {} to {}",
+                    version_before, version_after
+                );
+            } else {
+                debug!("Database already at latest version {}", version_after);
+            }
         }
 
         // HIST-107: canonical layers (V5+) run through the storage module's

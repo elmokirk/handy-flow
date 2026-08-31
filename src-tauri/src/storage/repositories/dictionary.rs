@@ -6,6 +6,8 @@
 //! rewritten after edits (snapshot hash recorded per attempt).
 
 use rusqlite::{params, OptionalExtension};
+use serde::Serialize;
+use specta::Type;
 
 use crate::storage::database::AppDatabase;
 use crate::storage::ids;
@@ -17,7 +19,7 @@ pub struct NewDictionaryEntry {
     pub enabled: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Type)]
 pub struct DictionaryEntry {
     pub id: String,
     pub term: String,

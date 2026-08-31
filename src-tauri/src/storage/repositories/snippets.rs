@@ -1,6 +1,8 @@
 //! Snippet repository — the ONLY SQL owner for snippets (SNIP-211).
 
 use rusqlite::{params, OptionalExtension};
+use serde::Serialize;
+use specta::Type;
 
 use crate::storage::database::AppDatabase;
 use crate::storage::ids;
@@ -13,7 +15,7 @@ pub struct NewSnippet {
     pub enabled: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Type)]
 pub struct SnippetRecord {
     pub id: String,
     pub trigger: String,

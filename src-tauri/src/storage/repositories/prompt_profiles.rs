@@ -2,6 +2,8 @@
 //! (PROMPT-221). One domain, two kinds: `style` and `transform`.
 
 use rusqlite::{params, OptionalExtension};
+use serde::Serialize;
+use specta::Type;
 
 use crate::storage::database::AppDatabase;
 use crate::storage::ids;
@@ -22,7 +24,7 @@ pub struct NewPromptProfile {
     pub enabled: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Type)]
 pub struct PromptProfileRecord {
     pub id: String,
     pub name: String,
