@@ -37,7 +37,7 @@ export function KnowledgeSettings() {
     setSnippets(unwrap(await commands.snippetsList()));
     setProfiles(unwrap(await commands.promptProfilesList("style")));
     try {
-      (unwrap(await commands.dictionaryImportLegacy())) > 0 &&
+      unwrap(await commands.dictionaryImportLegacy()) > 0 &&
         setEntries(unwrap(await commands.dictionaryList()));
     } catch {
       /* settings without legacy words */
@@ -53,7 +53,10 @@ export function KnowledgeSettings() {
     unwrap(
       await commands.dictionaryUpsert(
         term.trim(),
-        aliases.split(",").map((a) => a.trim()).filter(Boolean),
+        aliases
+          .split(",")
+          .map((a) => a.trim())
+          .filter(Boolean),
         true,
       ),
     );
@@ -84,7 +87,9 @@ export function KnowledgeSettings() {
             key={t}
             onClick={() => setTab(t)}
             className={`px-3 py-1 rounded text-sm capitalize ${
-              tab === t ? "bg-accent text-text" : "bg-surface1 hover:bg-surface2"
+              tab === t
+                ? "bg-accent text-text"
+                : "bg-surface1 hover:bg-surface2"
             }`}
           >
             {t}
@@ -95,27 +100,56 @@ export function KnowledgeSettings() {
       {tab === "dictionary" && (
         <section className="flex flex-col gap-2">
           <div className="flex gap-2">
-            <input className={inputClass} placeholder={t("knowledge.term")} value={term} onChange={(e) => setTerm(e.target.value)} />
-            <input className={inputClass} placeholder={t("knowledge.aliases")} value={aliases} onChange={(e) => setAliases(e.target.value)} />
-            <button className="px-3 py-1 rounded bg-accent text-text" onClick={saveDict}>{t('knowledge.add')}</button>
+            <input
+              className={inputClass}
+              placeholder={t("knowledge.term")}
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+            <input
+              className={inputClass}
+              placeholder={t("knowledge.aliases")}
+              value={aliases}
+              onChange={(e) => setAliases(e.target.value)}
+            />
+            <button
+              className="px-3 py-1 rounded bg-accent text-text"
+              onClick={saveDict}
+            >
+              {t("knowledge.add")}
+            </button>
           </div>
           <div className="flex gap-2">
-            <button className="px-3 py-1 rounded bg-surface1" onClick={importLegacy}>{t('knowledge.importCustomWords')}</button>
+            <button
+              className="px-3 py-1 rounded bg-surface1"
+              onClick={importLegacy}
+            >
+              {t("knowledge.importCustomWords")}
+            </button>
             <button
               className="px-3 py-1 rounded bg-surface1"
               onClick={async () => {
-                await navigator.clipboard.writeText(unwrap(await commands.dictionaryExport()));
+                await navigator.clipboard.writeText(
+                  unwrap(await commands.dictionaryExport()),
+                );
                 setImportMsg("copied");
               }}
-            >{t('knowledge.exportCopy')}</button>
+            >
+              {t("knowledge.exportCopy")}
+            </button>
             <span className="text-xs opacity-70 self-center">{importMsg}</span>
           </div>
           <ul className="flex flex-col gap-1 max-h-80 overflow-auto">
             {entries.map((e) => (
-              <li key={e.id} className="flex items-center justify-between bg-surface1/50 rounded px-2 py-1">
+              <li
+                key={e.id}
+                className="flex items-center justify-between bg-surface1/50 rounded px-2 py-1"
+              >
                 <span>
                   <b>{e.term}</b>
-                  {e.aliases.length > 0 && <i className="opacity-60"> ({e.aliases.join(", ")})</i>}
+                  {e.aliases.length > 0 && (
+                    <i className="opacity-60"> ({e.aliases.join(", ")})</i>
+                  )}
                 </span>
                 <button
                   className="text-red-400 text-xs"
@@ -123,7 +157,9 @@ export function KnowledgeSettings() {
                     unwrap(await commands.dictionaryDelete(e.id));
                     void load();
                   }}
-                >{t('knowledge.delete')}</button>
+                >
+                  {t("knowledge.delete")}
+                </button>
               </li>
             ))}
           </ul>
@@ -133,17 +169,43 @@ export function KnowledgeSettings() {
       {tab === "snippets" && (
         <section className="flex flex-col gap-2">
           <div className="flex gap-2">
-            <input className={inputClass} placeholder={t("knowledge.triggerPhrase")} value={trigger} onChange={(e) => setTrigger(e.target.value)} />
-            <input className={inputClass} placeholder={t("knowledge.replacement")} value={replacement} onChange={(e) => setReplacement(e.target.value)} />
-            <button className="px-3 py-1 rounded bg-accent" onClick={saveSnippet}>{t('knowledge.add')}</button>
+            <input
+              className={inputClass}
+              placeholder={t("knowledge.triggerPhrase")}
+              value={trigger}
+              onChange={(e) => setTrigger(e.target.value)}
+            />
+            <input
+              className={inputClass}
+              placeholder={t("knowledge.replacement")}
+              value={replacement}
+              onChange={(e) => setReplacement(e.target.value)}
+            />
+            <button
+              className="px-3 py-1 rounded bg-accent"
+              onClick={saveSnippet}
+            >
+              {t("knowledge.add")}
+            </button>
           </div>
           <ul className="flex flex-col gap-1 max-h-80 overflow-auto">
             {snippets.map((s) => (
-              <li key={s.id} className="flex items-center justify-between bg-surface1/50 rounded px-2 py-1">
+              <li
+                key={s.id}
+                className="flex items-center justify-between bg-surface1/50 rounded px-2 py-1"
+              >
                 <span>
                   <code>{s.trigger}</code> → <b>{s.replacement}</b>
                 </span>
-                <button className="text-red-400 text-xs" onClick={async () => { unwrap(await commands.snippetsDelete(s.id)); void load(); }}>{t('knowledge.delete')}</button>
+                <button
+                  className="text-red-400 text-xs"
+                  onClick={async () => {
+                    unwrap(await commands.snippetsDelete(s.id));
+                    void load();
+                  }}
+                >
+                  {t("knowledge.delete")}
+                </button>
               </li>
             ))}
           </ul>
@@ -153,17 +215,28 @@ export function KnowledgeSettings() {
       {tab === "profiles" && (
         <ul className="flex flex-col gap-1 max-h-80 overflow-auto">
           {profiles.map((p) => (
-            <li key={p.id} className="flex items-center justify-between bg-surface1/50 rounded px-2 py-1">
+            <li
+              key={p.id}
+              className="flex items-center justify-between bg-surface1/50 rounded px-2 py-1"
+            >
               <span>
                 {p.name} · {p.model} {p.enabled ? "" : "(off)"}
               </span>
-              <button className="text-red-400 text-xs" onClick={async () => { unwrap(await commands.promptProfilesDelete(p.id)); void load(); }}>
-                {t('knowledge.delete')}
+              <button
+                className="text-red-400 text-xs"
+                onClick={async () => {
+                  unwrap(await commands.promptProfilesDelete(p.id));
+                  void load();
+                }}
+              >
+                {t("knowledge.delete")}
               </button>
             </li>
           ))}
           {profiles.length === 0 && (
-            <li className="text-xs opacity-60">{t('knowledge.profilesEmpty')}</li>
+            <li className="text-xs opacity-60">
+              {t("knowledge.profilesEmpty")}
+            </li>
           )}
         </ul>
       )}
