@@ -832,6 +832,138 @@ async unloadModelManually() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async dictionaryList() : Promise<Result<DictionaryEntry[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("dictionary_list") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async dictionaryUpsert(term: string, aliases: string[], enabled: boolean) : Promise<Result<DictionaryEntry, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("dictionary_upsert", { term, aliases, enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async dictionaryDelete(id: string) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("dictionary_delete", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Import legacy settings `custom_words` once (idempotent) and report count.
+ */
+async dictionaryImportLegacy() : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("dictionary_import_legacy") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Import a CSV (term, alias1;alias2) exported earlier / manually edited.
+ */
+async dictionaryImportCsv(csv: string) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("dictionary_import_csv", { csv }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Export as `term;alias1|alias2` lines (CSV-ish, stable order).
+ */
+async dictionaryExport() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("dictionary_export") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async snippetsList() : Promise<Result<SnippetRecord[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("snippets_list") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async snippetsUpsert(trigger: string, replacement: string, priority: number, enabled: boolean) : Promise<Result<SnippetRecord, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("snippets_upsert", { trigger, replacement, priority, enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async snippetsDelete(id: string) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("snippets_delete", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Live preview: what would the current snippet set do to this text?
+ */
+async snippetsTestApply(text: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("snippets_test_apply", { text }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async promptProfilesList(kind: string) : Promise<Result<PromptProfileRecord[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prompt_profiles_list", { kind }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async promptProfilesUpsert(name: string, kind: string, systemPrompt: string, userTemplate: string, providerId: string, model: string, temperature: number | null, enabled: boolean) : Promise<Result<PromptProfileRecord, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prompt_profiles_upsert", { name, kind, systemPrompt, userTemplate, providerId, model, temperature, enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async promptProfilesDelete(id: string) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prompt_profiles_delete", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async canonicalHistoryEntries(limit: number, offset: number) : Promise<Result<CanonicalEntry[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("canonical_history_entries", { limit, offset }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async historySearch(query: string, limit: number, offset: number) : Promise<Result<CanonicalEntry[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("history_search", { query, limit, offset }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getHistoryEntries(cursor: number | null, limit: number | null) : Promise<Result<PaginatedHistory, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_history_entries", { cursor, limit }) };
@@ -889,10 +1021,8 @@ async updateRecordingRetentionPeriod(period: string) : Promise<Result<null, stri
 }
 },
 /**
- * Checks if the Mac is a laptop by detecting battery presence
- * 
- * This uses pmset to check for battery information.
- * Returns true if a battery is detected (laptop), false otherwise (desktop)
+ * Stub implementation for non-macOS platforms
+ * Always returns false since laptop detection is macOS-specific
  */
 async isLaptop() : Promise<Result<boolean, string>> {
     try {
@@ -976,8 +1106,22 @@ export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"
 export type AvailableAccelerators = { transcribe: string[]; ort: string[]; gpu_devices: GpuDeviceOption[] }
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
+/**
+ * A history row in the canonical model: immutable RAW text plus every
+ * derived version, so the UI can always distinguish the two.
+ */
+export type CanonicalEntry = { capture_id: string; legacy_history_id: number | null; title: string; created_at_ms: number; integrity_state: string; trashed: boolean; 
+/**
+ * Relative audio file name; resolve via `canonical_audio_path`.
+ */
+audio_file_name: string | null; raw_text: string | null; derived: DerivedTextSummary[] }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
+/**
+ * One derived text version shown next to — never instead of — the raw.
+ */
+export type DerivedTextSummary = { representation_id: string; kind: string; text: string; created_at_ms: number }
+export type DictionaryEntry = { id: string; term: string; aliases: string[]; enabled: boolean; created_at_ms: number; updated_at_ms: number }
 export type EngineType = 
 /**
  * Any GGML/GGUF model loaded through transcribe-cpp (Whisper, Parakeet,
@@ -1044,6 +1188,7 @@ export type PaginatedHistory = { entries: HistoryEntry[]; has_more: boolean }
 export type PasteMethod = "ctrl_v" | "direct" | "none" | "shift_insert" | "ctrl_shift_v" | "external_script"
 export type PermissionAccess = "allowed" | "denied" | "unknown"
 export type PostProcessProvider = { id: string; label: string; base_url: string; allow_base_url_edit?: boolean; models_endpoint?: string | null; supports_structured_output?: boolean }
+export type PromptProfileRecord = { id: string; name: string; kind: string; system_prompt: string; user_template: string; provider_id: string; model: string; temperature: number | null; enabled: boolean; created_at_ms: number; updated_at_ms: number }
 export type RecordingRetentionPeriod = "never" | "preserve_limit" | "days_3" | "weeks_2" | "months_3"
 export type SecretMap = Partial<{ [key in string]: string }>
 export type SecureInputStatus = { 
@@ -1079,6 +1224,7 @@ uncovered_bindings: string[];
  */
 recorder_blocked: boolean }
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
+export type SnippetRecord = { id: string; trigger: string; replacement: string; priority: number; enabled: boolean; created_at_ms: number; updated_at_ms: number }
 export type SoundTheme = "marimba" | "pop" | "custom"
 /**
  * Phase of the streaming overlay card, emitted to drive its UI state.
