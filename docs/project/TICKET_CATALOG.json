@@ -413,7 +413,7 @@
         "STT-103"
       ],
       "gate": "G2",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/prompt_profiles.rs",
         "src/components/prompt-profiles/**",
@@ -659,7 +659,7 @@
         "DATA-102"
       ],
       "gate": "G2",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/prompt_profiles.rs",
         "src-tauri/src/storage/repositories/prompt_profiles.rs",
@@ -1017,7 +1017,7 @@
         "STT-103"
       ],
       "gate": "G2",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/snippets.rs",
         "src/components/snippets/**",
@@ -1061,7 +1061,7 @@
         "DATA-102"
       ],
       "gate": "G2",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/dictionary.rs",
         "src-tauri/src/storage/repositories/dictionary.rs",
@@ -1199,7 +1199,7 @@
         "HIST-107"
       ],
       "gate": "G2",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/history.rs",
         "src-tauri/src/commands/history.rs",
@@ -1380,7 +1380,7 @@
         "DICT-201"
       ],
       "gate": "G2",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src/components/dictionary/**",
         "src/hooks/useDictionary.ts",
@@ -1707,7 +1707,7 @@
         "DATA-102"
       ],
       "gate": "G2",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/snippets.rs",
         "src-tauri/src/storage/repositories/snippets.rs",

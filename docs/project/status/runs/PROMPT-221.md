@@ -8,7 +8,7 @@ updated: "2026-08-25"
 project: "custom-handy"
 baseline_id: "handy-main-2026-08-24-af48dd68"
 ticket_id: "PROMPT-221"
-run_status: "IN_REVIEW"
+run_status: "DONE"
 attempt_count: "2"
 branch: "phase/02-dictionary-snippets"
 ---
