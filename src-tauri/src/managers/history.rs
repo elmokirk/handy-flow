@@ -108,31 +108,41 @@ impl HistoryManager {
         // tauri-plugin-sql used _sqlx_migrations table, rusqlite_migration uses user_version pragma
         self.migrate_from_tauri_plugin_sql(&conn)?;
 
-        // Create migrations object and run to latest version
-        let migrations = Migrations::new(MIGRATIONS.to_vec());
-
-        // Validate migrations in debug builds
-        #[cfg(debug_assertions)]
-        migrations.validate().expect("Invalid migrations");
-
-        // Get current version before migration
-        let version_before: i32 =
+        // HIST-107: the unified canonical chain (storage::migrations) owns
+        // V5+. The upstream chain covers V1..V4 only; when the DB is already
+        // at or beyond 4 (our canonical runner ran earlier), to_latest would
+        // fail with DatabaseTooFarAhead, so short-circuit here and let the
+        // storage module finish the job.
+        let current_version: i32 =
             conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        debug!("Database version before migration: {}", version_before);
 
-        // Apply any pending migrations
-        migrations.to_latest(&mut conn)?;
+        if current_version < 4 {
+            // Create migrations object and run to latest version
+            let migrations = Migrations::new(MIGRATIONS.to_vec());
 
-        // Get version after migration
-        let version_after: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+            // Validate migrations in debug builds
+            #[cfg(debug_assertions)]
+            migrations.validate().expect("Invalid migrations");
 
-        if version_after > version_before {
-            info!(
-                "Database migrated from version {} to {}",
-                version_before, version_after
-            );
-        } else {
-            debug!("Database already at latest version {}", version_after);
+            // Get current version before migration
+            let version_before: i32 = current_version;
+            debug!("Database version before migration: {}", version_before);
+
+            // Apply any pending migrations
+            migrations.to_latest(&mut conn)?;
+
+            // Get version after migration
+            let version_after: i32 =
+                conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+
+            if version_after > version_before {
+                info!(
+                    "Database migrated from version {} to {}",
+                    version_before, version_after
+                );
+            } else {
+                debug!("Database already at latest version {}", version_after);
+            }
         }
 
         // HIST-107: canonical layers (V5+) run through the storage module's
@@ -673,6 +683,9 @@ impl HistoryManager {
     /// Bounded page (default 50 / max 200) over active captures,
     /// newest first. Legacy rows appear here too — they were backfilled
     /// into captures by migration V5 and keep their legacy id.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn get_canonical_entries(
         &self,
         limit: i64,
@@ -690,17 +703,22 @@ impl HistoryManager {
 
     /// Full detail for one capture including per-attempt engine_raw —
     /// used by a future detail view and by REST/MCP later on.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn get_capture_detail(
         &self,
         capture_id: String,
     ) -> Result<Option<CanonicalCaptureDetail>> {
         let db = self.canonical_db()?;
-        let Some((capture, attempts, reps)) =
+        let Some(detail) =
             crate::storage::repositories::captures::capture_detail(&db, &capture_id)?
         else {
             return Ok(None);
         };
-        let mut entry = Self::to_canonical_entry(&db, &capture)?;
+        let (capture, attempts, reps) =
+            (&detail.capture, &detail.attempts, &detail.representations);
+        let mut entry = Self::to_canonical_entry(&db, capture)?;
         entry.derived = reps
             .iter()
             .map(|r| DerivedTextSummary {
@@ -738,6 +756,9 @@ impl HistoryManager {
 
     /// Resolve an audio file name to its absolute path (playback keeps
     /// working against the same recordings directory as upstream).
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub fn canonical_audio_path(&self, file_name: &str) -> PathBuf {
         self.get_audio_file_path(file_name)
     }
@@ -774,10 +795,97 @@ impl HistoryManager {
         Ok(AppDatabase::open(&self.db_path)?)
     }
 
+    // ---- HIST-231: full-text search over canonical sources -------------
+
+    /// Rebuild the derived FTS index from canonical tables (recovery
+    /// requirement). Returns the number of indexed documents.
+    // Search/version APIs wire into commands + UI in the Phase-2 bundle.
+    #[allow(dead_code)]
+    pub async fn rebuild_search_index(&self) -> Result<i64> {
+        let db = self.canonical_db()?;
+        let count = crate::storage::repositories::search::rebuild_search_index(&db)?;
+        Ok(count as i64)
+    }
+
+    /// Bounded FTS search. Each hit is expanded to its canonical entry so
+    /// the UI can show raw/derived context; hits whose capture vanished
+    /// (e.g. purged meanwhile) are skipped, never errored.
+    // Search/version APIs wire into commands + UI in the Phase-2 bundle.
+    #[allow(dead_code)]
+    pub async fn search_canonical(
+        &self,
+        query: String,
+        ref_filter: Option<String>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<CanonicalEntry>> {
+        use crate::storage::repositories::{captures as crepo, search as srepo};
+        let db = self.canonical_db()?;
+        let hits = srepo::search(&db, &query, ref_filter.as_deref(), limit, offset)?;
+        let mut out = Vec::with_capacity(hits.len());
+        for hit in hits {
+            let Some(cap_id) = hit.capture_id else {
+                continue;
+            };
+            if let Some(c) = crepo::get_capture(&db, &cap_id)? {
+                out.push(Self::to_canonical_entry(&db, &c)?);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Version navigation for one capture: attempts (oldest→newest) plus
+    /// their successful representations, chronologically flattened.
+    // Search/version APIs wire into commands + UI in the Phase-2 bundle.
+    #[allow(dead_code)]
+    pub async fn get_capture_versions(
+        &self,
+        capture_id: String,
+    ) -> Result<Option<Vec<CanonicalVersionView>>> {
+        let db = self.canonical_db()?;
+        let Some(detail) =
+            crate::storage::repositories::captures::capture_detail(&db, &capture_id)?
+        else {
+            return Ok(None);
+        };
+        let mut versions: Vec<CanonicalVersionView> = Vec::new();
+        for a in &detail.attempts {
+            versions.push(CanonicalVersionView {
+                version_kind: "attempt".into(),
+                version_id: a.id.clone(),
+                attempt_number: Some(a.attempt_number),
+                kind: None,
+                text: a.normalized_stt.clone().unwrap_or_default(),
+                provenance: Some(a.provenance.clone()),
+                created_at_ms: a.created_at_ms,
+            });
+            for r in detail
+                .representations
+                .iter()
+                .filter(|r| r.attempt_id == a.id)
+            {
+                versions.push(CanonicalVersionView {
+                    version_kind: "representation".into(),
+                    version_id: r.id.clone(),
+                    attempt_number: Some(a.attempt_number),
+                    kind: Some(r.kind.clone()),
+                    text: r.text.clone(),
+                    provenance: None,
+                    created_at_ms: r.created_at_ms,
+                });
+            }
+        }
+        versions.sort_by_key(|v| v.created_at_ms);
+        Ok(Some(versions))
+    }
+
     // ---- HIST-109: Trash / Restore / explicit Purge --------------------
 
     /// Soft-delete a capture (Trash). Reversible; excluded from normal
     /// queries immediately.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn trash_capture_entry(&self, capture_id: String) -> Result<bool> {
         let db = self.canonical_db()?;
         Ok(crate::storage::repositories::captures::trash_capture(
@@ -787,6 +895,9 @@ impl HistoryManager {
     }
 
     /// Restore a trashed capture back to active history.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn restore_capture_entry(&self, capture_id: String) -> Result<bool> {
         let db = self.canonical_db()?;
         Ok(crate::storage::repositories::captures::restore_capture(
@@ -800,6 +911,9 @@ impl HistoryManager {
     /// is deleted here (filesystem is the manager's responsibility).
     /// A missing file is logged but does not fail the purge; a DB failure
     /// aborts before any filesystem change, so state stays consistent.
+    // UI/command wiring lands with the Phase-2 Integrator bundle;
+    // until then these canonical APIs are intentionally unused.
+    #[allow(dead_code)]
     pub async fn purge_trashed_entry(&self, capture_id: String) -> Result<()> {
         let db = self.canonical_db()?;
         let purged = crate::storage::repositories::captures::purge_trashed(&db, &capture_id)
@@ -951,4 +1065,16 @@ mod tests {
         assert_eq!(entry.timestamp, 100);
         assert_eq!(entry.transcription_text, "completed");
     }
+}
+
+/// One navigable version entry of a capture's text history.
+#[derive(Clone, Debug, Serialize, Type)]
+pub struct CanonicalVersionView {
+    pub version_kind: String,
+    pub version_id: String,
+    pub attempt_number: Option<i64>,
+    pub kind: Option<String>,
+    pub text: String,
+    pub provenance: Option<String>,
+    pub created_at_ms: i64,
 }

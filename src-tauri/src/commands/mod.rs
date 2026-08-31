@@ -1,7 +1,96 @@
 pub mod audio;
+pub mod dictionary;
 pub mod history;
 pub mod models;
+pub mod prompt_profiles;
+pub mod snippets;
 pub mod transcription;
+
+use crate::storage::database::AppDatabase;
+
+// Canonical history exposure (HIST-231/HIST-107 UI wiring).
+#[tauri::command]
+#[specta::specta]
+pub async fn canonical_history_entries(
+    app: tauri::AppHandle,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<crate::managers::history::CanonicalEntry>, String> {
+    let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
+    let db = AppDatabase::open(dir.join("history.db")).map_err(|e| e.to_string())?;
+    let captures = crate::storage::repositories::captures::list_active_captures(&db, limit, offset)
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::with_capacity(captures.len());
+    for c in &captures {
+        out.push(HistoryAdapter::to_canonical_entry(&db, c).map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn history_search(
+    app: tauri::AppHandle,
+    query: String,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<crate::managers::history::CanonicalEntry>, String> {
+    use crate::storage::repositories::search as srepo;
+    let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
+    let db = AppDatabase::open(dir.join("history.db")).map_err(|e| e.to_string())?;
+    if srepo::index_size(&db).unwrap_or(0) == 0 {
+        srepo::rebuild_search_index(&db).map_err(|e| e.to_string())?;
+    }
+    let hits = srepo::search(&db, &query, None, limit, offset).map_err(|e| e.to_string())?;
+    let mut out = Vec::with_capacity(hits.len());
+    for hit in hits {
+        if let Some(cid) = hit.capture_id {
+            if let Some(c) = crate::storage::repositories::captures::get_capture(&db, &cid)
+                .map_err(|e| e.to_string())?
+            {
+                out.push(HistoryAdapter::to_canonical_entry(&db, &c).map_err(|e| e.to_string())?);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Thin adapter so commands reuse the manager's entry mapping without a
+/// Tauri AppHandle (manager methods need one for settings).
+struct HistoryAdapter;
+
+impl HistoryAdapter {
+    fn to_canonical_entry(
+        db: &AppDatabase,
+        c: &crate::storage::repositories::captures::CaptureRecord,
+    ) -> anyhow::Result<crate::managers::history::CanonicalEntry> {
+        use crate::storage::repositories::{representations as reps, transcriptions as att};
+        let raw = att::canonical_attempt(db, &c.id)?.and_then(|a| a.normalized_stt);
+        let derived = match att::canonical_attempt(db, &c.id)? {
+            Some(a) => reps::representations_for_attempt(db, &a.id)?
+                .into_iter()
+                .map(|r| crate::managers::history::DerivedTextSummary {
+                    representation_id: r.id,
+                    kind: r.kind,
+                    text: r.text,
+                    created_at_ms: r.created_at_ms,
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        Ok(crate::managers::history::CanonicalEntry {
+            capture_id: c.id.clone(),
+            legacy_history_id: c.legacy_history_id,
+            title: c.title.clone(),
+            created_at_ms: c.created_at_ms,
+            integrity_state: c.integrity_state.clone(),
+            trashed: c.deleted_at_ms.is_some(),
+            audio_file_name: c.audio_file_name.clone(),
+            raw_text: raw,
+            derived,
+        })
+    }
+}
 
 use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
 use crate::utils::cancel_current_operation;

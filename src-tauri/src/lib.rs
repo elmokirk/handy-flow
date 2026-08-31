@@ -30,6 +30,18 @@ mod utils;
 pub use cli::CliArgs;
 // STT-103 public contract for persistence layers (Integrator wiring).
 pub use managers::transcription::{TranscriptionOutput, NORMALIZER_VERSION};
+// DICT-201 public contract for tests/UI (Integrator wiring).
+pub use managers::dictionary::DictionaryManager;
+// SNIP-211 / PROMPT-221 public contracts (Integrator wiring).
+pub use managers::prompt_profiles::{
+    LlmTransport, PromptProfileManager, PromptProvenance, KIND_STYLE, KIND_TRANSFORM,
+};
+pub use managers::snippets::SnippetManager;
+// HIST-107 canonical query types (Integrator wiring; keeps the private
+// managers module's pub structs reachable and dead-code clean).
+pub use managers::history::{
+    CanonicalAttemptView, CanonicalCaptureDetail, CanonicalEntry, DerivedTextSummary,
+};
 #[cfg(debug_assertions)]
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use tauri_specta::{collect_commands, collect_events, Builder};
@@ -724,6 +736,21 @@ pub fn run(cli_args: CliArgs) {
             commands::transcription::set_model_unload_timeout,
             commands::transcription::get_model_load_status,
             commands::transcription::unload_model_manually,
+            commands::dictionary::dictionary_list,
+            commands::dictionary::dictionary_upsert,
+            commands::dictionary::dictionary_delete,
+            commands::dictionary::dictionary_import_legacy,
+            commands::dictionary::dictionary_import_csv,
+            commands::dictionary::dictionary_export,
+            commands::snippets::snippets_list,
+            commands::snippets::snippets_upsert,
+            commands::snippets::snippets_delete,
+            commands::snippets::snippets_test_apply,
+            commands::prompt_profiles::prompt_profiles_list,
+            commands::prompt_profiles::prompt_profiles_upsert,
+            commands::prompt_profiles::prompt_profiles_delete,
+            commands::canonical_history_entries,
+            commands::history_search,
             commands::history::get_history_entries,
             commands::history::toggle_history_entry_saved,
             commands::history::get_audio_file_path,

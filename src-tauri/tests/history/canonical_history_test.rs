@@ -82,8 +82,9 @@ fn raw_and_derived_are_distinguishable_per_entry() {
     );
 
     for capture in &page {
-        let (cap, attempts, reps) = capture_detail(&db, &capture.id).unwrap().unwrap();
-        let canonical = attempts
+        let d = capture_detail(&db, &capture.id).unwrap().unwrap();
+        let canonical = d
+            .attempts
             .iter()
             .find(|a| a.is_canonical)
             .expect("canonical attempt");
@@ -92,7 +93,7 @@ fn raw_and_derived_are_distinguishable_per_entry() {
             .as_deref()
             .expect("raw text present");
 
-        match cap.legacy_history_id {
+        match d.capture.legacy_history_id {
             None => {
                 // Live entry: raw differs from derived, engine_raw preserved.
                 assert_eq!(raw, "roh text");
@@ -101,9 +102,12 @@ fn raw_and_derived_are_distinguishable_per_entry() {
                     Some(raw),
                     "engine_raw keeps the exact pre-cleanup output"
                 );
-                assert_eq!(reps.len(), 1);
-                assert_eq!(reps[0].kind, "style");
-                assert_ne!(reps[0].text, *raw, "derived text is distinct from raw");
+                assert_eq!(d.representations.len(), 1);
+                assert_eq!(d.representations[0].kind, "style");
+                assert_ne!(
+                    d.representations[0].text, *raw,
+                    "derived text is distinct from raw"
+                );
             }
             Some(_) => {
                 // Legacy entry: normalized only; no live engine_raw existed.
@@ -113,7 +117,7 @@ fn raw_and_derived_are_distinguishable_per_entry() {
             }
         }
         // Audio reference survives for playback.
-        assert!(cap.audio_file_name.is_some());
+        assert!(d.capture.audio_file_name.is_some());
     }
 }
 

@@ -10,6 +10,7 @@
     "secureInputWarning": "⚠ Scorciatoie bloccate da Secure Input"
   },
   "sidebar": {
+    "knowledge": "Knowledge",
     "general": "Generale",
     "models": "Modelli",
     "advanced": "Avanzate",
@@ -683,5 +684,17 @@
     "learnMore": "Come risolvere",
     "recorderBlocked": "Non è possibile registrare scorciatoie in questo momento: Secure Input di macOS sta bloccando gli eventi dei tasti. Risolvi prima l'avviso di Secure Input.",
     "dismiss": "Ignora"
+  },
+  "knowledge": {
+    "title": "Knowledge",
+    "add": "Add",
+    "delete": "delete",
+    "term": "term",
+    "aliases": "aliases (comma)",
+    "triggerPhrase": "trigger phrase",
+    "replacement": "replacement",
+    "importCustomWords": "Import custom words",
+    "exportCopy": "Export copy",
+    "profilesEmpty": "No profiles yet. Styles/Transforms hotkey UI is coming next (PROMPT-222)."
   }
 }

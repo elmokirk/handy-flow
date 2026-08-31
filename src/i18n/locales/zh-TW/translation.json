@@ -10,6 +10,7 @@
     "secureInputWarning": "⚠ 快捷鍵被 Secure Input 阻擋"
   },
   "sidebar": {
+    "knowledge": "Knowledge",
     "general": "一般",
     "models": "模型",
     "advanced": "進階",
@@ -683,5 +684,17 @@
     "learnMore": "如何解決",
     "recorderBlocked": "目前無法錄製快捷鍵——macOS 的 Secure Input 正在阻擋按鍵事件。請先解決 Secure Input 警告。",
     "dismiss": "關閉"
+  },
+  "knowledge": {
+    "title": "Knowledge",
+    "add": "Add",
+    "delete": "delete",
+    "term": "term",
+    "aliases": "aliases (comma)",
+    "triggerPhrase": "trigger phrase",
+    "replacement": "replacement",
+    "importCustomWords": "Import custom words",
+    "exportCopy": "Export copy",
+    "profilesEmpty": "No profiles yet. Styles/Transforms hotkey UI is coming next (PROMPT-222)."
   }
 }

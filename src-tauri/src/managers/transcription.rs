@@ -3,11 +3,14 @@ use crate::audio_toolkit::{
     remove_filler_words, OutputLanguageEvidence,
 };
 use crate::managers::audio::AudioRecordingManager;
+use crate::managers::dictionary::DictionaryManager;
 use crate::managers::model::{EngineType, ModelManager};
+use crate::managers::snippets::SnippetManager;
 use crate::settings::{
     get_settings, AppSettings, ModelUnloadTimeout, OrtAcceleratorSetting,
     TranscribeAcceleratorSetting,
 };
+use crate::storage::database::AppDatabase;
 use anyhow::Result;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
@@ -47,13 +50,62 @@ pub const NORMALIZER_VERSION: &str = "1";
 /// Exact engine output plus the deterministic normalized result
 /// (STT-103). `engine_raw` must be persisted immutably and never
 /// rewritten; `normalized_stt` is the durable knowledge "raw" text.
+/// `delivered_text` carries the post-normalization DERIVED layer
+/// (Dictionary snapshot already applied in normalized_stt; Snippets
+/// applied as last deterministic step before delivery).
 #[derive(Clone, Debug, Serialize, Type)]
 pub struct TranscriptionOutput {
     pub engine_raw: String,
     pub normalized_stt: String,
+    pub delivered_text: String,
     pub model_id: Option<String>,
     pub language: Option<String>,
     pub normalizer_version: String,
+}
+
+/// Derived deterministic layers AFTER the normalized_stt freeze
+/// (planning/03 pipeline): Dictionary correction happens inside
+/// normalization via the DB-backed term set; Snippets run as the last
+/// deterministic step before delivery. Everything is fail-open: any
+/// load error leaves the text unchanged.
+fn apply_derived_layers(app: &AppHandle, normalized_stt: &str) -> String {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        || -> anyhow::Result<String> {
+            let dir = crate::portable::app_data_dir(app)?;
+            let db = AppDatabase::open(dir.join("history.db"))?;
+            let snippets = SnippetManager::new(db);
+            match snippets.apply_snippets(normalized_stt) {
+                Ok(text) => Ok(text),
+                Err(e) => {
+                    log::warn!("Snippet layer failed-open: {e}");
+                    Ok(normalized_stt.to_string())
+                }
+            }
+        },
+    ));
+    match result {
+        Ok(Ok(text)) => text,
+        Ok(Err(e)) => {
+            log::warn!("Derived layers failed-open: {e}");
+            normalized_stt.to_string()
+        }
+        Err(_) => {
+            log::warn!("Derived layers panicked; delivering normalized text unchanged");
+            normalized_stt.to_string()
+        }
+    }
+}
+
+/// Database-backed dictionary correction terms; empty DB falls back to
+/// the legacy settings list so nothing regresses for old setups.
+pub fn dictionary_terms(app: &AppHandle) -> Option<Vec<String>> {
+    let dir = crate::portable::app_data_dir(app).ok()?;
+    let db = AppDatabase::open(dir.join("history.db")).ok()?;
+    let mgr = DictionaryManager::new(db);
+    match mgr.correction_terms() {
+        Ok(terms) if !terms.is_empty() => Some(terms),
+        _ => None,
+    }
 }
 
 fn output_language_code(evidence: &OutputLanguageEvidence) -> Option<String> {
@@ -1133,7 +1185,7 @@ impl TranscriptionManager {
     pub fn finalize_stream(&self) -> Result<Option<String>> {
         Ok(self
             .finalize_stream_detailed()?
-            .map(|out| out.normalized_stt))
+            .map(|out| out.delivered_text))
     }
 
     /// Finalize a live stream and return engine output + normalized result
@@ -1171,10 +1223,12 @@ impl TranscriptionManager {
             &finalized.supported_languages,
         );
 
+        let delivered = apply_derived_layers(&self.app_handle, &filtered);
         self.maybe_unload_immediately("streaming transcription");
         Ok(Some(TranscriptionOutput {
             engine_raw,
             normalized_stt: filtered,
+            delivered_text: delivered,
             model_id: None,
             language: output_language_code(&finalized.output_language),
             normalizer_version: NORMALIZER_VERSION.to_string(),
@@ -1207,7 +1261,9 @@ impl TranscriptionManager {
     }
 
     pub fn transcribe(&self, audio: Vec<f32>) -> Result<String> {
-        Ok(self.transcribe_detailed(audio)?.normalized_stt)
+        // Delivered text = after the derived deterministic layers
+        // (snippets). History keeps normalized_stt via detailed().
+        Ok(self.transcribe_detailed(audio)?.delivered_text)
     }
 
     /// Transcribe and return BOTH the exact engine output (before any
@@ -1222,6 +1278,7 @@ impl TranscriptionManager {
         Ok(output.unwrap_or_else(|| TranscriptionOutput {
             engine_raw: String::new(),
             normalized_stt: String::new(),
+            delivered_text: String::new(),
             model_id: None,
             language: None,
             normalizer_version: NORMALIZER_VERSION.to_string(),
@@ -1587,9 +1644,11 @@ impl TranscriptionManager {
 
         self.maybe_unload_immediately("transcription");
 
+        let delivered = apply_derived_layers(&self.app_handle, &final_result);
         Ok(Some(TranscriptionOutput {
             engine_raw,
             normalized_stt: final_result,
+            delivered_text: delivered,
             model_id: None,
             language: output_language_code(&output_language),
             normalizer_version: NORMALIZER_VERSION.to_string(),
@@ -2249,6 +2308,7 @@ mod tests {
         let out = TranscriptionOutput {
             engine_raw: "  hallo welt  ".to_string(),
             normalized_stt: "hallo welt".to_string(),
+            delivered_text: "hallo welt".to_string(),
             model_id: Some("whisper-small".into()),
             language: Some("de".into()),
             normalizer_version: NORMALIZER_VERSION.into(),

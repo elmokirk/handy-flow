@@ -10,6 +10,7 @@
     "secureInputWarning": "⚠ Secure Input ने शॉर्टकट ब्लॉक किए हैं"
   },
   "sidebar": {
+    "knowledge": "Knowledge",
     "general": "सामान्य",
     "models": "मॉडल",
     "advanced": "ऐडवांस",
@@ -683,5 +684,17 @@
     "learnMore": "इसे कैसे ठीक करें",
     "recorderBlocked": "अभी शॉर्टकट रिकॉर्ड नहीं किए जा सकते — macOS Secure Input कुंजी इवेंट ब्लॉक कर रहा है. पहले Secure Input चेतावनी हल करें.",
     "dismiss": "खारिज करें"
+  },
+  "knowledge": {
+    "title": "Knowledge",
+    "add": "Add",
+    "delete": "delete",
+    "term": "term",
+    "aliases": "aliases (comma)",
+    "triggerPhrase": "trigger phrase",
+    "replacement": "replacement",
+    "importCustomWords": "Import custom words",
+    "exportCopy": "Export copy",
+    "profilesEmpty": "No profiles yet. Styles/Transforms hotkey UI is coming next (PROMPT-222)."
   }
 }

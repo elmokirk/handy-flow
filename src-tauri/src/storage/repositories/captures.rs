@@ -170,19 +170,19 @@ pub fn list_active_captures(
     rows.collect()
 }
 
+/// Full canonical view of one capture for history/detail surfaces.
+pub struct CaptureDetail {
+    pub capture: CaptureRecord,
+    pub attempts: Vec<crate::storage::repositories::transcriptions::AttemptRecord>,
+    pub representations: Vec<crate::storage::repositories::representations::RepresentationRecord>,
+}
+
 /// Canonical attempt + derived representations for one capture, in a
 /// single transaction-consistent read. `None` when the capture is unknown.
 pub fn capture_detail(
     db: &AppDatabase,
     capture_id: &str,
-) -> Result<
-    Option<(
-        CaptureRecord,
-        Vec<crate::storage::repositories::transcriptions::AttemptRecord>,
-        Vec<crate::storage::repositories::representations::RepresentationRecord>,
-    )>,
-    rusqlite::Error,
-> {
+) -> Result<Option<CaptureDetail>, rusqlite::Error> {
     use crate::storage::repositories::representations as reps;
     use crate::storage::repositories::transcriptions as att;
 
@@ -194,7 +194,11 @@ pub fn capture_detail(
     for a in &attempts {
         all_reps.extend(reps::representations_for_attempt(db, &a.id)?);
     }
-    Ok(Some((capture, attempts, all_reps)))
+    Ok(Some(CaptureDetail {
+        capture,
+        attempts,
+        representations: all_reps,
+    }))
 }
 
 // ---- HIST-109: Trash / Restore / explicit Purge -----------------------

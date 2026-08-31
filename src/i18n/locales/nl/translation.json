@@ -10,6 +10,7 @@
     "secureInputWarning": "⚠ Sneltoetsen geblokkeerd door Secure Input"
   },
   "sidebar": {
+    "knowledge": "Knowledge",
     "general": "Algemeen",
     "models": "Modellen",
     "advanced": "Geavanceerd",
@@ -683,5 +684,17 @@
     "learnMore": "Hoe je dit oplost",
     "recorderBlocked": "Sneltoetsen kunnen nu niet worden opgenomen — Secure Input van macOS blokkeert toetsgebeurtenissen. Los eerst de Secure Input-waarschuwing op.",
     "dismiss": "Sluiten"
+  },
+  "knowledge": {
+    "title": "Knowledge",
+    "add": "Add",
+    "delete": "delete",
+    "term": "term",
+    "aliases": "aliases (comma)",
+    "triggerPhrase": "trigger phrase",
+    "replacement": "replacement",
+    "importCustomWords": "Import custom words",
+    "exportCopy": "Export copy",
+    "profilesEmpty": "No profiles yet. Styles/Transforms hotkey UI is coming next (PROMPT-222)."
   }
 }

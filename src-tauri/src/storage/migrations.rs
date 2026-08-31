@@ -20,7 +20,7 @@ use rusqlite::Connection;
 use super::database::{AppDatabase, StorageError};
 use super::ids;
 
-pub const TARGET_VERSION: i64 = 6;
+pub const TARGET_VERSION: i64 = 9;
 /// `query_contract_version` advertised to REST/MCP companions later on.
 pub const QUERY_CONTRACT_VERSION: i64 = 1;
 
@@ -235,6 +235,66 @@ fn apply_migrations(
                         ON delivery_events (capture_id);
                     CREATE INDEX idx_delivery_events_created
                         ON delivery_events (created_at_ms DESC);",
+                )?;
+            }
+            7 => {
+                // DICT-201: durable dictionary entries with aliases and an
+                // explicit enabled state. Terms are unique (case-insensitive
+                // via COLLATE NOCASE) so legacy custom-word imports stay
+                // idempotent.
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS dictionary_entries (
+                        id TEXT PRIMARY KEY,
+                        term TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        aliases TEXT NOT NULL DEFAULT '[]',
+                        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                        created_at_ms INTEGER NOT NULL,
+                        updated_at_ms INTEGER NOT NULL
+                    );
+                    CREATE INDEX idx_dictionary_enabled
+                        ON dictionary_entries (enabled);",
+                )?;
+            }
+            8 => {
+                // SNIP-211 + PROMPT-221: spoken-snippet triggers and the
+                // unified Styles/Transforms prompt profile domain.
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS snippets (
+                        id TEXT PRIMARY KEY,
+                        trigger TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        replacement TEXT NOT NULL,
+                        priority INTEGER NOT NULL DEFAULT 0,
+                        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                        created_at_ms INTEGER NOT NULL,
+                        updated_at_ms INTEGER NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS prompt_profiles (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        kind TEXT NOT NULL CHECK (kind IN ('style', 'transform')),
+                        system_prompt TEXT NOT NULL,
+                        user_template TEXT NOT NULL,
+                        provider_id TEXT NOT NULL,
+                        model TEXT NOT NULL,
+                        temperature REAL,
+                        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                        created_at_ms INTEGER NOT NULL,
+                        updated_at_ms INTEGER NOT NULL,
+                        UNIQUE (name, kind)
+                    );",
+                )?;
+            }
+            9 => {
+                // HIST-231: rebuildable full-text index over canonical text
+                // sources. Repository-managed (no triggers); rebuild truncates
+                // and repopulates from canonical tables in one transaction.
+                tx.execute_batch(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+                        body,
+                        ref_type UNINDEXED,
+                        ref_id UNINDEXED
+                    );",
                 )?;
             }
             other => {

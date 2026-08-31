@@ -58,7 +58,7 @@ fn legacy_fixture_maps_to_canonical_tables() {
 
     let (db, report) = open_and_migrate(&path, "0.9.6-test").expect("migrate legacy fixture");
     assert_eq!(report.from_version, 4, "upstream-migrated db starts at 4");
-    assert_eq!(report.to_version, 6);
+    assert_eq!(report.to_version, 9);
     assert_eq!(report.legacy_rows_backfilled, 3);
 
     // Acceptance: legacy table preserved untouched.
@@ -180,5 +180,5 @@ fn legacy_fixture_maps_to_canonical_tables() {
 
     // Re-run: idempotent backfill, no duplicates.
     let again = db.migrate("0.9.6-test", None).unwrap();
-    assert_eq!(again.from_version, 6);
+    assert_eq!(again.from_version, 9);
 }

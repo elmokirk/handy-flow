@@ -10,6 +10,7 @@
     "secureInputWarning": "⚠ Kısayollar Secure Input tarafından engelleniyor"
   },
   "sidebar": {
+    "knowledge": "Knowledge",
     "general": "Genel",
     "models": "Modeller",
     "advanced": "Gelişmiş",
@@ -683,5 +684,17 @@
     "learnMore": "Bu nasıl düzeltilir",
     "recorderBlocked": "Şu anda kısayol kaydedilemiyor — macOS Secure Input tuş olaylarını engelliyor. Önce Secure Input uyarısını giderin.",
     "dismiss": "Kapat"
+  },
+  "knowledge": {
+    "title": "Knowledge",
+    "add": "Add",
+    "delete": "delete",
+    "term": "term",
+    "aliases": "aliases (comma)",
+    "triggerPhrase": "trigger phrase",
+    "replacement": "replacement",
+    "importCustomWords": "Import custom words",
+    "exportCopy": "Export copy",
+    "profilesEmpty": "No profiles yet. Styles/Transforms hotkey UI is coming next (PROMPT-222)."
   }
 }
