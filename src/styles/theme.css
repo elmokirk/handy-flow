@@ -4,15 +4,15 @@
   /* Palette source of truth. Each themed color is defined once as a
      light/dark pair; the active tokens below and the `data-theme` overrides
      in App.css reference these, so a hex value lives in exactly one place. */
-  --light-color-text: var(--hf-dark-500);    /* void as light-mode ink */
+  --light-color-text: var(--hf-dark-500); /* void as light-mode ink */
   --light-color-background: var(--hf-light-50); /* ghost surface */
   --light-color-logo-primary: var(--hf-primary-500); /* orange */
-  --light-color-logo-stroke: #382731;
+  --light-color-logo-stroke: var(--hf-dark-400);
 
-  --dark-color-text: var(--hf-light-200);   /* ghost 95% */
+  --dark-color-text: var(--hf-light-200); /* ghost 95% */
   --dark-color-background: var(--hf-dark-200); /* void ~11.5% */
   --dark-color-logo-primary: var(--hf-primary-400);
-  --dark-color-logo-stroke: #fad1ed;
+  --dark-color-logo-stroke: var(--hf-primary-600);
 
   /* Semantic status colors. First used by SecureInputWarning; intended to
      replace the ad-hoc yellow-500/red-500 usages (e.g. ui/Alert.tsx) over
@@ -23,7 +23,7 @@
   --dark-color-error: #f87171;
 
   /* Tokens that do not change between light and dark */
-  --color-background-ui: #da5893;
+  --color-background-ui: var(--hf-primary-500);
   --color-text-stroke: #f6f6f6;
   --color-mid-gray: #808080;
 

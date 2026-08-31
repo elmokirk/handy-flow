@@ -16,9 +16,9 @@ function unwrap<T>(r: Res<T>): T {
 }
 
 const inputClass =
-  "border border-border bg-crust rounded px-2 py-1 text-sm text-text w-full";
+  "border border-hf-dark-400 bg-hf-dark-500 rounded px-2 py-1 text-sm text-hf-ghost-200 w-full";
 const btn =
-  "px-3 py-1 text-sm rounded bg-surface1 hover:bg-surface2 text-text transition-colors";
+  "px-3 py-1 text-sm rounded bg-hf-dark-400 hover:bg-hf-dark-300 text-hf-ghost-200 transition-colors";
 
 export function KnowledgeSettings() {
   const { t } = useTranslation();
@@ -88,8 +88,8 @@ export function KnowledgeSettings() {
             onClick={() => setTab(t)}
             className={`px-3 py-1 rounded text-sm capitalize ${
               tab === t
-                ? "bg-accent text-text"
-                : "bg-surface1 hover:bg-surface2"
+                ? "bg-hf-primary-500 text-hf-ghost-100"
+                : "bg-hf-dark-400 hover:bg-hf-dark-300"
             }`}
           >
             {t}
@@ -113,7 +113,7 @@ export function KnowledgeSettings() {
               onChange={(e) => setAliases(e.target.value)}
             />
             <button
-              className="px-3 py-1 rounded bg-accent text-text"
+              className="px-3 py-1 rounded bg-hf-primary-500 text-hf-ghost-100"
               onClick={saveDict}
             >
               {t("knowledge.add")}
@@ -143,7 +143,7 @@ export function KnowledgeSettings() {
             {entries.map((e) => (
               <li
                 key={e.id}
-                className="flex items-center justify-between bg-surface1/50 rounded px-2 py-1"
+                className="flex items-center justify-between bg-hf-dark-600/60 rounded px-2 py-1"
               >
                 <span>
                   <b>{e.term}</b>
@@ -192,7 +192,7 @@ export function KnowledgeSettings() {
             {snippets.map((s) => (
               <li
                 key={s.id}
-                className="flex items-center justify-between bg-surface1/50 rounded px-2 py-1"
+                className="flex items-center justify-between bg-hf-dark-600/60 rounded px-2 py-1"
               >
                 <span>
                   <code>{s.trigger}</code> → <b>{s.replacement}</b>
@@ -217,7 +217,7 @@ export function KnowledgeSettings() {
           {profiles.map((p) => (
             <li
               key={p.id}
-              className="flex items-center justify-between bg-surface1/50 rounded px-2 py-1"
+              className="flex items-center justify-between bg-hf-dark-600/60 rounded px-2 py-1"
             >
               <span>
                 {p.name} · {p.model} {p.enabled ? "" : "(off)"}

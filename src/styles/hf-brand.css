@@ -37,8 +37,7 @@
   --hf-light-800: oklch(85% 0.008 65);
   --hf-light-900: oklch(80% 0.008 65);
   /* Anchors */
-  --hf-primary: var(--hf-primary-500);   /* oklch(68% .19 42) */
-  --hf-void: var(--hf-dark-500);         /* oklch(11% .01 65) */
-  --hf-ghost: var(--hf-light-200);       /* oklch(95% .008 65) */
+  --hf-primary: var(--hf-primary-500); /* oklch(68% .19 42) */
+  --hf-void: var(--hf-dark-500); /* oklch(11% .01 65) */
+  --hf-ghost: var(--hf-light-200); /* oklch(95% .008 65) */
 }
-
