@@ -413,7 +413,7 @@
         "STT-103"
       ],
       "gate": "G2",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/managers/prompt_profiles.rs",
         "src/components/prompt-profiles/**",
@@ -1017,7 +1017,7 @@
         "STT-103"
       ],
       "gate": "G2",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src-tauri/src/managers/snippets.rs",
         "src/components/snippets/**",
@@ -1380,7 +1380,7 @@
         "DICT-201"
       ],
       "gate": "G2",
-      "status": "NOT_STARTED",
+      "status": "IN_REVIEW",
       "allowed_paths": [
         "src/components/dictionary/**",
         "src/hooks/useDictionary.ts",
