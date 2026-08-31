@@ -37,23 +37,23 @@ def platform_key() -> str:
 
 
 def warning_key(msg: dict) -> tuple | None:
-    """Dedup key from a compiler-message diagnostic, or None if not a warning."""
+    """Dedup key from a compiler-message diagnostic, or None if not a warning.
+
+    Key excludes the line/column: pure code motion must not count as a
+    new warning; lint name + message identify the finding.
+    """
     if msg.get("level") != "warning":
         return None
     spans = msg.get("spans") or []
     primary = next((s for s in spans if s.get("is_primary")), spans[0] if spans else None)
     if primary is None:
-        # e.g. command-line warnings without span; fall back to message text
         return ("-", msg.get("message", ""))
     file_name = primary.get("file_name", "-")
-    line = primary.get("line_start", 0)
-    col = primary.get("column_start", 0)
     code = None
     code_obj = msg.get("code")
     if isinstance(code_obj, dict):
         code = code_obj.get("code")
-    # prefer stable identity: file:line:col + lint code, message as tiebreaker
-    return (file_name, line, col, code or "", msg.get("message", ""))
+    return (file_name, code or "", msg.get("message", ""))
 
 
 def collect_warnings() -> set[tuple]:
