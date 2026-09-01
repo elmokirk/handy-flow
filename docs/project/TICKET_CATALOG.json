@@ -2003,7 +2003,7 @@
         "DATA-102"
       ],
       "gate": "G3",
-      "status": "READY",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/history.rs",
         "src-tauri/src/managers/wispr_import.rs",
