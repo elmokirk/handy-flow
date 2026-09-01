@@ -32,6 +32,8 @@ pub use cli::CliArgs;
 pub use managers::transcription::{TranscriptionOutput, NORMALIZER_VERSION};
 // DICT-201 public contract for tests/UI (Integrator wiring).
 pub use managers::dictionary::DictionaryManager;
+// NOTE-301 public contract (Integrator wiring).
+pub use managers::notes::NotesManager;
 // SNIP-211 / PROMPT-221 public contracts (Integrator wiring).
 pub use managers::prompt_profiles::{
     LlmTransport, PromptProfileManager, PromptProvenance, KIND_STYLE, KIND_TRANSFORM,

@@ -20,7 +20,7 @@ use rusqlite::Connection;
 use super::database::{AppDatabase, StorageError};
 use super::ids;
 
-pub const TARGET_VERSION: i64 = 9;
+pub const TARGET_VERSION: i64 = 10;
 /// `query_contract_version` advertised to REST/MCP companions later on.
 pub const QUERY_CONTRACT_VERSION: i64 = 1;
 
@@ -295,6 +295,37 @@ fn apply_migrations(
                         ref_type UNINDEXED,
                         ref_id UNINDEXED
                     );",
+                )?;
+            }
+            10 => {
+                // NOTE-301: one Note domain with append-only versions.
+                // Current content = highest version number (derived, ADR-024):
+                // no mutable current_version_id that could drift.
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS notes (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL DEFAULT 'Note',
+                        pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+                        deleted_at_ms INTEGER,
+                        created_at_ms INTEGER NOT NULL,
+                        updated_at_ms INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS note_versions (
+                        id TEXT PRIMARY KEY,
+                        note_id TEXT NOT NULL REFERENCES notes(id),
+                        version_no INTEGER NOT NULL,
+                        content TEXT NOT NULL,
+                        content_hash_sha256 TEXT NOT NULL,
+                        source TEXT NOT NULL CHECK (source IN (
+                            'dictation', 'manual_edit', 'transform', 'restore', 'wispr_import'
+                        )),
+                        created_at_ms INTEGER NOT NULL,
+                        UNIQUE (note_id, version_no)
+                    );
+                    CREATE INDEX idx_note_versions_note
+                        ON note_versions (note_id, version_no DESC);
+                    CREATE INDEX idx_notes_active
+                        ON notes (deleted_at_ms) WHERE deleted_at_ms IS NULL;",
                 )?;
             }
             other => {

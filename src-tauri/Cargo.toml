@@ -263,3 +263,6 @@ path = "tests/prompt_profiles/prompt_profiles_test.rs"
 name = "search_test"
 path = "tests/history/search_test.rs"
 
+[[test]]
+name = "notes_test"
+path = "tests/notes/notes_test.rs"
