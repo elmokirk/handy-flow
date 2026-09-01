@@ -8,3 +8,4 @@ pub mod notes;
 pub mod prompt_profiles;
 pub mod snippets;
 pub mod transcription;
+pub mod wispr_import;

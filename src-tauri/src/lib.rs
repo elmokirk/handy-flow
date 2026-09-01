@@ -34,6 +34,8 @@ pub use managers::transcription::{TranscriptionOutput, NORMALIZER_VERSION};
 pub use managers::dictionary::DictionaryManager;
 // NOTE-301 public contract (Integrator wiring).
 pub use managers::notes::NotesManager;
+// IMP-001 Wispr import (Integrator wiring).
+pub use managers::wispr_import;
 // SNIP-211 / PROMPT-221 public contracts (Integrator wiring).
 pub use managers::prompt_profiles::{
     LlmTransport, PromptProfileManager, PromptProvenance, KIND_STYLE, KIND_TRANSFORM,

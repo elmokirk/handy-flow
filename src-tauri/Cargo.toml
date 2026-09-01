@@ -266,3 +266,7 @@ path = "tests/history/search_test.rs"
 [[test]]
 name = "notes_test"
 path = "tests/notes/notes_test.rs"
+
+[[test]]
+name = "wispr_import_test"
+path = "tests/wispr_import/wispr_import_test.rs"

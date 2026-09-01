@@ -20,7 +20,7 @@ use rusqlite::Connection;
 use super::database::{AppDatabase, StorageError};
 use super::ids;
 
-pub const TARGET_VERSION: i64 = 10;
+pub const TARGET_VERSION: i64 = 11;
 /// `query_contract_version` advertised to REST/MCP companions later on.
 pub const QUERY_CONTRACT_VERSION: i64 = 1;
 
@@ -326,6 +326,17 @@ fn apply_migrations(
                         ON note_versions (note_id, version_no DESC);
                     CREATE INDEX idx_notes_active
                         ON notes (deleted_at_ms) WHERE deleted_at_ms IS NULL;",
+                )?;
+            }
+            11 => {
+                // IMP-001: generic import reference for foreign sources
+                // (Wispr Flow transcriptEntityId). SQLite cannot ADD a
+                // UNIQUE column, so uniqueness is enforced by the partial
+                // unique index below; imports stay idempotent.
+                tx.execute_batch(
+                    "ALTER TABLE captures ADD COLUMN import_ref TEXT;
+                     CREATE UNIQUE INDEX idx_captures_import_ref
+                        ON captures (import_ref) WHERE import_ref IS NOT NULL;",
                 )?;
             }
             other => {
