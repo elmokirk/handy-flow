@@ -2008,6 +2008,7 @@
         "src-tauri/src/managers/history.rs",
         "src-tauri/src/managers/wispr_import.rs",
         "src-tauri/src/storage/repositories/captures.rs",
+        "src-tauri/src/storage/repositories/search.rs",
         "src-tauri/tests/**"
       ],
       "forbidden_paths": [
