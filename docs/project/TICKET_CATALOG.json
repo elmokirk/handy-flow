@@ -1992,6 +1992,39 @@
       "integration_request_required": [
         "src-tauri/src/actions.rs or final delivery router"
       ]
+    },
+    "IMP-001": {
+      "ticket_id": "IMP-001",
+      "phase": "3",
+      "title": "Wispr Flow history import",
+      "owner": "History Agent + Storage Lead",
+      "dependencies": [
+        "DATA-105",
+        "DATA-102"
+      ],
+      "gate": "G3",
+      "status": "READY",
+      "allowed_paths": [
+        "src-tauri/src/managers/history.rs",
+        "src-tauri/src/managers/wispr_import.rs",
+        "src-tauri/src/storage/repositories/captures.rs",
+        "src-tauri/tests/**"
+      ],
+      "forbidden_paths": [
+        "src-tauri/src/lib.rs",
+        "src-tauri/src/commands/mod.rs",
+        "C:/Users/Kirk/AppData/Roaming/Wispr Flow/**"
+      ],
+      "qa_profile": [
+        "unit",
+        "integration"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md",
+        "orchestration/AGENT_SAFETY_POLICY.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": true
     }
   }
 }

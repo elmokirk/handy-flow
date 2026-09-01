@@ -37,9 +37,10 @@ None block Bootstrap through Phase 5.
 | Markdown default export root | Phase 4 | user-configured |
 | MCP audio-path tool | future | omitted/disabled |
 | app-level encryption | future | OS/BitLocker threat model |
-| Wispr history import | future | excluded |
+| Wispr history import | Phase 3 | ACCEPTED 2026-08-31: IMP-001 (copy semantics, read-only source, idempotent; owner deletes Wispr dir after uninstall) |
 | auto-app Styles | P2 | deferred |
 | Selected-Text Transform | P2 | deferred |
+| REL-601 update source (private repo) | Phase 6 / on demand | gh-authenticated in-app update (no signing infra); signed latest.json as later hardening |
 | Rich Text | P2 | deferred |
 
 All new irreversible product/security/data decisions use [[orchestration/ESCALATION_PROTOCOL|Escalation Protocol]].
