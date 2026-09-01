@@ -7,7 +7,20 @@
     "model": "モデル",
     "quit": "終了",
     "cancel": "キャンセル",
-    "secureInputWarning": "⚠ Secure Input でショートカットがブロック中"
+    "secureInputWarning": "⚠ Secure Input でショートカットがブロック中",
+    "scratchpad": "スクラッチパッド"
+  },
+  "scratchpad": {
+    "title": "スクラッチパッド",
+    "saving": "Saving...",
+    "pending": "Unsaved",
+    "saved": "Saved",
+    "placeholder": "Write something...",
+    "empty": "No note yet.",
+    "create": "Create note",
+    "versions": "Versions",
+    "restore": "restore",
+    "hide": "Hide"
   },
   "sidebar": {
     "knowledge": "Knowledge",

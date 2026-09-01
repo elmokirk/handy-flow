@@ -51,6 +51,14 @@ impl NotesManager {
         Ok(repo::current_version(&self.db, note_id)?.map(|v| v.content))
     }
 
+    /// Current version record (version_no/source metadata included).
+    pub fn current_content_version(
+        &self,
+        note_id: &str,
+    ) -> Result<Option<repo::NoteVersionRecord>, rusqlite::Error> {
+        repo::current_version(&self.db, note_id)
+    }
+
     /// Restore an older version's content as a NEW version (append-only;
     /// history is never rewritten).
     pub fn restore_version(

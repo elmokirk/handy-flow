@@ -275,6 +275,11 @@ fn initialize_core_logic(app_handle: &AppHandle) {
             "settings" => {
                 show_main_window(app);
             }
+            "scratchpad" => {
+                if let Err(e) = show_scratchpad(app.clone()) {
+                    log::error!("Failed to show scratchpad from tray: {e}");
+                }
+            }
             "secure_input_warning" => {
                 // Full explanation lives in the settings-window banner
                 show_main_window(app);
@@ -355,6 +360,69 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
     // Create the recording overlay window (hidden by default)
     utils::create_recording_overlay(app_handle);
+
+    // Create the floating scratchpad window (hidden by default, PAD-302)
+    create_scratchpad_window(app_handle);
+}
+
+const SCRATCHPAD_WIDTH: f64 = 420.0;
+const SCRATCHPAD_HEIGHT: f64 = 520.0;
+
+/// Creates the floating Markdown scratchpad window (PAD-302), hidden by
+/// default. Shown/toggled via the `show_scratchpad` command (tray + UI).
+fn create_scratchpad_window(app_handle: &AppHandle) {
+    let exists = app_handle.get_webview_window("scratchpad").is_some();
+    if exists {
+        return;
+    }
+    let mut builder = tauri::WebviewWindowBuilder::new(
+        app_handle,
+        "scratchpad",
+        tauri::WebviewUrl::App("src/scratchpad/index.html".into()),
+    )
+    .title("Scratchpad")
+    .inner_size(SCRATCHPAD_WIDTH, SCRATCHPAD_HEIGHT)
+    .min_inner_size(280.0, 200.0)
+    .resizable(true)
+    .maximizable(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(false);
+
+    if let Some(data_dir) = portable::data_dir() {
+        builder = builder.data_directory(data_dir.join("webview"));
+    }
+
+    match builder.build() {
+        Ok(_) => log::debug!("Scratchpad window created (hidden)"),
+        Err(e) => log::error!("Failed to create scratchpad window: {e}"),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+fn show_scratchpad(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("scratchpad") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        let _ = win.unminimize();
+    } else {
+        create_scratchpad_window(&app);
+        if let Some(win) = app.get_webview_window("scratchpad") {
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn hide_scratchpad(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("scratchpad") {
+        let _ = win.hide();
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -697,6 +765,8 @@ pub fn run(cli_args: CliArgs) {
             secure_input::run_keyboard_diagnostic,
             trigger_update_check,
             show_main_window_command,
+            show_scratchpad,
+            hide_scratchpad,
             commands::cancel_operation,
             commands::is_portable,
             commands::get_app_dir_path,
@@ -753,6 +823,17 @@ pub fn run(cli_args: CliArgs) {
             commands::prompt_profiles::prompt_profiles_list,
             commands::prompt_profiles::prompt_profiles_upsert,
             commands::prompt_profiles::prompt_profiles_delete,
+            commands::prompt_profiles::notes_transform,
+            commands::notes::notes_list,
+            commands::notes::notes_create,
+            commands::notes::notes_current,
+            commands::notes::notes_append,
+            commands::notes::notes_versions,
+            commands::notes::notes_restore_version,
+            commands::notes::notes_set_title,
+            commands::notes::notes_set_pinned,
+            commands::notes::notes_trash,
+            commands::notes::notes_restore,
             commands::canonical_history_entries,
             commands::history_search,
             commands::history::get_history_entries,

@@ -7,7 +7,20 @@
     "model": "Modell",
     "quit": "Beenden",
     "cancel": "Abbrechen",
-    "secureInputWarning": "⚠ Tastenkürzel durch Secure Input blockiert"
+    "secureInputWarning": "⚠ Tastenkürzel durch Secure Input blockiert",
+    "scratchpad": "Notizzettel"
+  },
+  "scratchpad": {
+    "title": "Notizzettel",
+    "saving": "Speichern...",
+    "pending": "Ungespeichert",
+    "saved": "Gespeichert",
+    "placeholder": "Schreib etwas...",
+    "empty": "Noch keine Notiz.",
+    "create": "Notiz erstellen",
+    "versions": "Versionen",
+    "restore": "wiederherstellen",
+    "hide": "Ausblenden"
   },
   "sidebar": {
     "knowledge": "Knowledge",

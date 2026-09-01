@@ -7,7 +7,20 @@
     "model": "模型",
     "quit": "退出",
     "cancel": "取消",
-    "secureInputWarning": "⚠ 快捷键被 Secure Input 阻止"
+    "secureInputWarning": "⚠ 快捷键被 Secure Input 阻止",
+    "scratchpad": "速记本"
+  },
+  "scratchpad": {
+    "title": "速记本",
+    "saving": "Saving...",
+    "pending": "Unsaved",
+    "saved": "Saved",
+    "placeholder": "Write something...",
+    "empty": "No note yet.",
+    "create": "Create note",
+    "versions": "Versions",
+    "restore": "restore",
+    "hide": "Hide"
   },
   "sidebar": {
     "knowledge": "Knowledge",

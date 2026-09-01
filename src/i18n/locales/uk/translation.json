@@ -7,7 +7,20 @@
     "model": "Модель",
     "quit": "Вийти",
     "cancel": "Скасувати",
-    "secureInputWarning": "⚠ Комбінації клавіш заблоковано Secure Input"
+    "secureInputWarning": "⚠ Комбінації клавіш заблоковано Secure Input",
+    "scratchpad": "Нотатник"
+  },
+  "scratchpad": {
+    "title": "Нотатник",
+    "saving": "Saving...",
+    "pending": "Unsaved",
+    "saved": "Saved",
+    "placeholder": "Write something...",
+    "empty": "No note yet.",
+    "create": "Create note",
+    "versions": "Versions",
+    "restore": "restore",
+    "hide": "Hide"
   },
   "sidebar": {
     "knowledge": "Knowledge",

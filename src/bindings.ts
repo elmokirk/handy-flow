@@ -511,6 +511,22 @@ async showMainWindowCommand() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async showScratchpad() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("show_scratchpad") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async hideScratchpad() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("hide_scratchpad") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async cancelOperation() : Promise<void> {
     await TAURI_INVOKE("cancel_operation");
 },
@@ -948,6 +964,108 @@ async promptProfilesDelete(id: string) : Promise<Result<boolean, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Run one transform profile against the note's CURRENT content and append
+ * the result as a NEW version (source = `transform`). The source version
+ * stays untouched and remains restorable (PAD-303, G3).
+ */
+async notesTransform(noteId: string, profileId: string) : Promise<Result<NoteVersionDto, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_transform", { noteId, profileId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesList() : Promise<Result<NoteDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_list") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesCreate(title: string, content: string) : Promise<Result<NoteDto, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_create", { title, content }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesCurrent(noteId: string) : Promise<Result<NoteVersionDto | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_current", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Autosave entry point: append a version when content changed (hash
+ * dedupe makes identical saves a no-op). `source` must be a
+ * frontend-allowed source (`manual_edit` | `dictation`).
+ */
+async notesAppend(noteId: string, content: string, source: string) : Promise<Result<NoteVersionDto | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_append", { noteId, content, source }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesVersions(noteId: string) : Promise<Result<NoteVersionDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_versions", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Restore an older version as a NEW version (append-only; never rewrites
+ * history).
+ */
+async notesRestoreVersion(noteId: string, versionNo: number) : Promise<Result<NoteVersionDto | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_restore_version", { noteId, versionNo }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesSetTitle(noteId: string, title: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_set_title", { noteId, title }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesSetPinned(noteId: string, pinned: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_set_pinned", { noteId, pinned }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesTrash(noteId: string) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_trash", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesRestore(noteId: string) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_restore", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async canonicalHistoryEntries(limit: number, offset: number) : Promise<Result<CanonicalEntry[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("canonical_history_entries", { limit, offset }) };
@@ -1175,6 +1293,8 @@ sha256: string | null } } |
  */
 "Local"
 export type ModelUnloadTimeout = "never" | "immediately" | "min_2" | "min_5" | "min_10" | "min_15" | "hour_1" | "sec_15"
+export type NoteDto = { id: string; title: string; pinned: boolean; trashed: boolean; created_at_ms: number; updated_at_ms: number }
+export type NoteVersionDto = { id: string; note_id: string; version_no: number; content: string; source: string; created_at_ms: number }
 export type OrtAcceleratorSetting = "auto" | "cpu" | "cuda" | "directml" | "rocm"
 export type OverlayPosition = "top" | "bottom"
 /**

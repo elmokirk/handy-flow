@@ -7,7 +7,20 @@
     "model": "النموذج",
     "quit": "إنهاء",
     "cancel": "إلغاء",
-    "secureInputWarning": "⚠ الاختصارات محجوبة بواسطة Secure Input"
+    "secureInputWarning": "⚠ الاختصارات محجوبة بواسطة Secure Input",
+    "scratchpad": "المفكرة"
+  },
+  "scratchpad": {
+    "title": "المفكرة",
+    "saving": "Saving...",
+    "pending": "Unsaved",
+    "saved": "Saved",
+    "placeholder": "Write something...",
+    "empty": "No note yet.",
+    "create": "Create note",
+    "versions": "Versions",
+    "restore": "restore",
+    "hide": "Hide"
   },
   "sidebar": {
     "knowledge": "Knowledge",
