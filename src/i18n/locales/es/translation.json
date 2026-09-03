@@ -21,7 +21,10 @@
     "versions": "Versions",
     "restore": "restore",
     "hide": "Hide",
-    "transformRunning": "Transforming..."
+    "transformRunning": "Transforming...",
+    "search": "Search",
+    "searchEmpty": "No matches.",
+    "searchPlaceholder": "Search notes..."
   },
   "sidebar": {
     "knowledge": "Knowledge",

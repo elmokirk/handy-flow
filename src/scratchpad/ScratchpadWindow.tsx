@@ -1,21 +1,37 @@
 import { useCallback, useEffect, useState } from "react";
-import { commands, type NoteVersionDto } from "@/bindings";
+import { commands, type NoteDto, type NoteVersionDto } from "@/bindings";
 import { useScratchpad } from "@/hooks/useScratchpad";
 import { useTranslation } from "react-i18next";
 import { hideScratchpad } from "./actions";
 
+/** Bounded page size for note search (backend clamps to 1..=200 anyway). */
+const SEARCH_LIMIT = 20;
+const SEARCH_DEBOUNCE_MS = 200;
+
 /**
  * Floating Markdown scratchpad (PAD-302) with dictation target and
- * PromptProfile transforms (PAD-303): plain text/Markdown only, autosaved
- * onto append-only note versions. Transforms append the LLM output as a
+ * PromptProfile transforms (PAD-303), plus note search and version
+ * restore (NOTE-304): plain text/Markdown only, autosaved onto
+ * append-only note versions. Transforms append the LLM output as a
  * NEW version (source = `transform`); the source version stays restorable.
  */
 export default function ScratchpadWindow() {
   const { t } = useTranslation();
-  const { note, content, dirty, saving, lastError, setContent, createNote } =
-    useScratchpad();
+  const {
+    note,
+    content,
+    dirty,
+    saving,
+    lastError,
+    setContent,
+    createNote,
+    openNote,
+  } = useScratchpad();
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versions, setVersions] = useState<NoteVersionDto[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<NoteDto[]>([]);
   const [transforms, setTransforms] = useState<
     Array<{ id: string; name: string }>
   >([]);
@@ -76,6 +92,43 @@ export default function ScratchpadWindow() {
     [note, transformBusy, setContent, loadVersions],
   );
 
+  // Debounced search; an empty query clears results instead of listing
+  // everything, so the panel never becomes a full note dump.
+  useEffect(() => {
+    if (!searchOpen) return;
+    const term = query.trim();
+    if (!term) {
+      setResults([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await commands.notesSearch(term, SEARCH_LIMIT, 0);
+          if (!cancelled && r.status === "ok") setResults(r.data);
+        } catch {
+          if (!cancelled) setResults([]);
+        }
+      })();
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, searchOpen]);
+
+  const openResult = useCallback(
+    async (noteId: string) => {
+      await openNote(noteId);
+      setSearchOpen(false);
+      setQuery("");
+      setResults([]);
+      if (versionsOpen) void loadVersions();
+    },
+    [openNote, versionsOpen, loadVersions],
+  );
+
   const restoreVersion = useCallback(
     async (versionNo: number) => {
       if (!note) return;
@@ -113,6 +166,46 @@ export default function ScratchpadWindow() {
               : t("scratchpad.saved")}
         </span>
       </header>
+      {searchOpen && (
+        <div
+          className="border-b border-hf-dark-400/60"
+          data-testid="scratchpad-search"
+        >
+          <input
+            className="w-full bg-transparent px-3 py-1.5 text-sm outline-none"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("scratchpad.searchPlaceholder")}
+            spellCheck={false}
+            autoFocus
+            data-testid="scratchpad-search-input"
+          />
+          {query.trim() !== "" && (
+            <ul
+              className="max-h-40 overflow-auto"
+              data-testid="scratchpad-search-results"
+            >
+              {results.length === 0 ? (
+                <li className="px-3 py-1 text-xs opacity-60">
+                  {t("scratchpad.searchEmpty")}
+                </li>
+              ) : (
+                results.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-1 text-left text-xs hover:bg-hf-dark-500"
+                      onClick={() => void openResult(r.id)}
+                    >
+                      {r.pinned && <span aria-hidden="true">📌</span>}
+                      <span className="truncate">{r.title}</span>
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
+        </div>
+      )}
       {note ? (
         <textarea
           className="flex-1 resize-none bg-transparent px-3 py-2 text-sm font-mono outline-none resize-none"
@@ -166,14 +259,23 @@ export default function ScratchpadWindow() {
           )}
         </div>
       )}
-      <footer className="flex items-center justify-between px-3 py-1.5 border-t border-hf-dark-400/60">
-        <button
-          className="text-xs opacity-80 hover:opacity-100"
-          onClick={() => setVersionsOpen((v) => !v)}
-          data-testid="scratchpad-versions-toggle"
-        >
-          {t("scratchpad.versions")}
-        </button>
+      <footer className="flex items-center justify-between gap-2 px-3 py-1.5 border-t border-hf-dark-400/60">
+        <div className="flex items-center gap-3">
+          <button
+            className="text-xs opacity-80 hover:opacity-100"
+            onClick={() => setVersionsOpen((v) => !v)}
+            data-testid="scratchpad-versions-toggle"
+          >
+            {t("scratchpad.versions")}
+          </button>
+          <button
+            className="text-xs opacity-80 hover:opacity-100"
+            onClick={() => setSearchOpen((v) => !v)}
+            data-testid="scratchpad-search-toggle"
+          >
+            {t("scratchpad.search")}
+          </button>
+        </div>
         <button
           className="text-xs opacity-80 hover:opacity-100"
           onClick={() => void hideScratchpad()}

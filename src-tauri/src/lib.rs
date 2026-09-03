@@ -826,6 +826,7 @@ pub fn run(cli_args: CliArgs) {
             commands::prompt_profiles::prompt_profiles_delete,
             commands::prompt_profiles::notes_transform,
             commands::notes::notes_list,
+            commands::notes::notes_search,
             commands::notes::notes_create,
             commands::notes::notes_current,
             commands::notes::notes_append,

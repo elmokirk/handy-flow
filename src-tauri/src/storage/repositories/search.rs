@@ -5,9 +5,13 @@
 //! truncated + repopulated at any time as a recovery requirement.
 //! Queries are bounded and FTS-syntax-safe (user input is quoted).
 
-use rusqlite::params;
+use rusqlite::{params, Transaction};
 
 use crate::storage::database::AppDatabase;
+
+/// `ref_type` for note documents (NOTE-304). Notes are the third canonical
+/// source named in `04-DATA_PERSISTENCE.md` alongside raw and representation.
+pub const REF_NOTE: &str = "note";
 
 #[derive(Clone, Debug)]
 pub struct SearchHit {
@@ -37,14 +41,69 @@ pub fn rebuild_search_index(db: &AppDatabase) -> Result<usize, rusqlite::Error> 
          WHERE r.status = 'success' AND r.text != ''",
         [],
     )?;
+    // NOTE-304: active notes, indexed on their CURRENT version only.
+    // Trashed notes are excluded so search never resurfaces them.
+    tx.execute(
+        "INSERT INTO search_fts(body, ref_type, ref_id)
+         SELECT n.title || ' ' || v.content, ?1, n.id
+         FROM notes n
+         JOIN note_versions v ON v.note_id = n.id
+         WHERE n.deleted_at_ms IS NULL
+           AND v.version_no = (SELECT MAX(v2.version_no) FROM note_versions v2
+                               WHERE v2.note_id = n.id)",
+        params![REF_NOTE],
+    )?;
     let count = tx.query_row("SELECT COUNT(*) FROM search_fts", [], |r| r.get(0))?;
     tx.commit()?;
     Ok(count)
 }
 
+/// Replace a note's FTS document inside the caller's transaction, so the
+/// index can never diverge from a committed note write. Called by the note
+/// repository (the only SQL owner for notes) on every content/title change.
+pub(crate) fn upsert_note_document(
+    tx: &Transaction<'_>,
+    note_id: &str,
+    body: &str,
+) -> Result<(), rusqlite::Error> {
+    delete_note_document(tx, note_id)?;
+    tx.execute(
+        "INSERT INTO search_fts(body, ref_type, ref_id) VALUES (?1, ?2, ?3)",
+        params![body, REF_NOTE, note_id],
+    )?;
+    Ok(())
+}
+
+/// Drop a note's FTS document (trashing a note, or clearing before reinsert).
+pub(crate) fn delete_note_document(
+    tx: &Transaction<'_>,
+    note_id: &str,
+) -> Result<(), rusqlite::Error> {
+    tx.execute(
+        "DELETE FROM search_fts WHERE ref_type = ?1 AND ref_id = ?2",
+        params![REF_NOTE, note_id],
+    )?;
+    Ok(())
+}
+
 /// Quote user input so FTS5 operators in it cannot break the query.
 fn quote_term(term: &str) -> String {
     format!("\"{}\"", term.replace('"', "\"\""))
+}
+
+/// Build a syntax-safe FTS5 MATCH expression from raw user input.
+/// Returns None when the query carries no searchable term, so callers
+/// return "no results" instead of matching everything.
+pub(crate) fn to_match_expr(query: &str) -> Option<String> {
+    let terms: Vec<String> = query
+        .split_whitespace()
+        .filter(|t| !t.trim_matches(|c: char| !c.is_alphanumeric()).is_empty())
+        .map(quote_term)
+        .collect();
+    if terms.is_empty() {
+        return None;
+    }
+    Some(terms.join(" "))
 }
 
 /// Bounded full-text search over the derived index. `ref_filter`
@@ -56,16 +115,10 @@ pub fn search(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<SearchHit>, rusqlite::Error> {
-    let terms: Vec<String> = query
-        .split_whitespace()
-        .filter(|t| !t.trim_matches('"').is_empty())
-        .map(quote_term)
-        .collect();
-    if terms.is_empty() {
-        return Ok(Vec::new());
-    }
     // Implicit AND between terms; quoted terms are syntax-safe.
-    let match_expr = terms.join(" ");
+    let Some(match_expr) = to_match_expr(query) else {
+        return Ok(Vec::new());
+    };
 
     let conn = db.conn();
     let mut stmt = conn.prepare(

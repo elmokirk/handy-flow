@@ -24,6 +24,8 @@ export interface UseScratchpadReturn {
   setContent: (text: string) => void;
   createNote: () => Promise<NoteDto | null>;
   reload: () => Promise<void>;
+  /** Switch the pad to another note (NOTE-304 search results). */
+  openNote: (noteId: string) => Promise<void>;
 }
 
 /**
@@ -148,6 +150,38 @@ export const useScratchpad = (): UseScratchpadReturn => {
     [scheduleSave],
   );
 
+  /**
+   * Open another note. Pending edits are flushed FIRST: the debounced save
+   * targets `noteRef.current`, so switching with a timer still armed would
+   * write the outgoing text onto the incoming note.
+   */
+  const openNote = useCallback(
+    async (noteId: string) => {
+      await flush();
+      try {
+        const notes = unwrap(await commands.notesList());
+        const target = notes.find((n) => n.id === noteId) ?? null;
+        if (!target) return;
+        const current = unwrap(await commands.notesCurrent(target.id));
+        const text = current?.content ?? "";
+        noteRef.current = target;
+        contentRef.current = text;
+        savedContentRef.current = text;
+        if (!mountedRef.current) return;
+        setNote(target);
+        setContentState(text);
+        setDirty(false);
+        setLastSavedVersionNo(current ? current.version_no : null);
+        setLastError(null);
+      } catch (e) {
+        if (mountedRef.current) {
+          setLastError(e instanceof Error ? e.message : String(e));
+        }
+      }
+    },
+    [flush],
+  );
+
   const createNote = useCallback(async (): Promise<NoteDto | null> => {
     try {
       const created = unwrap(
@@ -175,5 +209,6 @@ export const useScratchpad = (): UseScratchpadReturn => {
     setContent,
     createNote,
     reload,
+    openNote,
   };
 };

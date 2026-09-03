@@ -985,6 +985,19 @@ async notesList() : Promise<Result<NoteDto[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Bounded full-text search over active notes (NOTE-304). `limit` is
+ * clamped 1..=200 downstream, so a frontend bug cannot request an
+ * unbounded scan.
+ */
+async notesSearch(query: string, limit: number, offset: number) : Promise<Result<NoteDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_search", { query, limit, offset }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async notesCreate(title: string, content: string) : Promise<Result<NoteDto, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("notes_create", { title, content }) };

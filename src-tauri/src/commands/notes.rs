@@ -83,6 +83,23 @@ pub fn notes_list(app: AppHandle) -> Result<Vec<NoteDto>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Bounded full-text search over active notes (NOTE-304). `limit` is
+/// clamped 1..=200 downstream, so a frontend bug cannot request an
+/// unbounded scan.
+#[tauri::command]
+#[specta::specta]
+pub fn notes_search(
+    app: AppHandle,
+    query: String,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<NoteDto>, String> {
+    let (mgr, _) = manager_with_db(&app)?;
+    mgr.search(&query, limit, offset)
+        .map(|notes| notes.into_iter().map(note_dto).collect())
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn notes_create(app: AppHandle, title: String, content: String) -> Result<NoteDto, String> {

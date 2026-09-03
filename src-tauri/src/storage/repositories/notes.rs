@@ -5,6 +5,7 @@ use rusqlite::{params, OptionalExtension};
 
 use crate::storage::database::AppDatabase;
 use crate::storage::ids;
+use crate::storage::repositories::search as srepo;
 
 pub const SOURCE_DICTATION: &str = "dictation";
 pub const SOURCE_MANUAL_EDIT: &str = "manual_edit";
@@ -53,6 +54,12 @@ pub fn content_hash(text: &str) -> String {
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// FTS document body for a note: title plus current content, so a note is
+/// findable by either.
+fn fts_body(title: &str, content: &str) -> String {
+    format!("{title} {content}")
+}
+
 const NOTE_COLS: &str = "id, title, pinned, deleted_at_ms, created_at_ms, updated_at_ms";
 const VER_COLS: &str =
     "id, note_id, version_no, content, content_hash_sha256, source, created_at_ms";
@@ -96,6 +103,13 @@ pub fn create_note(
         conn2_insert_note(&tx, &note_id, &new.title, ts)?;
         ver_id =
             conn2_insert_version(&tx, &note_id, 1, &new.first_version_content, new.source, ts)?;
+        // NOTE-304: index in the SAME transaction, so a committed note is
+        // never invisible to search.
+        srepo::upsert_note_document(
+            &tx,
+            &note_id,
+            &fts_body(&new.title, &new.first_version_content),
+        )?;
         tx.commit()?;
     }
     let note = get_note(db, &note_id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
@@ -194,6 +208,19 @@ pub fn append_version(
         [&ver_id],
         row_to_version,
     )?;
+    // The FTS document tracks CURRENT content only; superseded text must
+    // leave the index or search would surface stale versions. Trashed notes
+    // stay unindexed.
+    let active_title: Option<String> = tx
+        .query_row(
+            "SELECT title FROM notes WHERE id = ?1 AND deleted_at_ms IS NULL",
+            [note_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(title) = active_title {
+        srepo::upsert_note_document(&tx, note_id, &fts_body(&title, content))?;
+    }
     tx.commit()?;
     Ok(Some(created))
 }
@@ -248,29 +275,107 @@ pub fn set_pinned(db: &AppDatabase, note_id: &str, pinned: bool) -> Result<(), r
 }
 
 pub fn set_title(db: &AppDatabase, note_id: &str, title: &str) -> Result<(), rusqlite::Error> {
-    let conn = db.conn();
-    conn.execute(
+    let mut conn = db.conn();
+    let tx = conn.transaction()?;
+    tx.execute(
         "UPDATE notes SET title = ?2, updated_at_ms = ?3 WHERE id = ?1",
         params![note_id, title, now_ms()],
     )?;
+    reindex_active_note(&tx, note_id)?;
+    tx.commit()?;
     Ok(())
 }
 
 /// Trash / restore per DATA_STATE_MACHINES (no purge here).
+/// Trashing removes the note from the index; restoring puts it back. Only
+/// ACTIVE notes are searchable.
 pub fn trash_note(db: &AppDatabase, note_id: &str) -> Result<bool, rusqlite::Error> {
-    let conn = db.conn();
-    Ok(conn.execute(
+    let mut conn = db.conn();
+    let tx = conn.transaction()?;
+    let changed = tx.execute(
         "UPDATE notes SET deleted_at_ms = ?2, updated_at_ms = ?2 \
          WHERE id = ?1 AND deleted_at_ms IS NULL",
         params![note_id, now_ms()],
-    )? == 1)
+    )? == 1;
+    if changed {
+        srepo::delete_note_document(&tx, note_id)?;
+    }
+    tx.commit()?;
+    Ok(changed)
 }
 
 pub fn restore_note(db: &AppDatabase, note_id: &str) -> Result<bool, rusqlite::Error> {
-    let conn = db.conn();
-    Ok(conn.execute(
+    let mut conn = db.conn();
+    let tx = conn.transaction()?;
+    let changed = tx.execute(
         "UPDATE notes SET deleted_at_ms = NULL, updated_at_ms = ?2 \
          WHERE id = ?1 AND deleted_at_ms IS NOT NULL",
         params![note_id, now_ms()],
-    )? == 1)
+    )? == 1;
+    if changed {
+        reindex_active_note(&tx, note_id)?;
+    }
+    tx.commit()?;
+    Ok(changed)
+}
+
+/// Rewrite the FTS document for a note from its current title + version,
+/// but only while the note is active.
+fn reindex_active_note(
+    tx: &rusqlite::Transaction<'_>,
+    note_id: &str,
+) -> Result<(), rusqlite::Error> {
+    let row: Option<(String, String)> = tx
+        .query_row(
+            "SELECT n.title, v.content
+             FROM notes n
+             JOIN note_versions v ON v.note_id = n.id
+             WHERE n.id = ?1 AND n.deleted_at_ms IS NULL
+               AND v.version_no = (SELECT MAX(v2.version_no) FROM note_versions v2
+                                   WHERE v2.note_id = n.id)",
+            [note_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    if let Some((title, content)) = row {
+        srepo::upsert_note_document(tx, note_id, &fts_body(&title, &content))?;
+    }
+    Ok(())
+}
+
+/// Bounded full-text search over ACTIVE notes, pinned first then by FTS
+/// rank — the same ordering contract as `list_active_notes`, so the pad
+/// shows pinned notes consistently whether browsing or searching.
+pub fn search_notes(
+    db: &AppDatabase,
+    query: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<NoteRecord>, rusqlite::Error> {
+    let Some(match_expr) = srepo::to_match_expr(query) else {
+        return Ok(Vec::new());
+    };
+    let conn = db.conn();
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {} FROM search_fts f
+         JOIN notes n ON n.id = f.ref_id
+         WHERE search_fts MATCH ?1 AND f.ref_type = ?2 AND n.deleted_at_ms IS NULL
+         ORDER BY n.pinned DESC, rank
+         LIMIT ?3 OFFSET ?4",
+        NOTE_COLS
+            .split(", ")
+            .map(|c| format!("n.{c}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))?;
+    let rows = stmt.query_map(
+        params![
+            match_expr,
+            srepo::REF_NOTE,
+            limit.clamp(1, 200),
+            offset.max(0)
+        ],
+        row_to_note,
+    )?;
+    rows.collect()
 }

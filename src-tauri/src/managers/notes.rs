@@ -43,6 +43,22 @@ impl NotesManager {
         repo::list_active_notes(&self.db)
     }
 
+    pub fn get(&self, note_id: &str) -> Result<Option<repo::NoteRecord>, rusqlite::Error> {
+        repo::get_note(&self.db, note_id)
+    }
+
+    /// Bounded full-text search over active notes (NOTE-304). `limit` is
+    /// clamped 1..=200 by the repository, so no caller can request an
+    /// unbounded scan.
+    pub fn search(
+        &self,
+        query: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<repo::NoteRecord>, rusqlite::Error> {
+        repo::search_notes(&self.db, query, limit, offset)
+    }
+
     pub fn versions(&self, note_id: &str) -> Result<Vec<repo::NoteVersionRecord>, rusqlite::Error> {
         repo::note_versions(&self.db, note_id)
     }
