@@ -28,6 +28,30 @@ impl NotesManager {
         )
     }
 
+    /// Create a note whose first version is dictated text (PAD-305). The
+    /// title is derived from the first line so the note is findable before
+    /// the user ever names it.
+    pub fn create_dictated(
+        &self,
+        content: &str,
+    ) -> Result<(repo::NoteRecord, repo::NoteVersionRecord), rusqlite::Error> {
+        let title: String = content
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("Dictation")
+            .chars()
+            .take(60)
+            .collect();
+        repo::create_note(
+            &self.db,
+            &repo::NewNote {
+                title: title.trim().to_string(),
+                first_version_content: content.to_string(),
+                source: repo::SOURCE_DICTATION,
+            },
+        )
+    }
+
     /// Append a version with content-hash dedupe (autosave calls this
     /// constantly; identical content is a no-op).
     pub fn save_content(

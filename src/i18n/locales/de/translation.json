@@ -326,6 +326,15 @@
           }
         }
       },
+      "deliveryTarget": {
+        "title": "Zielort der Ausgabe",
+        "description": "Wohin ein fertiges Transkript geht: in die fokussierte App, in den Notizblock oder nur in die Zwischenablage.",
+        "options": {
+          "focusedApp": "Fokussierte App",
+          "scratchpad": "Notizblock",
+          "clipboard": "Nur Zwischenablage"
+        }
+      },
       "pasteMethod": {
         "title": "Einfügemethode",
         "description": "Wähle, wie Text eingefügt wird. Direkt: simuliert Tippen über Systemeingabe. Keine: überspringt Einfügen, aktualisiert nur Verlauf/Zwischenablage.",

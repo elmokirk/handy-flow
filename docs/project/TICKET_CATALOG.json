@@ -2037,9 +2037,10 @@
         "DATA-105"
       ],
       "gate": "G3",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/clipboard.rs",
+        "src-tauri/src/delivery/**",
         "src-tauri/src/storage/repositories/deliveries.rs",
         "src-tauri/src/managers/notes.rs",
         "src-tauri/tests/delivery/**",
