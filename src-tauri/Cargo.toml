@@ -268,5 +268,9 @@ name = "notes_test"
 path = "tests/notes/notes_test.rs"
 
 [[test]]
+name = "pad_transforms_test"
+path = "tests/scratchpad/pad_transforms_test.rs"
+
+[[test]]
 name = "wispr_import_test"
 path = "tests/wispr_import/wispr_import_test.rs"

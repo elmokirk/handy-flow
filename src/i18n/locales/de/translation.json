@@ -20,7 +20,8 @@
     "create": "Notiz erstellen",
     "versions": "Versionen",
     "restore": "wiederherstellen",
-    "hide": "Ausblenden"
+    "hide": "Ausblenden",
+    "transformRunning": "Transformiere..."
   },
   "sidebar": {
     "knowledge": "Knowledge",

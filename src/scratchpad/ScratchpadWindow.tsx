@@ -5,9 +5,10 @@ import { useTranslation } from "react-i18next";
 import { hideScratchpad } from "./actions";
 
 /**
- * Floating Markdown scratchpad (PAD-302): one autosaved plain-text/
- * Markdown note, floating always-on-top window. Plain text only — no
- * Rich Text by contract.
+ * Floating Markdown scratchpad (PAD-302) with dictation target and
+ * PromptProfile transforms (PAD-303): plain text/Markdown only, autosaved
+ * onto append-only note versions. Transforms append the LLM output as a
+ * NEW version (source = `transform`); the source version stays restorable.
  */
 export default function ScratchpadWindow() {
   const { t } = useTranslation();
@@ -15,6 +16,11 @@ export default function ScratchpadWindow() {
     useScratchpad();
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versions, setVersions] = useState<NoteVersionDto[]>([]);
+  const [transforms, setTransforms] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [transformBusy, setTransformBusy] = useState(false);
+  const [transformError, setTransformError] = useState<string | null>(null);
 
   const loadVersions = useCallback(async () => {
     if (!note) return;
@@ -29,6 +35,46 @@ export default function ScratchpadWindow() {
   useEffect(() => {
     if (versionsOpen) void loadVersions();
   }, [versionsOpen, loadVersions]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const profiles = await commands.promptProfilesList("transform");
+        if (!cancelled && profiles.status === "ok") {
+          setTransforms(profiles.data.map((p) => ({ id: p.id, name: p.name })));
+        }
+      } catch {
+        /* transforms stay empty; feature degrades to plain pad */
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyTransform = useCallback(
+    async (profileId: string) => {
+      if (!note || transformBusy) return;
+      setTransformBusy(true);
+      setTransformError(null);
+      try {
+        const result = await commands.notesTransform(note.id, profileId);
+        if (result.status === "ok") {
+          setContent(result.data.content);
+          void loadVersions();
+        } else {
+          setTransformError(result.error);
+        }
+      } catch (e) {
+        setTransformError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setTransformBusy(false);
+      }
+    },
+    [note, transformBusy, setContent, loadVersions],
+  );
 
   const restoreVersion = useCallback(
     async (versionNo: number) => {
@@ -90,13 +136,35 @@ export default function ScratchpadWindow() {
           </button>
         </div>
       )}
-      {lastError && (
+      {(lastError || transformError) && (
         <p
           className="px-3 pb-1 text-xs text-red-400"
           data-testid="scratchpad-error"
         >
-          {lastError}
+          {transformError ?? lastError}
         </p>
+      )}
+      {transforms.length > 0 && note && (
+        <div
+          className="flex flex-wrap gap-1 px-3 py-1.5 border-t border-hf-dark-400/60"
+          data-testid="scratchpad-transforms"
+        >
+          {transforms.map((p) => (
+            <button
+              key={p.id}
+              className="px-2 py-0.5 text-xs rounded bg-hf-dark-400 hover:bg-hf-dark-300 disabled:opacity-50"
+              disabled={transformBusy}
+              onClick={() => void applyTransform(p.id)}
+            >
+              {p.name}
+            </button>
+          ))}
+          {transformBusy && (
+            <span className="text-xs opacity-60 self-center">
+              {t("scratchpad.transformRunning")}
+            </span>
+          )}
+        </div>
       )}
       <footer className="flex items-center justify-between px-3 py-1.5 border-t border-hf-dark-400/60">
         <button
@@ -108,7 +176,7 @@ export default function ScratchpadWindow() {
         </button>
         <button
           className="text-xs opacity-80 hover:opacity-100"
-          onClick={() => void commands.hideScratchpad()}
+          onClick={() => void hideScratchpad()}
           data-testid="scratchpad-hide"
         >
           {t("scratchpad.hide")}

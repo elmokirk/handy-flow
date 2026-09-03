@@ -41,6 +41,7 @@ pub use managers::prompt_profiles::{
     LlmTransport, PromptProfileManager, PromptProvenance, KIND_STYLE, KIND_TRANSFORM,
 };
 pub use managers::snippets::SnippetManager;
+pub use storage::repositories::prompt_profiles::PromptProfileRecord;
 // HIST-107 canonical query types (Integrator wiring; keeps the private
 // managers module's pub structs reachable and dead-code clean).
 pub use managers::history::{

@@ -20,7 +20,8 @@
     "create": "Create note",
     "versions": "Versions",
     "restore": "restore",
-    "hide": "Hide"
+    "hide": "Hide",
+    "transformRunning": "Transforming..."
   },
   "sidebar": {
     "knowledge": "Knowledge",

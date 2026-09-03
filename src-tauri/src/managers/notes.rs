@@ -59,6 +59,15 @@ impl NotesManager {
         repo::current_version(&self.db, note_id)
     }
 
+    /// Static accessor mirroring `current_content_version` for callers
+    /// that hold a borrowed manager (tests/command layer).
+    pub fn current_version_of(
+        &self,
+        note_id: &str,
+    ) -> Result<Option<repo::NoteVersionRecord>, rusqlite::Error> {
+        repo::current_version(&self.db, note_id)
+    }
+
     /// Restore an older version's content as a NEW version (append-only;
     /// history is never rewritten).
     pub fn restore_version(
