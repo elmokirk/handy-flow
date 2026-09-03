@@ -38,7 +38,7 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 | 2 | SNIP-212 | G2 | DONE | 2 | `phase/02-dictionary-snippets` |
 | 3 | IMP-001 | G3 | DONE | 3 | `phase/03-scratchpad` |
 | 3 | NOTE-301 | G3 | DONE | 2 | `phase/03-scratchpad` |
-| 3 | NOTE-304 | G3 | NOT_STARTED | 0 | `` |
+| 3 | NOTE-304 | G3 | DONE | 1 | `phase/03-scratchpad` |
 | 3 | PAD-302 | G3 | DONE | 1 | `phase/03-scratchpad` |
 | 3 | PAD-303 | G3 | DONE | 1 | `phase/03-scratchpad` |
 | 3 | PAD-305 | G3 | NOT_STARTED | 0 | `` |

@@ -58,10 +58,10 @@
         "NOTE-301"
       ],
       "gate": "G3",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/notes.rs",
-        "src/components/scratchpad/**",
+        "src/scratchpad/**",
         "src-tauri/tests/note_search/**",
         "tests/**"
       ],
