@@ -57,6 +57,7 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 - [[planning/tickets/PAD-302|PAD-302 — Floating Markdown Scratchpad and autosave]]
 - [[planning/tickets/PAD-303|PAD-303 — Scratchpad dictation and transforms]]
 - [[planning/tickets/NOTE-304|NOTE-304 — Notes search and restore]]
+- [[planning/tickets/PAD-305|PAD-305 — Transcript delivery routing and sinks]]
 
 ## Phase 4
 - [[planning/tickets/KB-401|KB-401 — Knowledge DTO and export service]]

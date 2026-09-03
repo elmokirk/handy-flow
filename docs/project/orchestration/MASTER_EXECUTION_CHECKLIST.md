@@ -18,48 +18,48 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 Sub-agents update per-ticket RUN_STATE, not this shared file.
 
 ## Bootstrap
-- [ ] CONTROL-001 starter kit imported into `repo/docs/project/`
-- [ ] CONTROL-002 machine-readable catalog/feature matrix validated
-- [ ] CONTROL-003 Agent Safety Policy active
-- [ ] BOOT-001 workspace/fork
-- [ ] BOOT-002 remotes/pinned baseline
-- [ ] BOOT-003 baseline build/tests/native smoke
-- [ ] BOOT-004 GitHub/worktree/branch preparation
-- [ ] BOOT-005 source map verification
-- [ ] BG PASS
+- [x] CONTROL-001 starter kit imported into `repo/docs/project/`
+- [x] CONTROL-002 machine-readable catalog/feature matrix validated
+- [x] CONTROL-003 Agent Safety Policy active
+- [x] BOOT-001 workspace/fork
+- [x] BOOT-002 remotes/pinned baseline
+- [x] BOOT-003 baseline build/tests/native smoke
+- [x] BOOT-004 GitHub/worktree/branch preparation
+- [x] BOOT-005 source map verification
+- [x] BG PASS
 
 ## Phase 0
-- [ ] BASE-001 performance baseline
-- [ ] QA-001 CI/quality hardening
-- [ ] ARCH-001 module/contract skeleton verification
-- [ ] G0 PASS
+- [x] BASE-001 performance baseline
+- [x] QA-001 CI/quality hardening
+- [x] ARCH-001 module/contract skeleton verification
+- [x] G0 PASS
 
 ## Phase 1
-- [ ] DEP-100 core dependency/feature wiring
-- [ ] DATA-101 storage foundation
-- [ ] DATA-102 canonical schema + legacy migration
-- [ ] STT-103 raw/normalized capture
-- [ ] AUDIO-104 atomic WAV lifecycle
-- [ ] DATA-105 retries + representations
-- [ ] DATA-106 recovery reconciler
-- [ ] DATA-107 delivery event audit
-- [ ] HIST-107 history/query migration
-- [ ] DATA-108 retention/disk usage
-- [ ] HIST-109 Trash/Restore/Explicit Purge
-- [ ] G1 PASS
+- [x] DEP-100 core dependency/feature wiring
+- [x] DATA-101 storage foundation
+- [x] DATA-102 canonical schema + legacy migration
+- [x] STT-103 raw/normalized capture
+- [x] AUDIO-104 atomic WAV lifecycle
+- [x] DATA-105 retries + representations
+- [x] DATA-106 recovery reconciler
+- [x] DATA-107 delivery event audit
+- [x] HIST-107 history/query migration
+- [x] DATA-108 retention/disk usage
+- [x] HIST-109 Trash/Restore/Explicit Purge
+- [x] G1 PASS
 
 ## Phase 2
-- [ ] DICT-201 dictionary persistence/engine
-- [ ] DICT-202 dictionary UI/import-export
-- [ ] SNIP-211 snippet persistence/matcher
-- [ ] SNIP-212 snippet UI/pipeline
-- [ ] PROMPT-221 PromptProfile domain
-- [ ] PROMPT-222 styles/transforms/hotkeys
-- [ ] HIST-231 FTS/search/version UI
-- [ ] G2 PASS
+- [x] DICT-201 dictionary persistence/engine
+- [x] DICT-202 dictionary UI/import-export
+- [x] SNIP-211 snippet persistence/matcher
+- [x] SNIP-212 snippet UI/pipeline
+- [x] PROMPT-221 PromptProfile domain
+- [x] PROMPT-222 styles/transforms/hotkeys
+- [x] HIST-231 FTS/search/version UI
+- [x] G2 PASS
 
 ## Phase 3
-- [ ] NOTE-301 note/version storage
+- [x] NOTE-301 note/version storage
 - [ ] PAD-302 Scratchpad window/autosave
 - [ ] PAD-303 dictation/transforms
 - [ ] NOTE-304 search/restore

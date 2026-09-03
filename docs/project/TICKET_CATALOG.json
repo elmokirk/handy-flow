@@ -831,17 +831,17 @@
     "PAD-303": {
       "ticket_id": "PAD-303",
       "phase": "3",
-      "title": "Scratchpad dictation and transforms",
+      "title": "Scratchpad transforms and dictation-sourced versions",
       "owner": "Scratchpad Agent",
       "dependencies": [
         "PAD-302",
         "PROMPT-221"
       ],
       "gate": "G3",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/notes.rs",
-        "src/components/scratchpad/**",
+        "src/scratchpad/**",
         "src-tauri/tests/scratchpad/**",
         "tests/**"
       ],
@@ -1792,9 +1792,9 @@
         "NOTE-301"
       ],
       "gate": "G3",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
-        "src/components/scratchpad/**",
+        "src/scratchpad/**",
         "src/hooks/useScratchpad.ts",
         "tests/**"
       ],
@@ -2022,6 +2022,47 @@
       ],
       "architecture_refs": [
         "orchestration/ARCHITECTURE_FREEZE.md",
+        "orchestration/AGENT_SAFETY_POLICY.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": true
+    },
+    "PAD-305": {
+      "ticket_id": "PAD-305",
+      "phase": "3",
+      "title": "Transcript delivery routing and sinks",
+      "owner": "Integrator",
+      "dependencies": [
+        "PAD-303",
+        "DATA-105"
+      ],
+      "gate": "G3",
+      "status": "NOT_STARTED",
+      "allowed_paths": [
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/storage/repositories/deliveries.rs",
+        "src-tauri/src/managers/notes.rs",
+        "src-tauri/tests/delivery/**",
+        "tests/**"
+      ],
+      "forbidden_paths": [
+        "src-tauri/src/commands/mod.rs",
+        "src-tauri/src/managers/mod.rs",
+        "src/App.tsx",
+        "src/components/Sidebar.tsx",
+        "package.json",
+        "bun.lock",
+        "src-tauri/Cargo.lock",
+        ".github/workflows/**"
+      ],
+      "qa_profile": [
+        "unit",
+        "integration",
+        "windows-native"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md",
+        "orchestration/IMPLEMENTATION_CONTRACTS.md",
         "orchestration/AGENT_SAFETY_POLICY.md"
       ],
       "max_agent_cycles": 3,
