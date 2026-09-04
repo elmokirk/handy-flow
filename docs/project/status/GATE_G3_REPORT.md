@@ -23,8 +23,8 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 - [x] Ticket-DAG konsistent: alle 6 Phase-3-Tickets DONE, jedes mit RUN_STATE
 - [x] `CHECKSUMS.sha256` (207 Einträge) verifiziert; Kontrollebene in
       `repo/docs/project/` gespiegelt
-- [ ] **Eine offene Architekturentscheidung:** [[escalations/PAD-305-02|PAD-305-02]]
-      (E2) — siehe *Owner decisions*
+- [x] **Architekturentscheidung getroffen:** [[escalations/PAD-305-02|PAD-305-02]]
+      (E2) → Variante B, Owner 2026-09-04 — siehe *Owner decisions*
 
 ## Ticket status
 | Ticket | Attempt | Status |
@@ -83,7 +83,7 @@ Note-Write und ist auf `limit ≤ 200` gedeckelt.
 ## Owner decisions
 | Problem / Decision | Variant A | Variant B | Recommendation | Status |
 |---|---|---|---|---|
-| Delivery-Audit im Live-Pfad (PAD-305-02) | FK lockern, attempt-lose Events zulassen | Vertrag halten, Audit anschließen sobald die kanonische Capture/Attempt-Pipeline live schreibt (Folgeticket PAD-306) | **B** — die FK IST der Vertrag; sie zu lockern tauscht eine dauerhafte Integritätsgarantie gegen vorgezogene Abdeckung | **OFFEN — Owner-Entscheid vor Phase 4** |
+| Delivery-Audit im Live-Pfad (PAD-305-02) | FK lockern, attempt-lose Events zulassen | Vertrag halten, Audit anschließen sobald die kanonische Capture/Attempt-Pipeline live schreibt (Folgeticket PAD-306) | **B** — die FK IST der Vertrag; sie zu lockern tauscht eine dauerhafte Integritätsgarantie gegen vorgezogene Abdeckung | **ENTSCHIEDEN (Owner, 2026-09-04): Variante B.** [[planning/tickets/PAD-306|PAD-306]] registriert (Phase 4, G4) und als harte Dependency von KB-401 verdrahtet |
 | Grenzverletzungen bei geteilten Dateien | zurückrollen | Eskalation protokollieren, Edits behalten | B | ENTSCHIEDEN (Owner, Phase 3) |
 
 ## Accepted debt
@@ -104,3 +104,10 @@ PAD-305-02-Entscheidung getroffen und — bei Variante B — das
 Capture/Attempt-Folgeticket vor KB-401 eingeplant wird. KB-Erfassung setzt
 dieselbe kanonische Pipeline voraus; sie ein zweites Mal zu vertagen würde
 die Schuld in zwei Phasen gleichzeitig verankern.
+
+## Auflage erfüllt (2026-09-04)
+Owner-Entscheid **Variante B**. [[planning/tickets/PAD-306|PAD-306]] ist im
+`TICKET_CATALOG.json` registriert (Phase 4, Gate G4, Owner Integrator) und
+als Dependency von KB-401 eingetragen — die DAG erzwingt damit, dass die
+Schuld vor dem ersten KB-Ticket getilgt wird. Phase 3 ist nach `custom/main`
+gemergt. **G3 ist signiert; Phase 4 ist eröffnet, Startticket PAD-306.**

@@ -3,8 +3,8 @@ id: "ticket-index"
 title: "Ticket Index"
 type: "index"
 status: "accepted"
-version: "1.1"
-updated: "2026-08-21"
+version: "1.2"
+updated: "2026-09-04"
 project: "custom-handy"
 baseline_id: "handy-main-2026-08-24-af48dd68"
 ---
@@ -60,6 +60,7 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 - [[planning/tickets/PAD-305|PAD-305 — Transcript delivery routing and sinks]]
 
 ## Phase 4
+- [[planning/tickets/PAD-306|PAD-306 — Canonical capture/attempt pipeline in the live transcription path]]
 - [[planning/tickets/KB-401|KB-401 — Knowledge DTO and export service]]
 - [[planning/tickets/KB-402|KB-402 — Export outbox and idempotency]]
 - [[planning/tickets/KB-403|KB-403 — Markdown/Second-Brain connector]]

@@ -1505,7 +1505,8 @@
       "owner": "Knowledge Agent",
       "dependencies": [
         "DATA-105",
-        "NOTE-301"
+        "NOTE-301",
+        "PAD-306"
       ],
       "gate": "G4",
       "status": "NOT_STARTED",
@@ -2053,6 +2054,52 @@
         "src/components/Sidebar.tsx",
         "package.json",
         "bun.lock",
+        "src-tauri/Cargo.lock",
+        ".github/workflows/**"
+      ],
+      "qa_profile": [
+        "unit",
+        "integration",
+        "windows-native"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md",
+        "orchestration/IMPLEMENTATION_CONTRACTS.md",
+        "orchestration/AGENT_SAFETY_POLICY.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": true
+    },
+    "PAD-306": {
+      "ticket_id": "PAD-306",
+      "phase": "4",
+      "title": "Canonical capture/attempt pipeline in the live transcription path",
+      "owner": "Integrator",
+      "dependencies": [
+        "DATA-105",
+        "PAD-305"
+      ],
+      "gate": "G4",
+      "status": "NOT_STARTED",
+      "allowed_paths": [
+        "src-tauri/src/actions.rs",
+        "src-tauri/src/delivery/**",
+        "src-tauri/src/managers/history.rs",
+        "src-tauri/src/storage/repositories/captures.rs",
+        "src-tauri/src/storage/repositories/transcriptions.rs",
+        "src-tauri/src/storage/repositories/representations.rs",
+        "src-tauri/src/storage/repositories/deliveries.rs",
+        "src-tauri/tests/**"
+      ],
+      "forbidden_paths": [
+        "src-tauri/src/storage/migrations.rs",
+        "src-tauri/src/commands/mod.rs",
+        "src-tauri/src/managers/mod.rs",
+        "src/App.tsx",
+        "src/components/Sidebar.tsx",
+        "package.json",
+        "bun.lock",
+        "src-tauri/Cargo.toml",
         "src-tauri/Cargo.lock",
         ".github/workflows/**"
       ],

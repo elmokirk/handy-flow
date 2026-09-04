@@ -172,7 +172,9 @@
       "priority": "P0",
       "gate": "G1",
       "tickets": [
-        "DATA-107"
+        "DATA-107",
+        "PAD-305",
+        "PAD-306"
       ],
       "acceptance_state": "NOT_VERIFIED"
     }
