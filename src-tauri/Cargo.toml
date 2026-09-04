@@ -290,3 +290,7 @@ path = "tests/delivery/live_pipeline_test.rs"
 [[test]]
 name = "knowledge_dto_test"
 path = "tests/knowledge_dto/knowledge_dto_test.rs"
+
+[[test]]
+name = "export_outbox_test"
+path = "tests/export_outbox/export_outbox_test.rs"

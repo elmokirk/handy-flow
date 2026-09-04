@@ -8,6 +8,7 @@
 //!   4  + post_process_requested   (upstream latest)
 //!   5  canonical schema: app_meta, captures, transcription_attempts,
 //!      representations + legacy data backfill.
+//!   12 export outbox: export_targets, export_jobs (KB-402).
 //!
 //! Safety gate: before raising the version, an online backup is created
 //! and verified (`PRAGMA integrity_check = ok` on the reopened copy).
@@ -20,7 +21,7 @@ use rusqlite::Connection;
 use super::database::{AppDatabase, StorageError};
 use super::ids;
 
-pub const TARGET_VERSION: i64 = 11;
+pub const TARGET_VERSION: i64 = 12;
 /// `query_contract_version` advertised to REST/MCP companions later on.
 pub const QUERY_CONTRACT_VERSION: i64 = 1;
 
@@ -337,6 +338,54 @@ fn apply_migrations(
                     "ALTER TABLE captures ADD COLUMN import_ref TEXT;
                      CREATE UNIQUE INDEX idx_captures_import_ref
                         ON captures (import_ref) WHERE import_ref IS NOT NULL;",
+                )?;
+            }
+            12 => {
+                // KB-402: durable export outbox.
+                //
+                // `idempotency_key` is target + item + content hash. Same
+                // vault, same item, same bytes => one job, ever. Change the
+                // content and it becomes a different key, so updates still
+                // flow; that is why the hash is IN the key and not a
+                // separate "dirty" flag.
+                //
+                // `status` mirrors the frozen export-job state machine
+                // exactly (DATA_STATE_MACHINES.md). A job is never deleted:
+                // `failed_permanent` stays queryable so a failed export is
+                // visible instead of silently gone.
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS export_targets (
+                        id TEXT PRIMARY KEY,
+                        kind TEXT NOT NULL CHECK (kind IN ('markdown')),
+                        root_path TEXT NOT NULL,
+                        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                        created_at_ms INTEGER NOT NULL,
+                        updated_at_ms INTEGER NOT NULL,
+                        UNIQUE (kind, root_path)
+                    );
+                    CREATE TABLE IF NOT EXISTS export_jobs (
+                        id TEXT PRIMARY KEY,
+                        target_id TEXT NOT NULL REFERENCES export_targets(id),
+                        export_id TEXT NOT NULL,
+                        content_hash_sha256 TEXT NOT NULL,
+                        idempotency_key TEXT NOT NULL,
+                        status TEXT NOT NULL CHECK (status IN (
+                            'pending', 'running', 'succeeded', 'retry_wait', 'failed_permanent'
+                        )),
+                        attempt_count INTEGER NOT NULL DEFAULT 0,
+                        next_attempt_at_ms INTEGER,
+                        last_error TEXT,
+                        claimed_at_ms INTEGER,
+                        created_at_ms INTEGER NOT NULL,
+                        updated_at_ms INTEGER NOT NULL,
+                        completed_at_ms INTEGER
+                    );
+                    CREATE UNIQUE INDEX idx_export_jobs_idempotency
+                        ON export_jobs (idempotency_key);
+                    CREATE INDEX idx_export_jobs_claimable
+                        ON export_jobs (status, next_attempt_at_ms);
+                    CREATE INDEX idx_export_jobs_export
+                        ON export_jobs (export_id);",
                 )?;
             }
             other => {
