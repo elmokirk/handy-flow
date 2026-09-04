@@ -155,6 +155,18 @@ pub enum PasteMethod {
     ExternalScript,
 }
 
+/// Where a finished transcript is delivered (PAD-305). Each variant maps
+/// to one `DeliverySink`; adding a destination must not add a branch to
+/// the paste path.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryTarget {
+    #[default]
+    FocusedApp,
+    Scratchpad,
+    Clipboard,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ClipboardHandling {
@@ -407,6 +419,8 @@ pub struct AppSettings {
     pub recording_retention_period: RecordingRetentionPeriod,
     #[serde(default)]
     pub paste_method: PasteMethod,
+    #[serde(default)]
+    pub delivery_target: DeliveryTarget,
     #[serde(default)]
     pub clipboard_handling: ClipboardHandling,
     #[serde(default = "default_auto_submit")]
@@ -904,6 +918,7 @@ pub fn get_default_settings() -> AppSettings {
         history_limit: default_history_limit(),
         recording_retention_period: default_recording_retention_period(),
         paste_method: PasteMethod::default(),
+        delivery_target: DeliveryTarget::default(),
         clipboard_handling: ClipboardHandling::default(),
         auto_submit: default_auto_submit(),
         auto_submit_key: AutoSubmitKey::default(),
@@ -1257,6 +1272,7 @@ mod tests {
             "history_limit": 5,
             "recording_retention_period": "preserve_limit",
             "paste_method": "ctrl_v",
+            "delivery_target": "focused_app",
             "clipboard_handling": "dont_modify",
             "auto_submit": false,
             "auto_submit_key": "enter",

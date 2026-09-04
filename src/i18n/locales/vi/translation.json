@@ -7,7 +7,24 @@
     "model": "Mô hình",
     "quit": "Thoát",
     "cancel": "Hủy",
-    "secureInputWarning": "⚠ Phím tắt bị Secure Input chặn"
+    "secureInputWarning": "⚠ Phím tắt bị Secure Input chặn",
+    "scratchpad": "Ghi chú"
+  },
+  "scratchpad": {
+    "title": "Ghi chú",
+    "saving": "Saving...",
+    "pending": "Unsaved",
+    "saved": "Saved",
+    "placeholder": "Write something...",
+    "empty": "No note yet.",
+    "create": "Create note",
+    "versions": "Versions",
+    "restore": "restore",
+    "hide": "Hide",
+    "transformRunning": "Transforming...",
+    "search": "Search",
+    "searchEmpty": "No matches.",
+    "searchPlaceholder": "Search notes..."
   },
   "sidebar": {
     "knowledge": "Knowledge",
@@ -307,6 +324,15 @@
             "bottom": "Dưới",
             "top": "Trên"
           }
+        }
+      },
+      "deliveryTarget": {
+        "title": "Delivery target",
+        "description": "Where a finished transcript goes: the focused app, the scratchpad, or just the clipboard.",
+        "options": {
+          "focusedApp": "Focused app",
+          "scratchpad": "Scratchpad",
+          "clipboard": "Clipboard only"
         }
       },
       "pasteMethod": {

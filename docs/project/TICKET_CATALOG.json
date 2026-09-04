@@ -58,10 +58,10 @@
         "NOTE-301"
       ],
       "gate": "G3",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/notes.rs",
-        "src/components/scratchpad/**",
+        "src/scratchpad/**",
         "src-tauri/tests/note_search/**",
         "tests/**"
       ],
@@ -831,17 +831,17 @@
     "PAD-303": {
       "ticket_id": "PAD-303",
       "phase": "3",
-      "title": "Scratchpad dictation and transforms",
+      "title": "Scratchpad transforms and dictation-sourced versions",
       "owner": "Scratchpad Agent",
       "dependencies": [
         "PAD-302",
         "PROMPT-221"
       ],
       "gate": "G3",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/notes.rs",
-        "src/components/scratchpad/**",
+        "src/scratchpad/**",
         "src-tauri/tests/scratchpad/**",
         "tests/**"
       ],
@@ -1505,7 +1505,8 @@
       "owner": "Knowledge Agent",
       "dependencies": [
         "DATA-105",
-        "NOTE-301"
+        "NOTE-301",
+        "PAD-306"
       ],
       "gate": "G4",
       "status": "NOT_STARTED",
@@ -1549,7 +1550,7 @@
         "DATA-102"
       ],
       "gate": "G3",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/notes.rs",
         "src-tauri/src/storage/repositories/notes.rs",
@@ -1792,9 +1793,9 @@
         "NOTE-301"
       ],
       "gate": "G3",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
-        "src/components/scratchpad/**",
+        "src/scratchpad/**",
         "src/hooks/useScratchpad.ts",
         "tests/**"
       ],
@@ -2003,7 +2004,7 @@
         "DATA-102"
       ],
       "gate": "G3",
-      "status": "READY",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/history.rs",
         "src-tauri/src/managers/wispr_import.rs",
@@ -2022,6 +2023,94 @@
       ],
       "architecture_refs": [
         "orchestration/ARCHITECTURE_FREEZE.md",
+        "orchestration/AGENT_SAFETY_POLICY.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": true
+    },
+    "PAD-305": {
+      "ticket_id": "PAD-305",
+      "phase": "3",
+      "title": "Transcript delivery routing and sinks",
+      "owner": "Integrator",
+      "dependencies": [
+        "PAD-303",
+        "DATA-105"
+      ],
+      "gate": "G3",
+      "status": "DONE",
+      "allowed_paths": [
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/delivery/**",
+        "src-tauri/src/storage/repositories/deliveries.rs",
+        "src-tauri/src/managers/notes.rs",
+        "src-tauri/tests/delivery/**",
+        "tests/**"
+      ],
+      "forbidden_paths": [
+        "src-tauri/src/commands/mod.rs",
+        "src-tauri/src/managers/mod.rs",
+        "src/App.tsx",
+        "src/components/Sidebar.tsx",
+        "package.json",
+        "bun.lock",
+        "src-tauri/Cargo.lock",
+        ".github/workflows/**"
+      ],
+      "qa_profile": [
+        "unit",
+        "integration",
+        "windows-native"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md",
+        "orchestration/IMPLEMENTATION_CONTRACTS.md",
+        "orchestration/AGENT_SAFETY_POLICY.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": true
+    },
+    "PAD-306": {
+      "ticket_id": "PAD-306",
+      "phase": "4",
+      "title": "Canonical capture/attempt pipeline in the live transcription path",
+      "owner": "Integrator",
+      "dependencies": [
+        "DATA-105",
+        "PAD-305"
+      ],
+      "gate": "G4",
+      "status": "NOT_STARTED",
+      "allowed_paths": [
+        "src-tauri/src/actions.rs",
+        "src-tauri/src/delivery/**",
+        "src-tauri/src/managers/history.rs",
+        "src-tauri/src/storage/repositories/captures.rs",
+        "src-tauri/src/storage/repositories/transcriptions.rs",
+        "src-tauri/src/storage/repositories/representations.rs",
+        "src-tauri/src/storage/repositories/deliveries.rs",
+        "src-tauri/tests/**"
+      ],
+      "forbidden_paths": [
+        "src-tauri/src/storage/migrations.rs",
+        "src-tauri/src/commands/mod.rs",
+        "src-tauri/src/managers/mod.rs",
+        "src/App.tsx",
+        "src/components/Sidebar.tsx",
+        "package.json",
+        "bun.lock",
+        "src-tauri/Cargo.toml",
+        "src-tauri/Cargo.lock",
+        ".github/workflows/**"
+      ],
+      "qa_profile": [
+        "unit",
+        "integration",
+        "windows-native"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md",
+        "orchestration/IMPLEMENTATION_CONTRACTS.md",
         "orchestration/AGENT_SAFETY_POLICY.md"
       ],
       "max_agent_cycles": 3,

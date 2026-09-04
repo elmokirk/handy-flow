@@ -7,7 +7,24 @@
     "model": "模型",
     "quit": "退出",
     "cancel": "取消",
-    "secureInputWarning": "⚠ 快捷键被 Secure Input 阻止"
+    "secureInputWarning": "⚠ 快捷键被 Secure Input 阻止",
+    "scratchpad": "速记本"
+  },
+  "scratchpad": {
+    "title": "速记本",
+    "saving": "Saving...",
+    "pending": "Unsaved",
+    "saved": "Saved",
+    "placeholder": "Write something...",
+    "empty": "No note yet.",
+    "create": "Create note",
+    "versions": "Versions",
+    "restore": "restore",
+    "hide": "Hide",
+    "transformRunning": "Transforming...",
+    "search": "Search",
+    "searchEmpty": "No matches.",
+    "searchPlaceholder": "Search notes..."
   },
   "sidebar": {
     "knowledge": "Knowledge",
@@ -307,6 +324,15 @@
             "bottom": "底部",
             "top": "顶部"
           }
+        }
+      },
+      "deliveryTarget": {
+        "title": "Delivery target",
+        "description": "Where a finished transcript goes: the focused app, the scratchpad, or just the clipboard.",
+        "options": {
+          "focusedApp": "Focused app",
+          "scratchpad": "Scratchpad",
+          "clipboard": "Clipboard only"
         }
       },
       "pasteMethod": {

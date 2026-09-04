@@ -10,6 +10,8 @@
 ('src\\managers\\transcription.rs', 'clippy::items_after_test_module', 'items after a test module')
 ('src\\managers\\transcription.rs', 'dead_code', 'function `dictionary_terms` is never used')
 ('src\\managers\\transcription.rs', 'unused_assignments', 'value assigned to `model_takes_initial_prompt` is never read')
+('src\\managers\\wispr_import.rs', 'clippy::field_reassign_with_default', 'field assignment outside of initializer for an instance created with Default::default()')
+('src\\managers\\wispr_import.rs', 'unused_imports', 'unused import: `StorageError`')
 ('src\\paste_tx\\windows.rs', 'clippy::ptr_eq', 'use `std::ptr::eq` when comparing raw pointers')
 ('src\\paste_tx\\windows.rs', 'clippy::unnecessary_cast', 'casting raw pointers to the same type and constness is unnecessary (`*const paste_tx::windows::WinTxShared` -> `*const paste_tx::windows::WinTxShared`)')
 ('src\\portable.rs', 'clippy::write_with_newline', 'using `write!()` with a format string that ends in a single newline')

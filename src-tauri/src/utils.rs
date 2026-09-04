@@ -8,7 +8,8 @@ use tauri::{AppHandle, Manager};
 
 // Re-export all utility modules for easy access
 // pub use crate::audio_feedback::*;
-pub use crate::clipboard::*;
+// Paste mechanics are reached through `delivery::FocusedAppSink` (PAD-305);
+// the blanket re-export is gone so `utils` no longer looks like a paste API.
 pub use crate::overlay::*;
 pub use crate::tray::*;
 

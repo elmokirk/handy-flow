@@ -7,7 +7,24 @@
     "model": "모델",
     "quit": "종료",
     "cancel": "취소",
-    "secureInputWarning": "⚠ Secure Input으로 단축키가 차단됨"
+    "secureInputWarning": "⚠ Secure Input으로 단축키가 차단됨",
+    "scratchpad": "스크래치패드"
+  },
+  "scratchpad": {
+    "title": "스크래치패드",
+    "saving": "Saving...",
+    "pending": "Unsaved",
+    "saved": "Saved",
+    "placeholder": "Write something...",
+    "empty": "No note yet.",
+    "create": "Create note",
+    "versions": "Versions",
+    "restore": "restore",
+    "hide": "Hide",
+    "transformRunning": "Transforming...",
+    "search": "Search",
+    "searchEmpty": "No matches.",
+    "searchPlaceholder": "Search notes..."
   },
   "sidebar": {
     "knowledge": "Knowledge",
@@ -307,6 +324,15 @@
             "bottom": "하단",
             "top": "상단"
           }
+        }
+      },
+      "deliveryTarget": {
+        "title": "Delivery target",
+        "description": "Where a finished transcript goes: the focused app, the scratchpad, or just the clipboard.",
+        "options": {
+          "focusedApp": "Focused app",
+          "scratchpad": "Scratchpad",
+          "clipboard": "Clipboard only"
         }
       },
       "pasteMethod": {

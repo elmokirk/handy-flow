@@ -7,7 +7,24 @@
     "model": "मॉडल",
     "quit": "बाहर निकलें",
     "cancel": "रद्द करें",
-    "secureInputWarning": "⚠ Secure Input ने शॉर्टकट ब्लॉक किए हैं"
+    "secureInputWarning": "⚠ Secure Input ने शॉर्टकट ब्लॉक किए हैं",
+    "scratchpad": "स्क्रैचपैड"
+  },
+  "scratchpad": {
+    "title": "स्क्रैचपैड",
+    "saving": "Saving...",
+    "pending": "Unsaved",
+    "saved": "Saved",
+    "placeholder": "Write something...",
+    "empty": "No note yet.",
+    "create": "Create note",
+    "versions": "Versions",
+    "restore": "restore",
+    "hide": "Hide",
+    "transformRunning": "Transforming...",
+    "search": "Search",
+    "searchEmpty": "No matches.",
+    "searchPlaceholder": "Search notes..."
   },
   "sidebar": {
     "knowledge": "Knowledge",
@@ -307,6 +324,15 @@
             "bottom": "नीचे",
             "top": "ऊपर"
           }
+        }
+      },
+      "deliveryTarget": {
+        "title": "Delivery target",
+        "description": "Where a finished transcript goes: the focused app, the scratchpad, or just the clipboard.",
+        "options": {
+          "focusedApp": "Focused app",
+          "scratchpad": "Scratchpad",
+          "clipboard": "Clipboard only"
         }
       },
       "pasteMethod": {

@@ -7,7 +7,24 @@
     "model": "Modell",
     "quit": "Beenden",
     "cancel": "Abbrechen",
-    "secureInputWarning": "⚠ Tastenkürzel durch Secure Input blockiert"
+    "secureInputWarning": "⚠ Tastenkürzel durch Secure Input blockiert",
+    "scratchpad": "Notizzettel"
+  },
+  "scratchpad": {
+    "title": "Notizzettel",
+    "saving": "Speichern...",
+    "pending": "Ungespeichert",
+    "saved": "Gespeichert",
+    "placeholder": "Schreib etwas...",
+    "empty": "Noch keine Notiz.",
+    "create": "Notiz erstellen",
+    "versions": "Versionen",
+    "restore": "wiederherstellen",
+    "hide": "Ausblenden",
+    "transformRunning": "Transformiere...",
+    "search": "Suchen",
+    "searchEmpty": "Keine Treffer.",
+    "searchPlaceholder": "Notizen durchsuchen..."
   },
   "sidebar": {
     "knowledge": "Knowledge",
@@ -307,6 +324,15 @@
             "bottom": "Unten",
             "top": "Oben"
           }
+        }
+      },
+      "deliveryTarget": {
+        "title": "Zielort der Ausgabe",
+        "description": "Wohin ein fertiges Transkript geht: in die fokussierte App, in den Notizblock oder nur in die Zwischenablage.",
+        "options": {
+          "focusedApp": "Fokussierte App",
+          "scratchpad": "Notizblock",
+          "clipboard": "Nur Zwischenablage"
         }
       },
       "pasteMethod": {

@@ -7,7 +7,24 @@
     "model": "Modelo",
     "quit": "Sair",
     "cancel": "Cancelar",
-    "secureInputWarning": "⚠ Atalhos bloqueados pelo Secure Input"
+    "secureInputWarning": "⚠ Atalhos bloqueados pelo Secure Input",
+    "scratchpad": "Bloco de notas"
+  },
+  "scratchpad": {
+    "title": "Bloco de notas",
+    "saving": "Saving...",
+    "pending": "Unsaved",
+    "saved": "Saved",
+    "placeholder": "Write something...",
+    "empty": "No note yet.",
+    "create": "Create note",
+    "versions": "Versions",
+    "restore": "restore",
+    "hide": "Hide",
+    "transformRunning": "Transforming...",
+    "search": "Search",
+    "searchEmpty": "No matches.",
+    "searchPlaceholder": "Search notes..."
   },
   "sidebar": {
     "knowledge": "Knowledge",
@@ -307,6 +324,15 @@
             "bottom": "Inferior",
             "top": "Superior"
           }
+        }
+      },
+      "deliveryTarget": {
+        "title": "Delivery target",
+        "description": "Where a finished transcript goes: the focused app, the scratchpad, or just the clipboard.",
+        "options": {
+          "focusedApp": "Focused app",
+          "scratchpad": "Scratchpad",
+          "clipboard": "Clipboard only"
         }
       },
       "pasteMethod": {

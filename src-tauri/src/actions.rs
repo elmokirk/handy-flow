@@ -822,13 +822,17 @@ impl ShortcutAction for TranscribeAction {
                                         return;
                                     }
 
-                                    match utils::paste(final_text, ah_clone.clone()) {
+                                    // PAD-305: the destination is resolved from
+                                    // settings, not decided inside the paste path.
+                                    let sink = crate::delivery::sink_for(&ah_clone);
+                                    match sink.deliver(&final_text) {
                                         Ok(()) => debug!(
-                                            "Text pasted successfully in {:?}",
+                                            "Text delivered to {} in {:?}",
+                                            sink.destination().as_str(),
                                             paste_time.elapsed()
                                         ),
                                         Err(e) => {
-                                            error!("Failed to paste transcription: {}", e);
+                                            error!("Failed to deliver transcription: {}", e);
                                             let _ = ah_clone.emit("paste-error", ());
                                         }
                                     }

@@ -42,14 +42,19 @@ Implement only the goal and acceptance criteria in this ticket using frozen arch
 
 ## Acceptance criteria
 
-- [ ] search bounded
-- [ ] restore append-only
-- [ ] pinned state preserved
+- [x] search bounded — `limit` clamped 1..=200 in the repository; a query
+      without a searchable term returns empty instead of everything
+- [x] restore append-only — restoring appends a NEW version; prior versions
+      stay intact
+- [x] pinned state preserved — restore leaves pinned/title untouched, and
+      pinned notes rank first in search, matching `list_active_notes`
 
 ## Required tests/evidence
 
-- [ ] FTS tests
-- [ ] `Playwright`
+- [x] FTS tests — `src-tauri/tests/note_search/note_search_test.rs`,
+      8 fixtures incl. index rebuild/recovery, trash/restore, staleness
+- [x] `Playwright` — `tests/note-search.spec.ts`, 7 specs against the real
+      component with a stubbed Tauri IPC bridge
 
 ## Escalate instead of deciding if
 

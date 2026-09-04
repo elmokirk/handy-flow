@@ -511,6 +511,22 @@ async showMainWindowCommand() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async showScratchpad() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("show_scratchpad") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async hideScratchpad() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("hide_scratchpad") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async cancelOperation() : Promise<void> {
     await TAURI_INVOKE("cancel_operation");
 },
@@ -948,6 +964,121 @@ async promptProfilesDelete(id: string) : Promise<Result<boolean, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Run one transform profile against the note's CURRENT content and append
+ * the result as a NEW version (source = `transform`). The source version
+ * stays untouched and remains restorable (PAD-303, G3).
+ */
+async notesTransform(noteId: string, profileId: string) : Promise<Result<NoteVersionDto, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_transform", { noteId, profileId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesList() : Promise<Result<NoteDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_list") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Bounded full-text search over active notes (NOTE-304). `limit` is
+ * clamped 1..=200 downstream, so a frontend bug cannot request an
+ * unbounded scan.
+ */
+async notesSearch(query: string, limit: number, offset: number) : Promise<Result<NoteDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_search", { query, limit, offset }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesCreate(title: string, content: string) : Promise<Result<NoteDto, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_create", { title, content }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesCurrent(noteId: string) : Promise<Result<NoteVersionDto | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_current", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Autosave entry point: append a version when content changed (hash
+ * dedupe makes identical saves a no-op). `source` must be a
+ * frontend-allowed source (`manual_edit` | `dictation`).
+ */
+async notesAppend(noteId: string, content: string, source: string) : Promise<Result<NoteVersionDto | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_append", { noteId, content, source }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesVersions(noteId: string) : Promise<Result<NoteVersionDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_versions", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Restore an older version as a NEW version (append-only; never rewrites
+ * history).
+ */
+async notesRestoreVersion(noteId: string, versionNo: number) : Promise<Result<NoteVersionDto | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_restore_version", { noteId, versionNo }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesSetTitle(noteId: string, title: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_set_title", { noteId, title }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesSetPinned(noteId: string, pinned: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_set_pinned", { noteId, pinned }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesTrash(noteId: string) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_trash", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async notesRestore(noteId: string) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("notes_restore", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async canonicalHistoryEntries(limit: number, offset: number) : Promise<Result<CanonicalEntry[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("canonical_history_entries", { limit, offset }) };
@@ -1083,7 +1214,7 @@ whats_new_last_seen_version?: string; selected_model?: string; onboarding_comple
  * Which input channel to use on the selected microphone device.
  * None means "average all channels" (original behavior).
  */
-selected_channel?: number | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; theme?: Theme; experimental_enabled?: boolean; lazy_stream_close?: boolean; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; paste_delay_ms?: number; paste_delay_after_ms?: number; 
+selected_channel?: number | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; delivery_target?: DeliveryTarget; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; theme?: Theme; experimental_enabled?: boolean; lazy_stream_close?: boolean; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; paste_delay_ms?: number; paste_delay_after_ms?: number; 
 /**
  * Debug-gated ("beta") receipt-sequenced paste: restore the clipboard only
  * after the target app actually reads the transcript, instead of after a
@@ -1117,6 +1248,12 @@ export type CanonicalEntry = { capture_id: string; legacy_history_id: number | n
 audio_file_name: string | null; raw_text: string | null; derived: DerivedTextSummary[] }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
+/**
+ * Where a finished transcript is delivered (PAD-305). Each variant maps
+ * to one `DeliverySink`; adding a destination must not add a branch to
+ * the paste path.
+ */
+export type DeliveryTarget = "focused_app" | "scratchpad" | "clipboard"
 /**
  * One derived text version shown next to — never instead of — the raw.
  */
@@ -1175,6 +1312,8 @@ sha256: string | null } } |
  */
 "Local"
 export type ModelUnloadTimeout = "never" | "immediately" | "min_2" | "min_5" | "min_10" | "min_15" | "hour_1" | "sec_15"
+export type NoteDto = { id: string; title: string; pinned: boolean; trashed: boolean; created_at_ms: number; updated_at_ms: number }
+export type NoteVersionDto = { id: string; note_id: string; version_no: number; content: string; source: string; created_at_ms: number }
 export type OrtAcceleratorSetting = "auto" | "cpu" | "cuda" | "directml" | "rocm"
 export type OverlayPosition = "top" | "bottom"
 /**

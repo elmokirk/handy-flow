@@ -493,6 +493,8 @@ fn build_menu(app: &AppHandle, inputs: &MenuInputs) -> tauri::Result<(Menu<tauri
         true,
         settings_accelerator,
     )?;
+    let scratchpad_i =
+        MenuItem::with_id(app, "scratchpad", &strings.scratchpad, true, None::<&str>)?;
     let check_updates_i = MenuItem::with_id(
         app,
         "check_updates",
@@ -521,6 +523,7 @@ fn build_menu(app: &AppHandle, inputs: &MenuInputs) -> tauri::Result<(Menu<tauri
                 &separator()?,
                 &copy_last_transcript_i,
                 &separator()?,
+                &scratchpad_i,
                 &settings_i,
                 &check_updates_i,
                 &separator()?,
@@ -562,6 +565,7 @@ fn build_menu(app: &AppHandle, inputs: &MenuInputs) -> tauri::Result<(Menu<tauri
                 &model_submenu,
                 &unload_model_i,
                 &separator()?,
+                &scratchpad_i,
                 &settings_i,
                 &check_updates_i,
                 &separator()?,

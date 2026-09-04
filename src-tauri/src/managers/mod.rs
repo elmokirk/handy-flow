@@ -4,6 +4,8 @@ pub mod gguf_meta;
 pub mod history;
 pub mod model;
 pub mod model_capabilities;
+pub mod notes;
 pub mod prompt_profiles;
 pub mod snippets;
 pub mod transcription;
+pub mod wispr_import;
