@@ -37,6 +37,8 @@ pub use managers::dictionary::DictionaryManager;
 pub use managers::notes::NotesManager;
 // IMP-001 Wispr import (Integrator wiring).
 pub use managers::wispr_import;
+// KB-401 knowledge export DTO (Integrator wiring).
+pub use managers::knowledge;
 // SNIP-211 / PROMPT-221 public contracts (Integrator wiring).
 pub use managers::prompt_profiles::{
     LlmTransport, PromptProfileManager, PromptProvenance, KIND_STYLE, KIND_TRANSFORM,

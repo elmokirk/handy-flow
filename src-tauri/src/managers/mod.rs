@@ -2,6 +2,7 @@ pub mod audio;
 pub mod dictionary;
 pub mod gguf_meta;
 pub mod history;
+pub mod knowledge;
 pub mod model;
 pub mod model_capabilities;
 pub mod notes;

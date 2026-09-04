@@ -286,3 +286,7 @@ path = "tests/wispr_import/wispr_import_test.rs"
 [[test]]
 name = "live_pipeline_test"
 path = "tests/delivery/live_pipeline_test.rs"
+
+[[test]]
+name = "knowledge_dto_test"
+path = "tests/knowledge_dto/knowledge_dto_test.rs"
