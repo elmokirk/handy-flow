@@ -200,7 +200,7 @@ struct FinalizedStreamText {
 /// load — no Tauri state lookup, no mutex lock.
 pub struct StreamRouter {
     /// Command channel to the active streaming worker, present from
-    /// `start_stream` until `finalize_stream`/`cancel_stream`.
+    /// `start_stream` until `finalize_stream_detailed`/`cancel_stream`.
     tx: Mutex<Option<mpsc::Sender<StreamCmd>>>,
     /// True while a stream is pending or active (channel is open). The audio
     /// callback checks this first to avoid the mutex lock when no stream runs.
@@ -1176,20 +1176,17 @@ impl TranscriptionManager {
         }
     }
 
-    /// Flush the active stream and return its final, post-filtered text.
+    /// Finalize a live stream and return engine output + normalized result
+    /// separately (STT-103). See [`TranscriptionOutput`] for semantics.
     ///
     /// `Ok(None)` means no usable stream was active and the caller may fall back
     /// to batch transcription. `Err` means finalize itself failed or timed out.
     /// A timeout may still leave the worker holding the engine, so callers
     /// should surface it instead of immediately starting a batch fallback.
-    pub fn finalize_stream(&self) -> Result<Option<String>> {
-        Ok(self
-            .finalize_stream_detailed()?
-            .map(|out| out.delivered_text))
-    }
-
-    /// Finalize a live stream and return engine output + normalized result
-    /// separately (STT-103). See [`TranscriptionOutput`] for semantics.
+    ///
+    /// PAD-306 removed the delivered-text-only wrapper `finalize_stream`: the
+    /// live path needs `engine_raw` for the canonical attempt, so dropping it
+    /// at the seam left the caller unable to record provenance.
     pub fn finalize_stream_detailed(&self) -> Result<Option<TranscriptionOutput>> {
         let Some(tx) = self.router.take() else {
             return Ok(None);

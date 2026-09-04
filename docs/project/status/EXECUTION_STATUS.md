@@ -46,7 +46,7 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 | 4 | KB-402 | G4 | NOT_STARTED | 0 | `` |
 | 4 | KB-403 | G4 | NOT_STARTED | 0 | `` |
 | 4 | KB-404 | G4 | NOT_STARTED | 0 | `` |
-| 4 | PAD-306 | G4 | NOT_STARTED | 0 | `` |
+| 4 | PAD-306 | G4 | DONE | 1 | `phase/04-knowledge` |
 | 5 | DEP-510 | G5 | NOT_STARTED | 0 | `` |
 | 5 | INT-530 | G5 | NOT_STARTED | 0 | `` |
 | 5 | INT-590 | G5 | NOT_STARTED | 0 | `` |

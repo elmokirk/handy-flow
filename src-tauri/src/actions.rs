@@ -2,11 +2,14 @@
 use crate::apple_intelligence;
 use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, SoundType};
 use crate::audio_toolkit::{is_microphone_access_denied, is_no_input_device_error, VadPolicy};
+use crate::delivery::pipeline::{record_dictation, record_failed_dictation, DictationInput};
+use crate::delivery::{deliver_with_audit, DeliverySource, SqliteDeliveryAudit};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::model::ModelManager;
 use crate::managers::transcription::StreamWorkKind;
 use crate::managers::transcription::TranscriptionManager;
+use crate::managers::transcription::TranscriptionOutput;
 use crate::settings::{get_settings, AppSettings, OverlayStyle, APPLE_INTELLIGENCE_PROVIDER_ID};
 use crate::shortcut;
 use crate::tray::{set_tray_state, TrayIconState};
@@ -30,6 +33,95 @@ const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
 struct RecordingErrorEvent {
     error_type: String,
     detail: Option<String>,
+}
+
+/// Audio facts the canonical `captures` row wants. Hashing is skipped when
+/// the WAV never made it to disk — the capture is then `audio_missing`, and
+/// the transcript is still recorded rather than silently unattributed.
+fn audio_facts(
+    file_name: Option<&str>,
+    wav_path: &std::path::Path,
+) -> (Option<String>, Option<String>, Option<i64>) {
+    let Some(name) = file_name else {
+        return (None, None, None);
+    };
+    let sha = match crate::storage::audio_files::hash_file(wav_path) {
+        Ok(sha) => Some(sha),
+        Err(e) => {
+            warn!("Could not hash {name} for the capture record: {e}");
+            None
+        }
+    };
+    let size = std::fs::metadata(wav_path).ok().map(|m| m.len() as i64);
+    (Some(name.to_string()), sha, size)
+}
+
+/// PAD-306: write capture + canonical attempt (+ post-process representation)
+/// for a finished dictation and hand back the source the audit must name.
+///
+/// Returns `None` on any storage problem: an unaudited delivery is bad, a
+/// dropped transcript is worse.
+fn record_canonical_dictation(
+    hm: &Arc<HistoryManager>,
+    file_name: Option<&str>,
+    wav_path: &std::path::Path,
+    output: &TranscriptionOutput,
+    processed: &ProcessedTranscription,
+) -> Option<DeliverySource> {
+    let db = hm
+        .canonical_db()
+        .map_err(|e| error!("Canonical database unavailable, delivery not audited: {e}"))
+        .ok()?;
+    let (audio_file_name, audio_sha256, audio_size_bytes) = audio_facts(file_name, wav_path);
+    // Same title convention as the legacy history row — one naming scheme,
+    // not two.
+    let title = hm.format_timestamp_title(chrono::Utc::now().timestamp());
+
+    record_dictation(
+        &db,
+        &DictationInput {
+            title: &title,
+            audio_file_name: audio_file_name.as_deref(),
+            audio_sha256: audio_sha256.as_deref(),
+            audio_size_bytes,
+            engine_raw: &output.engine_raw,
+            normalized_stt: &output.normalized_stt,
+            model_id: output.model_id.as_deref(),
+            language: output.language.as_deref(),
+            normalizer_version: &output.normalizer_version,
+            post_processed_text: processed.post_processed_text.as_deref(),
+            post_process_prompt: processed.post_process_prompt.as_deref(),
+        },
+    )
+    .map_err(|e| error!("Failed to record canonical dictation: {e}"))
+    .ok()
+}
+
+/// PAD-306: record a dictation whose transcription failed, so the failure is
+/// diagnosable in the canonical tables instead of legacy-history-only.
+fn record_canonical_failure(
+    hm: &Arc<HistoryManager>,
+    file_name: Option<&str>,
+    wav_path: &std::path::Path,
+    error_message: &str,
+) {
+    let Ok(db) = hm.canonical_db() else {
+        error!("Canonical database unavailable; failed dictation not recorded");
+        return;
+    };
+    let (audio_file_name, audio_sha256, audio_size_bytes) = audio_facts(file_name, wav_path);
+    let title = hm.format_timestamp_title(chrono::Utc::now().timestamp());
+
+    if let Err(e) = record_failed_dictation(
+        &db,
+        &title,
+        audio_file_name.as_deref(),
+        audio_sha256.as_deref(),
+        audio_size_bytes,
+        error_message,
+    ) {
+        error!("Failed to record failed dictation: {e}");
+    }
 }
 
 /// Drop guard that notifies the [`TranscriptionCoordinator`] when the
@@ -716,15 +808,19 @@ impl ShortcutAction for TranscribeAction {
                     // running, finalize it and use its text (all audio was already
                     // fed to the stream); otherwise batch-transcribe the samples.
                     let transcription_time = Instant::now();
-                    let transcription_result = match tm.finalize_stream() {
+                    // PAD-306: the DETAILED variants are used so engine_raw and
+                    // normalized_stt survive into the canonical tables. The
+                    // delivered text is unchanged — it is one field of the same
+                    // result the plain variants used to return.
+                    let transcription_result = match tm.finalize_stream_detailed() {
                         // A finalized stream with usable text wins. An empty result
                         // (no active stream, produced nothing, or a finalize error
                         // after the engine was returned) falls back to a full batch
                         // transcription of the same audio. A finalize timeout is
                         // surfaced instead — the worker may still hold the engine,
                         // so a batch fallback would contend with it.
-                        Ok(Some(text)) if !text.trim().is_empty() => Ok(text),
-                        Ok(_) => tm.transcribe(samples),
+                        Ok(Some(output)) if !output.delivered_text.trim().is_empty() => Ok(output),
+                        Ok(_) => tm.transcribe_detailed(samples),
                         Err(err) => Err(err),
                     };
 
@@ -760,7 +856,8 @@ impl ShortcutAction for TranscribeAction {
                     }
 
                     match transcription_result {
-                        Ok(transcription) => {
+                        Ok(output) => {
+                            let transcription = output.delivered_text.clone();
                             debug!(
                                 "Transcription completed in {:?}: '{}'",
                                 transcription_time.elapsed(),
@@ -796,7 +893,7 @@ impl ShortcutAction for TranscribeAction {
                             // Save to history if WAV was saved
                             if wav_saved {
                                 if let Err(err) = hm.save_entry(
-                                    file_name,
+                                    file_name.clone(),
                                     transcription,
                                     post_process,
                                     processed.post_processed_text.clone(),
@@ -806,6 +903,20 @@ impl ShortcutAction for TranscribeAction {
                                 }
                             }
 
+                            // PAD-306: write the canonical rows. This is what
+                            // gives the delivery below an immutable source to
+                            // name; without it delivery_events can never be
+                            // written (its FK is NOT NULL). A failure here must
+                            // not swallow the transcript, so the source is
+                            // optional and delivery proceeds unaudited.
+                            let source = record_canonical_dictation(
+                                &hm,
+                                wav_saved.then_some(file_name.as_str()),
+                                &wav_path_for_verify,
+                                &output,
+                                &processed,
+                            );
+
                             if processed.final_text.is_empty() {
                                 utils::hide_recording_overlay(&ah);
                                 set_tray_state(&ah, TrayIconState::Idle);
@@ -814,6 +925,7 @@ impl ShortcutAction for TranscribeAction {
                                 let paste_time = Instant::now();
                                 let final_text = processed.final_text;
                                 let rm_for_paste = Arc::clone(&rm);
+                                let audit = hm.canonical_db().ok().map(SqliteDeliveryAudit::new);
                                 ah.run_on_main_thread(move || {
                                     if rm_for_paste.was_cancelled_since(cancel_generation) {
                                         debug!("Transcription operation cancelled before paste");
@@ -824,8 +936,20 @@ impl ShortcutAction for TranscribeAction {
 
                                     // PAD-305: the destination is resolved from
                                     // settings, not decided inside the paste path.
+                                    // PAD-306: with a canonical source in hand the
+                                    // delivery is audited — exactly one event per
+                                    // delivery, success or failure (DATA-107).
                                     let sink = crate::delivery::sink_for(&ah_clone);
-                                    match sink.deliver(&final_text) {
+                                    let outcome = match (&source, &audit) {
+                                        (Some(source), Some(audit)) => deliver_with_audit(
+                                            sink.as_ref(),
+                                            audit,
+                                            source,
+                                            &final_text,
+                                        ),
+                                        _ => sink.deliver(&final_text),
+                                    };
+                                    match outcome {
                                         Ok(()) => debug!(
                                             "Text delivered to {} in {:?}",
                                             sink.destination().as_str(),
@@ -863,7 +987,7 @@ impl ShortcutAction for TranscribeAction {
                             // Save entry with empty text so user can retry
                             if wav_saved {
                                 if let Err(save_err) = hm.save_entry(
-                                    file_name,
+                                    file_name.clone(),
                                     String::new(),
                                     post_process,
                                     None,
@@ -872,6 +996,17 @@ impl ShortcutAction for TranscribeAction {
                                     error!("Failed to save failed history entry: {}", save_err);
                                 }
                             }
+
+                            // PAD-306: a failed dictation is representable too —
+                            // a terminal attempt carrying the error, never
+                            // canonical. Without it the failure is invisible in
+                            // the canonical tables.
+                            record_canonical_failure(
+                                &hm,
+                                wav_saved.then_some(file_name.as_str()),
+                                &wav_path_for_verify,
+                                &err.to_string(),
+                            );
                             utils::hide_recording_overlay(&ah);
                             set_tray_state(&ah, TrayIconState::Idle);
                         }

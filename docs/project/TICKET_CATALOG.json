@@ -2080,7 +2080,7 @@
         "PAD-305"
       ],
       "gate": "G4",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/actions.rs",
         "src-tauri/src/delivery/**",
@@ -2089,7 +2089,9 @@
         "src-tauri/src/storage/repositories/transcriptions.rs",
         "src-tauri/src/storage/repositories/representations.rs",
         "src-tauri/src/storage/repositories/deliveries.rs",
-        "src-tauri/tests/**"
+        "src-tauri/tests/**",
+        "src-tauri/Cargo.toml",
+        "src-tauri/src/managers/transcription.rs"
       ],
       "forbidden_paths": [
         "src-tauri/src/storage/migrations.rs",
@@ -2099,7 +2101,6 @@
         "src/components/Sidebar.tsx",
         "package.json",
         "bun.lock",
-        "src-tauri/Cargo.toml",
         "src-tauri/Cargo.lock",
         ".github/workflows/**"
       ],
