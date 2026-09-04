@@ -42,7 +42,7 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 | 3 | PAD-302 | G3 | DONE | 1 | `phase/03-scratchpad` |
 | 3 | PAD-303 | G3 | DONE | 1 | `phase/03-scratchpad` |
 | 3 | PAD-305 | G3 | DONE | 1 | `phase/03-scratchpad` |
-| 4 | KB-401 | G4 | NOT_STARTED | 0 | `` |
+| 4 | KB-401 | G4 | IN_PROGRESS | 1 | `phase/04-knowledge-kb401` |
 | 4 | KB-402 | G4 | NOT_STARTED | 0 | `` |
 | 4 | KB-403 | G4 | NOT_STARTED | 0 | `` |
 | 4 | KB-404 | G4 | NOT_STARTED | 0 | `` |

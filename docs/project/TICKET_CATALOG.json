@@ -461,7 +461,8 @@
       "status": "NOT_STARTED",
       "allowed_paths": [
         "src-tauri/src/managers/knowledge.rs",
-        "src-tauri/tests/markdown_export/**"
+        "src-tauri/tests/markdown_export/**",
+        "src-tauri/Cargo.toml"
       ],
       "forbidden_paths": [
         "src-tauri/src/lib.rs",
@@ -473,7 +474,6 @@
         "src/i18n/**",
         "package.json",
         "bun.lock",
-        "src-tauri/Cargo.toml",
         "src-tauri/Cargo.lock",
         ".github/workflows/**"
       ],
@@ -754,7 +754,9 @@
       "status": "NOT_STARTED",
       "allowed_paths": [
         "src-tauri/src/storage/repositories/exports.rs",
-        "src-tauri/tests/export_outbox/**"
+        "src-tauri/tests/export_outbox/**",
+        "src-tauri/src/storage/repositories/mod.rs",
+        "src-tauri/Cargo.toml"
       ],
       "forbidden_paths": [
         "src-tauri/src/lib.rs",
@@ -766,7 +768,6 @@
         "src/i18n/**",
         "package.json",
         "bun.lock",
-        "src-tauri/Cargo.toml",
         "src-tauri/Cargo.lock",
         ".github/workflows/**"
       ],
@@ -1509,22 +1510,22 @@
         "PAD-306"
       ],
       "gate": "G4",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/src/managers/knowledge.rs",
-        "src-tauri/tests/knowledge_dto/**"
+        "src-tauri/tests/knowledge_dto/**",
+        "src-tauri/src/managers/mod.rs",
+        "src-tauri/Cargo.toml"
       ],
       "forbidden_paths": [
         "src-tauri/src/lib.rs",
         "src-tauri/src/commands/mod.rs",
-        "src-tauri/src/managers/mod.rs",
         "src/App.tsx",
         "src/components/Sidebar.tsx",
         "src/bindings.ts",
         "src/i18n/**",
         "package.json",
         "bun.lock",
-        "src-tauri/Cargo.toml",
         "src-tauri/Cargo.lock",
         ".github/workflows/**"
       ],
