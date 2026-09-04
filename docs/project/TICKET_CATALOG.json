@@ -757,7 +757,8 @@
         "src-tauri/tests/export_outbox/**",
         "src-tauri/src/storage/repositories/mod.rs",
         "src-tauri/Cargo.toml",
-        "src-tauri/src/storage/migrations.rs"
+        "src-tauri/src/storage/migrations.rs",
+        "src-tauri/tests/migrations/**"
       ],
       "forbidden_paths": [
         "src-tauri/src/lib.rs",

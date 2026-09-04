@@ -1,6 +1,6 @@
 //! DATA-102: legacy fixture migration — the acceptance-critical mapping.
 
-use handy_app_lib::storage::migrations::open_and_migrate;
+use handy_app_lib::storage::migrations::{open_and_migrate, TARGET_VERSION};
 use handy_app_lib::storage::models::{AttemptProvenance, AttemptStatus};
 
 fn seed_legacy_fixture(path: &std::path::Path) {
@@ -58,7 +58,9 @@ fn legacy_fixture_maps_to_canonical_tables() {
 
     let (db, report) = open_and_migrate(&path, "0.9.6-test").expect("migrate legacy fixture");
     assert_eq!(report.from_version, 4, "upstream-migrated db starts at 4");
-    assert_eq!(report.to_version, 11);
+    // Bound to TARGET_VERSION, not a literal: the assertion means "migrated
+    // to the current target", so a schema step does not need this file edited.
+    assert_eq!(report.to_version, TARGET_VERSION);
     assert_eq!(report.legacy_rows_backfilled, 3);
 
     // Acceptance: legacy table preserved untouched.
@@ -180,5 +182,5 @@ fn legacy_fixture_maps_to_canonical_tables() {
 
     // Re-run: idempotent backfill, no duplicates.
     let again = db.migrate("0.9.6-test", None).unwrap();
-    assert_eq!(again.from_version, 11);
+    assert_eq!(again.from_version, TARGET_VERSION);
 }
