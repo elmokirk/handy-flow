@@ -668,7 +668,7 @@ impl HistoryManager {
         Ok(())
     }
 
-    fn format_timestamp_title(&self, timestamp: i64) -> String {
+    pub(crate) fn format_timestamp_title(&self, timestamp: i64) -> String {
         if let Some(utc_datetime) = DateTime::from_timestamp(timestamp, 0) {
             // Convert UTC to local timezone
             let local_datetime = utc_datetime.with_timezone(&Local);
@@ -791,7 +791,7 @@ impl HistoryManager {
         })
     }
 
-    fn canonical_db(&self) -> Result<AppDatabase> {
+    pub(crate) fn canonical_db(&self) -> Result<AppDatabase> {
         Ok(AppDatabase::open(&self.db_path)?)
     }
 

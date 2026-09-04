@@ -9,6 +9,8 @@
 //! decides *where* text goes. Adding a destination (Phase 4 KB capture,
 //! Phase 5 REST/MCP) means adding a sink, not a branch in the paste path.
 
+pub mod pipeline;
+
 use std::fmt;
 
 use tauri::AppHandle;
