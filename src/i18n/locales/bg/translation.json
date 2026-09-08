@@ -639,6 +639,7 @@
     "updateAvailableShort": "Налична актуализация",
     "upToDate": "Актуална версия",
     "updateCheckingDisabled": "Проверката за актуализации е изключена",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "Изтегля се... {{progress}}%",
     "installing": "Инсталиране...",
     "preparing": "Подготовка...",

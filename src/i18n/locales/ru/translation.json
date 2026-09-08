@@ -639,6 +639,7 @@
     "updateAvailableShort": "Доступно обновление",
     "upToDate": "Не требует обновлений",
     "updateCheckingDisabled": "Проверка обновлений отключена",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "Загрузка... {{progress}} %",
     "installing": "Установка...",
     "preparing": "Подготовка...",

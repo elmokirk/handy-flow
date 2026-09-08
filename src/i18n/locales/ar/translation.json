@@ -639,6 +639,7 @@
     "updateAvailableShort": "تحديث متاح",
     "upToDate": "محدث",
     "updateCheckingDisabled": "تم تعطيل التحقق من التحديث",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "...جاري التنزيل {{progress}}%",
     "installing": "...جاري التثبيت",
     "preparing": "...جاري التحضير",

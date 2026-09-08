@@ -639,6 +639,7 @@
     "updateAvailableShort": "יש עדכון זמין",
     "upToDate": "מעודכן",
     "updateCheckingDisabled": "בדיקת העדכונים כבויה",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "מוריד... {{progress}}%",
     "installing": "מתקין...",
     "preparing": "מכין...",

@@ -17,6 +17,16 @@ interface UpdateCheckerProps {
   className?: string;
 }
 
+// In-app self-updates target the private fork release, whose assets require
+// authentication. The built-in updater plugin cannot attach a GitHub token,
+// so the app must never call it in that posture — the footer routes users
+// to the authenticated GitHub release page instead.
+const PRIVATE_RELEASE_ENDPOINT =
+  "https://github.com/elmokirk/handy-flow/releases";
+
+const isInAppUpdaterDisabled = () =>
+  import.meta.env.VITE_UPDATE_SOURCE !== "public";
+
 const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   const { t } = useTranslation();
   // Update checking state
@@ -33,7 +43,8 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
 
   const { settings, isLoading } = useSettings();
   const settingsLoaded = !isLoading && settings !== null;
-  const updateChecksEnabled = settings?.update_checks_enabled ?? false;
+  const updateChecksEnabled =
+    (settings?.update_checks_enabled ?? false) && !isInAppUpdaterDisabled();
 
   const upToDateTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const isManualCheckRef = useRef(false);
@@ -55,6 +66,12 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
     }
 
     checkForUpdates();
+  }, [settingsLoaded, updateChecksEnabled]);
+
+  useEffect(() => {
+    // Manual checks are only offered when the in-app updater can actually
+    // reach its update source.
+    if (isInAppUpdaterDisabled()) return;
 
     // Listen for update check events
     const updateUnlisten = listen("check-for-updates", () => {
@@ -62,12 +79,9 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
     });
 
     return () => {
-      if (upToDateTimeoutRef.current) {
-        clearTimeout(upToDateTimeoutRef.current);
-      }
       updateUnlisten.then((fn) => fn());
     };
-  }, [settingsLoaded, updateChecksEnabled]);
+  }, []);
 
   // Update checking functions
   const checkForUpdates = async () => {
@@ -120,7 +134,6 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
       setShowPortableUpdateDialog(true);
       return;
     }
-
     try {
       setIsInstalling(true);
       setDownloadProgress(0);
@@ -166,7 +179,9 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   // Update status functions
   const getUpdateStatusText = () => {
     if (!updateChecksEnabled) {
-      return t("footer.updateCheckingDisabled");
+      return isInAppUpdaterDisabled()
+        ? t("footer.updateViaGitHub")
+        : t("footer.updateCheckingDisabled");
     }
     if (isInstalling) {
       return downloadProgress > 0 && downloadProgress < 100
@@ -184,7 +199,11 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   };
 
   const getUpdateStatusAction = () => {
-    if (!updateChecksEnabled) return undefined;
+    if (!updateChecksEnabled) {
+      return isInAppUpdaterDisabled()
+        ? () => openUrl(PRIVATE_RELEASE_ENDPOINT)
+        : undefined;
+    }
     if (updateAvailable && !isInstalling) return installUpdate;
     if (!isChecking && !isInstalling && !updateAvailable)
       return handleManualUpdateCheck;

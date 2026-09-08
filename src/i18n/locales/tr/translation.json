@@ -639,6 +639,7 @@
     "updateAvailableShort": "Güncelleme mevcut",
     "upToDate": "Güncel",
     "updateCheckingDisabled": "Güncelleme Kontrolü Devre Dışı",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "İndiriliyor... %{{progress}}",
     "installing": "Yükleniyor...",
     "preparing": "Hazırlanıyor...",

@@ -639,6 +639,7 @@
     "updateAvailableShort": "アップデートあり",
     "upToDate": "最新です",
     "updateCheckingDisabled": "アップデート確認無効",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "ダウンロード中… {{progress}}%",
     "installing": "インストール中…",
     "preparing": "準備中…",

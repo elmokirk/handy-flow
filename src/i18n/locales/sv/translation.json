@@ -639,6 +639,7 @@
     "updateAvailableShort": "Uppdatering tillgänglig",
     "upToDate": "Uppdaterad",
     "updateCheckingDisabled": "Uppdateringskontroll inaktiverad",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "Laddar ner... {{progress}}%",
     "installing": "Installerar...",
     "preparing": "Förbereder...",
