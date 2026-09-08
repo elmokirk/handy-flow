@@ -4,6 +4,7 @@
 pub mod captures;
 pub mod deliveries;
 pub mod dictionary;
+pub mod exports;
 pub mod notes;
 pub mod prompt_profiles;
 pub mod representations;
