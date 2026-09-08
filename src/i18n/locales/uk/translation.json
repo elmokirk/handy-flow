@@ -639,6 +639,7 @@
     "updateAvailableShort": "Доступне оновлення",
     "upToDate": "Актуальна версія",
     "updateCheckingDisabled": "Перевірка оновлень вимкнена",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "Завантаження... {{progress}}%",
     "installing": "Встановлення...",
     "preparing": "Підготовка...",

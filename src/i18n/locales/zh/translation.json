@@ -639,6 +639,7 @@
     "updateAvailableShort": "有可用更新",
     "upToDate": "已是最新版本",
     "updateCheckingDisabled": "更新检查已禁用",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "下载中... {{progress}}%",
     "installing": "安装中...",
     "preparing": "准备中...",

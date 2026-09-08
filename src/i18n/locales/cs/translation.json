@@ -639,6 +639,7 @@
     "updateAvailableShort": "Dostupná aktualizace",
     "upToDate": "Vše aktuální",
     "updateCheckingDisabled": "Kontrola aktualizací vypnuta",
+    "updateViaGitHub": "Update via GitHub",
     "downloading": "Stahování... {{progress}}%",
     "installing": "Instalace...",
     "preparing": "Příprava...",
