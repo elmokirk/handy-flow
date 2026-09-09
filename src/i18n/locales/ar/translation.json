@@ -603,6 +603,11 @@
           "title": "Handy (upstream)",
           "description": "Handy Flow is a fork of the open-source Handy dictation app",
           "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
+        },
+        "sponsor": {
+          "title": "Support the upstream project",
+          "description": "Handy Flow is free and stays local. If you want to contribute, consider supporting the original Handy project.",
+          "button": "Donate to Handy"
         }
       },
       "whatsNewUpdates": {
@@ -613,6 +618,12 @@
         "title": "Releases",
         "description": "Download the latest version from GitHub Releases",
         "button": "Open Releases"
+      },
+      "forkNotice": {
+        "title": "Handy Flow is a fork of Handy",
+        "description": "Handy Flow is built on the open-source Handy dictation app by Christian Pais. All credit for the core dictation engine goes to the upstream project.",
+        "upstreamButton": "Visit upstream Handy",
+        "sponsorButton": "Support upstream (Donate)"
       }
     },
     "modelSettings": {

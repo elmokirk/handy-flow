@@ -626,6 +626,11 @@
           "title": "Handy (Upstream)",
           "description": "Handy Flow ist ein Fork der Open-Source-Diktier-App Handy",
           "details": "Dank an Christian Pais und alle Upstream-Beitragenden. Handy Flow baut auf ihrer Arbeit auf: https://github.com/cjpais/Handy"
+        },
+        "sponsor": {
+          "title": "Upstream-Projekt unterstützen",
+          "description": "Handy Flow ist kostenlos und bleibt lokal. Wer contribute möchte, kann das ursprüngliche Handy-Projekt unterstützen.",
+          "button": "An Handy spenden"
         }
       },
       "whatsNewUpdates": {
@@ -636,6 +641,12 @@
         "title": "Releases",
         "description": "Neueste Version von GitHub Releases herunterladen",
         "button": "Releases öffnen"
+      },
+      "forkNotice": {
+        "title": "Handy Flow ist ein Fork von Handy",
+        "description": "Handy Flow baut auf der Open-Source-Diktier-App Handy von Christian Pais auf. Der Dank für die Diktat-Engine geht an das Upstream-Projekt.",
+        "upstreamButton": "Upstream Handy besuchen",
+        "sponsorButton": "Upstream unterstützen (Spenden)"
       }
     }
   },
