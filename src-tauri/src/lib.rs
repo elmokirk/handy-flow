@@ -939,6 +939,8 @@ pub fn run(cli_args: CliArgs) {
             commands::history::update_history_limit,
             commands::history::update_recording_retention_period,
             helpers::clamshell::is_laptop,
+            commands::wispr_dry_run,
+            commands::wispr_run_import,
             show_floating_bar,
             hide_floating_bar,
             commands::toggle_transcription,

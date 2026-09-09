@@ -1163,6 +1163,32 @@ async isLaptop() : Promise<Result<boolean, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Count-only Wispr Flow import preview (IMP-002). Opens the user-provided
+ * flow.sqlite READ-ONLY and reports what a full import would bring in —
+ * nothing is written anywhere.
+ */
+async wisprDryRun(dbPath: string) : Promise<Result<ImportReport, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("wispr_dry_run", { dbPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Full Wispr Flow import (IMP-002). Idempotent: re-runs skip already
+ * imported rows via the captures.import_ref unique index. Audio blobs are
+ * extracted into the app's recordings dir.
+ */
+async wisprRunImport(dbPath: string) : Promise<Result<ImportReport, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("wispr_run_import", { dbPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async showFloatingBar() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("show_floating_bar") };
@@ -1306,6 +1332,7 @@ export type ImplementationChangeResult = { success: boolean;
  * List of binding IDs that were reset to defaults due to incompatibility
  */
 reset_bindings: string[] }
+export type ImportReport = { history_imported: number; history_skipped: number; audio_extracted: number; dictionary_imported: number; snippet_triggers_imported: number; polish_imported: number; errors: string[] }
 export type KeyboardDiagnosticReport = { secure_input_enabled: boolean; culprit_pid: number | null; culprit_name: string | null; 
 /**
  * Counts only — key identity is deliberately never captured.

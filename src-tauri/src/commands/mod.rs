@@ -120,6 +120,36 @@ pub fn is_portable() -> bool {
     crate::portable::is_portable()
 }
 
+/// Count-only Wispr Flow import preview (IMP-002). Opens the user-provided
+/// flow.sqlite READ-ONLY and reports what a full import would bring in —
+/// nothing is written anywhere.
+#[tauri::command]
+#[specta::specta]
+pub fn wispr_dry_run(
+    db_path: String,
+) -> Result<crate::managers::wispr_import::ImportReport, String> {
+    crate::managers::wispr_import::dry_run(std::path::Path::new(&db_path))
+}
+
+/// Full Wispr Flow import (IMP-002). Idempotent: re-runs skip already
+/// imported rows via the captures.import_ref unique index. Audio blobs are
+/// extracted into the app's recordings dir.
+#[tauri::command]
+#[specta::specta]
+pub fn wispr_run_import(
+    app: AppHandle,
+    db_path: String,
+) -> Result<crate::managers::wispr_import::ImportReport, String> {
+    let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
+    let db = AppDatabase::open(dir.join("history.db")).map_err(|e| e.to_string())?;
+    let recordings_dir = dir.join("recordings");
+    crate::managers::wispr_import::run_import(
+        std::path::Path::new(&db_path),
+        &db,
+        Some(&recordings_dir),
+    )
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn get_app_dir_path(app: AppHandle) -> Result<String, String> {

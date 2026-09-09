@@ -16,7 +16,7 @@ use crate::storage::repositories::captures::{insert_capture, NewCapture};
 use crate::storage::repositories::dictionary as dict_repo;
 use crate::storage::repositories::snippets as snip_repo;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, specta::Type)]
 pub struct ImportReport {
     pub history_imported: usize,
     pub history_skipped: usize,

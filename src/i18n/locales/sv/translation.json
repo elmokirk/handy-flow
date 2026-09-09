@@ -272,7 +272,8 @@
         "output": "Utmatning",
         "transcription": "Transkription",
         "history": "Historik",
-        "experimental": "Experimentellt"
+        "experimental": "Experimentellt",
+        "migration": "Migration"
       },
       "experimentalToggle": {
         "label": "Experimentella funktioner",
@@ -651,6 +652,22 @@
         "description": "Handy Flow is built on the open-source Handy dictation app by Christian Pais. All credit for the core dictation engine goes to the upstream project.",
         "upstreamButton": "Visit upstream Handy",
         "sponsorButton": "Support upstream (Donate)"
+      }
+    },
+    "wisprMigration": {
+      "title": "Migrate from Wispr Flow",
+      "description": "Import your Wispr Flow history, dictionary and snippets. Pick your flow.sqlite (usually %APPDATA%\\Wispr Flow\\flow.sqlite). Read-only: Wispr Flow is not modified, and re-running skips already imported entries.",
+      "pickButton": "Choose flow.sqlite",
+      "working": "Working…",
+      "dryRunTitle": "Found in this database:",
+      "importButton": "Import now",
+      "done": "Import complete. Re-running is safe and will skip everything already imported.",
+      "counts": {
+        "history": "History entries",
+        "audio": "Audio recordings",
+        "dictionary": "Dictionary terms",
+        "snippets": "Snippet triggers",
+        "polish": "Polished versions"
       }
     }
   },

@@ -272,7 +272,8 @@
         "output": "Ausgabe",
         "transcription": "Transkription",
         "history": "Verlauf",
-        "experimental": "Experimentell"
+        "experimental": "Experimentell",
+        "migration": "Migration"
       },
       "experimentalToggle": {
         "label": "Experimentelle Funktionen",
@@ -651,6 +652,22 @@
         "description": "Handy Flow baut auf der Open-Source-Diktier-App Handy von Christian Pais auf. Der Dank für die Diktat-Engine geht an das Upstream-Projekt.",
         "upstreamButton": "Upstream Handy besuchen",
         "sponsorButton": "Upstream unterstützen (Spenden)"
+      }
+    },
+    "wisprMigration": {
+      "title": "Von Wispr Flow migrieren",
+      "description": "Importiert Wispr-Flow-Verlauf, Wörterbuch und Snippets. Wähle deine flow.sqlite (meist %APPDATA%\\Wispr Flow\\flow.sqlite). Nur lesend: Wispr Flow wird nicht verändert; erneutes Ausführen überspringt bereits Importiertes.",
+      "pickButton": "flow.sqlite wählen",
+      "working": "Arbeite…",
+      "dryRunTitle": "Gefunden in dieser Datenbank:",
+      "importButton": "Jetzt importieren",
+      "done": "Import abgeschlossen. Erneutes Ausführen ist gefahrlos und überspringt Bereits importiertes.",
+      "counts": {
+        "history": "Verlaufseinträge",
+        "audio": "Audioaufnahmen",
+        "dictionary": "Wörterbuch-Terme",
+        "snippets": "Snippet-Trigger",
+        "polish": "Verbesserte Versionen"
       }
     }
   },
