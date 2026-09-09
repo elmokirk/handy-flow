@@ -55,11 +55,16 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 | 5 | QUERY-501 | G5 | NOT_STARTED | 0 | `` |
 | 5 | REST-511 | G5 | NOT_STARTED | 0 | `` |
 | 5 | REST-512 | G5 | NOT_STARTED | 0 | `` |
+| 6 | FEAT-104 | G6 | DONE | 0 | `` |
+| 6 | IMP-002 | G6 | DONE | 0 | `` |
 | 6 | REL-601 | G6 | DONE | 1 | `feat/REL-601-updater` |
 | 6 | REL-602 | G6 | NOT_STARTED | 0 | `` |
 | 6 | REL-603 | G6 | NOT_STARTED | 0 | `` |
 | 6 | REL-604 | G6 | NOT_STARTED | 0 | `` |
 | 6 | UAT-605 | G6 | NOT_STARTED | 0 | `` |
+| 6 | UI-101 | G6 | DONE | 0 | `` |
+| 6 | UI-102 | G6 | DONE | 0 | `` |
+| 6 | UI-103 | G6 | DONE | 0 | `` |
 | BOOT | BOOT-001 | BG | DONE | 1 | `bootstrap/control-plane` |
 | BOOT | BOOT-002 | BG | DONE | 1 | `bootstrap/control-plane` |
 | BOOT | BOOT-003 | BG | DONE | 3 | `bootstrap/control-plane` |

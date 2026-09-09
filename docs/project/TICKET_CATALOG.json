@@ -2119,6 +2119,126 @@
       ],
       "max_agent_cycles": 3,
       "task_packet_required": true
+    },
+    "UI-101": {
+      "ticket_id": "UI-101",
+      "phase": "6",
+      "title": "Brand sweep: vulcan tray icons, fork attribution, upstream tribute",
+      "owner": "UI Agent",
+      "dependencies": [
+        "REL-601"
+      ],
+      "gate": "G6",
+      "status": "DONE",
+      "allowed_paths": [
+        "repo/**"
+      ],
+      "forbidden_paths": [],
+      "qa_profile": [
+        "unit",
+        "integration"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": false
+    },
+    "UI-102": {
+      "ticket_id": "UI-102",
+      "phase": "6",
+      "title": "Overlay brand pill (black/orange/white border, full radius)",
+      "owner": "UI Agent",
+      "dependencies": [
+        "REL-601"
+      ],
+      "gate": "G6",
+      "status": "DONE",
+      "allowed_paths": [
+        "repo/**"
+      ],
+      "forbidden_paths": [],
+      "qa_profile": [
+        "unit",
+        "integration"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": false
+    },
+    "UI-103": {
+      "ticket_id": "UI-103",
+      "phase": "6",
+      "title": "Knowledge UI: delete resurrect fix, trash buttons, stable tabs",
+      "owner": "UI Agent",
+      "dependencies": [
+        "KB-402"
+      ],
+      "gate": "G6",
+      "status": "DONE",
+      "allowed_paths": [
+        "repo/**"
+      ],
+      "forbidden_paths": [],
+      "qa_profile": [
+        "unit",
+        "integration"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": false
+    },
+    "FEAT-104": {
+      "ticket_id": "FEAT-104",
+      "phase": "6",
+      "title": "Always-on floating dictation launcher bar",
+      "owner": "UI Agent",
+      "dependencies": [
+        "REL-601"
+      ],
+      "gate": "G6",
+      "status": "DONE",
+      "allowed_paths": [
+        "repo/**"
+      ],
+      "forbidden_paths": [],
+      "qa_profile": [
+        "unit",
+        "integration"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": false
+    },
+    "IMP-002": {
+      "ticket_id": "IMP-002",
+      "phase": "6",
+      "title": "In-app Wispr Flow migration guide",
+      "owner": "UI Agent",
+      "dependencies": [
+        "IMP-001"
+      ],
+      "gate": "G6",
+      "status": "DONE",
+      "allowed_paths": [
+        "repo/**"
+      ],
+      "forbidden_paths": [],
+      "qa_profile": [
+        "unit",
+        "integration"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": false
     }
   }
 }
