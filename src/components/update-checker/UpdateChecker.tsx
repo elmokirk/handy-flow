@@ -61,8 +61,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   // Browser-fallback ping: version found in the public latest.json that is
   // newer than the running app. Drives the footer badge next to the
   // "Update via GitHub" link.
-  const [fallbackUpdateAvailable, setFallbackUpdateAvailable] =
-    useState(false);
+  const [fallbackUpdateAvailable, setFallbackUpdateAvailable] = useState(false);
 
   const { settings, isLoading } = useSettings();
   const settingsLoaded = !isLoading && settings !== null;
