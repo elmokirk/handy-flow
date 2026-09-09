@@ -10,9 +10,12 @@ import { AppLanguageSelector } from "../AppLanguageSelector";
 import { ShowWhatsNewOnUpdate } from "../ShowWhatsNewOnUpdate";
 import { ThemeSelector } from "../ThemeSelector";
 import { LogDirectory } from "../debug";
+import VulcanHand from "../../icons/VulcanHand";
 
 const RELEASES_URL = "https://github.com/elmokirk/handy-flow/releases";
 const SOURCE_URL = "https://github.com/elmokirk/handy-flow";
+const UPSTREAM_URL = "https://github.com/cjpais/Handy";
+const UPSTREAM_SPONSOR_URL = "https://github.com/sponsors/cjpais";
 
 export const AboutSettings: React.FC = () => {
   const { t } = useTranslation();
@@ -34,6 +37,36 @@ export const AboutSettings: React.FC = () => {
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
+      <div className="w-full border border-logo-primary/40 bg-logo-primary/10 rounded-lg p-4 flex items-start gap-3">
+        <div className="shrink-0 mt-0.5">
+          <VulcanHand width={28} height={28} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-semibold">
+            {t("settings.about.forkNotice.title")}
+          </p>
+          <p className="text-sm text-text/70">
+            {t("settings.about.forkNotice.description")}
+          </p>
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => openUrl(UPSTREAM_URL)}
+            >
+              {t("settings.about.forkNotice.upstreamButton")}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => openUrl(UPSTREAM_SPONSOR_URL)}
+            >
+              {t("settings.about.forkNotice.sponsorButton")}
+            </Button>
+          </div>
+        </div>
+      </div>
+
       <SettingsGroup title={t("settings.about.title")}>
         <AppLanguageSelector descriptionMode="tooltip" grouped={true} />
         <ThemeSelector descriptionMode="tooltip" grouped={true} />
@@ -100,6 +133,20 @@ export const AboutSettings: React.FC = () => {
           <div className="text-sm text-mid-gray">
             {t("settings.about.acknowledgments.upstream.details")}
           </div>
+        </SettingContainer>
+        <SettingContainer
+          title={t("settings.about.acknowledgments.sponsor.title")}
+          description={t("settings.about.acknowledgments.sponsor.description")}
+          grouped={true}
+          layout="stacked"
+        >
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={() => openUrl(UPSTREAM_SPONSOR_URL)}
+          >
+            {t("settings.about.acknowledgments.sponsor.button")}
+          </Button>
         </SettingContainer>
       </SettingsGroup>
     </div>
