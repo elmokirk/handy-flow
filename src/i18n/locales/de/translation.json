@@ -728,6 +728,11 @@
     "replacement": "replacement",
     "importCustomWords": "Import custom words",
     "exportCopy": "Export copy",
-    "profilesEmpty": "No profiles yet. Styles/Transforms hotkey UI is coming next (PROMPT-222)."
+    "profilesEmpty": "No profiles yet. Styles/Transforms hotkey UI is coming next (PROMPT-222).",
+    "tabs": {
+      "dictionary": "Wörterbuch",
+      "snippets": "Snippets",
+      "profiles": "Profile"
+    }
   }
 }
