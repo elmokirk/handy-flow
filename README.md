@@ -1,10 +1,12 @@
-# Handy
+# Handy Flow
 
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/WVBeWsNXK4)
 
 **A free, open source, and extensible speech-to-text application that works completely offline.**
 
-Handy is a cross-platform desktop application that provides simple, privacy-focused speech transcription. Press a shortcut, speak, and have your words appear in any text field. This happens on your own computer without sending any information to the cloud.
+> **ℹ️ Fork notice:** Handy Flow is a personal fork of [Handy](https://github.com/cjpais/Handy) by Christian Pais. The core dictation engine and the majority of the codebase come from the upstream project — all credit goes there. If you want the polished, community-maintained experience, use upstream Handy. If you want to support the original author, [sponsor cjpais](https://github.com/sponsors/cjpais).
+
+Handy Flow is a cross-platform desktop application that provides simple, privacy-focused speech transcription. Press a shortcut, speak, and have your words appear in any text field. This happens on your own computer without sending any information to the cloud.
 
 ## Why Handy?
 
@@ -501,8 +503,10 @@ The goal is to create both a useful tool and a foundation for others to build up
 
 ## Sponsors
 
+Sponsorship belongs to the upstream project. Support [cjpais](https://github.com/sponsors/cjpais) — the author of Handy:
+
 <div align="center">
-  We're grateful for the support of our sponsors who help make Handy possible:
+  These sponsors support the upstream Handy project:
   <br><br>
   <a href="https://wordcab.com">
     <img src="sponsor-images/wordcab.png" alt="Wordcab" width="120" height="120">
