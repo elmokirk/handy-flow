@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "फिलर शब्दहरू हटाउनुहोस्",
         "description": "ट्रान्सक्रिप्सनबाट सामान्य हिचकिचाहटका शब्दहरू हटाउँछ। तिनलाई राख्न यो विकल्प बन्द गर्नुहोस्।"
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

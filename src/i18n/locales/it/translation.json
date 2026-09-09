@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "Rimuovi le parole riempitive",
         "description": "Rimuove le parole di esitazione più comuni dalle trascrizioni. Disattiva per mantenerle."
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "Премахване на думи паразити",
         "description": "Премахва често срещаните думи за колебание от транскрипциите. Изключете, за да ги запазите."
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

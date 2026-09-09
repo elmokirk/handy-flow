@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "फिलर शब्द हटाएं",
         "description": "ट्रांसक्रिप्शन से आम हिचकिचाहट वाले शब्द हटाता है। उन्हें बनाए रखने के लिए इसे बंद करें।"
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

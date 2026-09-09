@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "移除語助詞",
         "description": "從轉錄中移除常見的語助詞。關閉此選項即可保留這些詞。"
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

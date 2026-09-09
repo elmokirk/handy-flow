@@ -387,6 +387,9 @@ pub struct AppSettings {
     pub onboarding_completed: bool,
     #[serde(default = "default_always_on_microphone")]
     pub always_on_microphone: bool,
+    /// FEAT-104: always-on floating dictation launcher bar, bottom-center.
+    #[serde(default = "default_floating_bar_enabled")]
+    pub floating_bar_enabled: bool,
     #[serde(default)]
     pub selected_microphone: Option<String>,
     /// Which input channel to use on the selected microphone device.
@@ -559,6 +562,10 @@ fn default_overlay_style() -> OverlayStyle {
 }
 
 fn default_vad_enabled() -> bool {
+    true
+}
+
+fn default_floating_bar_enabled() -> bool {
     true
 }
 
@@ -903,6 +910,7 @@ pub fn get_default_settings() -> AppSettings {
         selected_model: "".to_string(),
         onboarding_completed: false,
         always_on_microphone: false,
+        floating_bar_enabled: default_floating_bar_enabled(),
         selected_microphone: None,
         selected_channel: None,
         clamshell_microphone: None,

@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "Opvulwoorden verwijderen",
         "description": "Verwijdert veelvoorkomende aarzelwoorden uit transcripties. Schakel dit uit om ze te behouden."
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

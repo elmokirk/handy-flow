@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "Ta bort utfyllnadsord",
         "description": "Tar bort vanliga tvekljud från transkriberingar. Stäng av för att behålla dem."
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

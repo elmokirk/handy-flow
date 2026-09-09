@@ -1162,6 +1162,31 @@ async isLaptop() : Promise<Result<boolean, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async showFloatingBar() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("show_floating_bar") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async hideFloatingBar() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("hide_floating_bar") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Toggle dictation from UI surfaces without a keyboard shortcut (FEAT-104
+ * floating bar, tray alternatives). Routes through the same coordinator the
+ * global shortcut and `--toggle-transcription` CLI flag use, so start/stop
+ * semantics stay identical across entry points.
+ */
+async toggleTranscription() : Promise<void> {
+    await TAURI_INVOKE("toggle_transcription");
 }
 }
 
@@ -1209,7 +1234,11 @@ bindings?: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk?: boolean
  * upgrading from before this key existed are blanked by the migration so they
  * see the current release's notes — see `apply_settings_migrations`.
  */
-whats_new_last_seen_version?: string; selected_model?: string; onboarding_completed?: boolean; always_on_microphone?: boolean; selected_microphone?: string | null; 
+whats_new_last_seen_version?: string; selected_model?: string; onboarding_completed?: boolean; always_on_microphone?: boolean; 
+/**
+ * FEAT-104: always-on floating dictation launcher bar, bottom-center.
+ */
+floating_bar_enabled?: boolean; selected_microphone?: string | null; 
 /**
  * Which input channel to use on the selected microphone device.
  * None means "average all channels" (original behavior).
