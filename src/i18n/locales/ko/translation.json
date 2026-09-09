@@ -615,22 +615,27 @@
         "description": "소스 코드 보기 및 기여",
         "button": "GitHub에서 보기"
       },
-      "supportDevelopment": {
-        "title": "개발 지원",
-        "description": "Handy 개발을 계속할 수 있도록 도와주세요",
-        "button": "후원하기"
-      },
       "acknowledgments": {
         "title": "감사의 말",
         "ggml": {
           "title": "ggml",
           "description": "OpenAI의 Whisper 자동 음성 인식 모델의 고성능 추론",
           "details": "Handy는 빠르고 로컬 음성-텍스트 처리를 위해 ggml를 사용합니다. Georgi Gerganov와 기여자들의 놀라운 작업에 감사드립니다."
+        },
+        "upstream": {
+          "title": "Handy (upstream)",
+          "description": "Handy Flow is a fork of the open-source Handy dictation app",
+          "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
         }
       },
       "whatsNewUpdates": {
         "label": "새 소식 표시",
         "description": "Handy 업데이트 후 릴리스 노트를 표시합니다"
+      },
+      "releases": {
+        "title": "Releases",
+        "description": "Download the latest version from GitHub Releases",
+        "button": "Open Releases"
       }
     }
   },
@@ -648,7 +653,8 @@
     "portableUpdateMessage": "포터블 설치는 자동으로 업데이트할 수 없습니다. 아래에서 사용 중인 시스템에 맞는 설치 프로그램을 다운로드해 실행하고 같은 폴더에 설치하세요. Data/ 폴더(설정, 모델, 녹음)는 그대로 유지됩니다.",
     "portableUpdateButton": "설치 프로그램 다운로드",
     "portableUpdateBrowseMessage": "포터블 설치는 자동으로 업데이트할 수 없습니다. GitHub Releases에서 사용 중인 시스템에 맞는 최신 버전을 다운로드해 같은 폴더에 설치하세요. Data/ 폴더(설정, 모델, 녹음)는 그대로 유지됩니다.",
-    "portableUpdateBrowseButton": "GitHub Releases 열기"
+    "portableUpdateBrowseButton": "GitHub Releases 열기",
+    "checkForNewVersion": "Check for new version"
   },
   "common": {
     "loading": "로딩 중...",

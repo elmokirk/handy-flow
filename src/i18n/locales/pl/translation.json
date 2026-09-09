@@ -615,22 +615,27 @@
         "description": "Zobacz kod źródłowy i współtwórz",
         "button": "Zobacz na GitHub"
       },
-      "supportDevelopment": {
-        "title": "Wspieraj rozwój",
-        "description": "Pomóż nam dalej rozwijać Handy",
-        "button": "Wesprzyj"
-      },
       "acknowledgments": {
         "title": "Podziękowania",
         "ggml": {
           "title": "ggml",
           "description": "Wydajne wykonywanie modelu rozpoznawania mowy Whisper od OpenAI",
           "details": "Handy używa ggml do szybkiego, lokalnego przetwarzania mowy na tekst. Dzięki niesamowitej pracy Georgi Gerganova i współtwórców."
+        },
+        "upstream": {
+          "title": "Handy (upstream)",
+          "description": "Handy Flow is a fork of the open-source Handy dictation app",
+          "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
         }
       },
       "whatsNewUpdates": {
         "label": "Pokaż nowości",
         "description": "Pokazuj informacje o wydaniu po aktualizacjach Handy"
+      },
+      "releases": {
+        "title": "Releases",
+        "description": "Download the latest version from GitHub Releases",
+        "button": "Open Releases"
       }
     }
   },
@@ -648,7 +653,8 @@
     "portableUpdateMessage": "Instalacji przenośnych nie można aktualizować automatycznie. Pobierz poniżej instalator dla swojego systemu, uruchom go i zainstaluj w tym samym folderze — Twój folder Data/ (ustawienia, modele, nagrania) pozostaje na miejscu.",
     "portableUpdateButton": "Pobierz instalator",
     "portableUpdateBrowseMessage": "Instalacji przenośnych nie można aktualizować automatycznie. Pobierz najnowszą wersję dla swojego systemu z GitHub Releases i zainstaluj ją w tym samym folderze — Twój folder Data/ (ustawienia, modele, nagrania) pozostaje na miejscu.",
-    "portableUpdateBrowseButton": "Otwórz GitHub Releases"
+    "portableUpdateBrowseButton": "Otwórz GitHub Releases",
+    "checkForNewVersion": "Check for new version"
   },
   "common": {
     "loading": "Wczytywanie...",

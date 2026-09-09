@@ -615,22 +615,27 @@
         "description": "Kaynak kodunu görüntüle ve katkıda bulun",
         "button": "GitHub'da Görüntüle"
       },
-      "supportDevelopment": {
-        "title": "Geliştirmeyi Destekle",
-        "description": "Handy'yi geliştirmeye devam etmemize yardımcı olun",
-        "button": "Bağış Yap"
-      },
       "acknowledgments": {
         "title": "Teşekkürler",
         "ggml": {
           "title": "ggml",
           "description": "Cihaz üzerinde makine öğrenmesi çıkarımı için yüksek performanslı tensör kütüphanesi",
           "details": "Handy'nin yerel konuşmadan metne dönüştürme özelliği transcribe.cpp ve ggml üzerine kuruludur. Georgi Gerganov'a ve katkıda bulunanlara harika çalışmaları için teşekkür ederiz."
+        },
+        "upstream": {
+          "title": "Handy (upstream)",
+          "description": "Handy Flow is a fork of the open-source Handy dictation app",
+          "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
         }
       },
       "whatsNewUpdates": {
         "label": "Yenilikleri Göster",
         "description": "Handy güncellemelerinden sonra sürüm notlarını göster"
+      },
+      "releases": {
+        "title": "Releases",
+        "description": "Download the latest version from GitHub Releases",
+        "button": "Open Releases"
       }
     }
   },
@@ -648,7 +653,8 @@
     "portableUpdateMessage": "Taşınabilir kurulumlar otomatik olarak güncellenemez. Aşağıdan sisteminize uygun yükleyiciyi indirin, çalıştırın ve aynı klasöre kurun — Data/ klasörünüz (ayarlar, modeller, kayıtlar) yerinde kalır.",
     "portableUpdateButton": "Yükleyiciyi indir",
     "portableUpdateBrowseMessage": "Taşınabilir kurulumlar otomatik olarak güncellenemez. Sisteminize uygun en son sürümü GitHub Releases’ten indirin ve aynı klasöre kurun — Data/ klasörünüz (ayarlar, modeller, kayıtlar) yerinde kalır.",
-    "portableUpdateBrowseButton": "GitHub Releases’i aç"
+    "portableUpdateBrowseButton": "GitHub Releases’i aç",
+    "checkForNewVersion": "Check for new version"
   },
   "common": {
     "loading": "Yükleniyor...",

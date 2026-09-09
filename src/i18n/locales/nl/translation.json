@@ -619,18 +619,23 @@
         "description": "Bekijk de broncode en draag bij",
         "button": "Bekijk op GitHub"
       },
-      "supportDevelopment": {
-        "title": "Ontwikkeling ondersteunen",
-        "description": "Help ons om te blijven bouwen aan Handy",
-        "button": "Doneren"
-      },
       "acknowledgments": {
         "title": "Dankbetuigingen",
         "ggml": {
           "title": "ggml",
           "description": "Krachtige tensorbibliotheek voor lokale AI-verwerking",
           "details": "Handy's lokale spraak-naar-tekst is gebouwd op transcribe.cpp en ggml. Met dank aan het geweldige werk van Georgi Gerganov en alle bijdragers."
+        },
+        "upstream": {
+          "title": "Handy (upstream)",
+          "description": "Handy Flow is a fork of the open-source Handy dictation app",
+          "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
         }
+      },
+      "releases": {
+        "title": "Releases",
+        "description": "Download the latest version from GitHub Releases",
+        "button": "Open Releases"
       }
     }
   },
@@ -648,7 +653,8 @@
     "portableUpdateMessage": "Draagbare (portable) installaties kunnen niet automatisch worden bijgewerkt. Download hieronder het installatiebestand voor je systeem, voer het uit en installeer in dezelfde map — je Data/-map (instellingen, modellen, opnames) blijft behouden.",
     "portableUpdateButton": "Installatiebestand downloaden",
     "portableUpdateBrowseMessage": "Draagbare (portable) installaties kunnen niet automatisch worden bijgewerkt. Download de nieuwste versie voor je systeem van GitHub Releases en installeer die in dezelfde map — je Data/-map (instellingen, modellen, opnames) blijft behouden.",
-    "portableUpdateBrowseButton": "GitHub Releases openen"
+    "portableUpdateBrowseButton": "GitHub Releases openen",
+    "checkForNewVersion": "Check for new version"
   },
   "whatsNew": {
     "title": "Nieuw in Handy v{{version}}"

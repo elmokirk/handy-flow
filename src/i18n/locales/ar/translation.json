@@ -592,22 +592,27 @@
         "description": "عرض كود المصدر والمساهمة",
         "button": "عرض على GitHub"
       },
-      "supportDevelopment": {
-        "title": "دعم التطوير",
-        "description": "ساعدنا في مواصلة بناء Handy",
-        "button": "تبرع"
-      },
       "acknowledgments": {
         "title": "شكر وتقدير",
         "ggml": {
           "title": "ggml",
           "description": "استنتاج عالي الأداء لنموذج التعرف التلقائي على الكلام Whisper من OpenAI",
           "details": ".يستخدم Handy برنامج ggml لمعالجة سريعة ومحلية لتحويل الكلام إلى نص. شكراً للعمل الرائع الذي قام به Georgi Gerganov والمساهمون"
+        },
+        "upstream": {
+          "title": "Handy (upstream)",
+          "description": "Handy Flow is a fork of the open-source Handy dictation app",
+          "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
         }
       },
       "whatsNewUpdates": {
         "label": "إظهار الجديد",
         "description": "إظهار ملاحظات الإصدار بعد تحديثات Handy"
+      },
+      "releases": {
+        "title": "Releases",
+        "description": "Download the latest version from GitHub Releases",
+        "button": "Open Releases"
       }
     },
     "modelSettings": {
@@ -648,7 +653,8 @@
     "portableUpdateMessage": "لا يمكن تحديث التثبيتات المحمولة تلقائيًا. نزّل المثبّت المناسب لنظامك من الزر أدناه، شغّله، وثبّته في المجلد نفسه — يبقى مجلد Data/ (الإعدادات والنماذج والتسجيلات) في مكانه.",
     "portableUpdateButton": "تنزيل المثبّت",
     "portableUpdateBrowseMessage": "لا يمكن تحديث التثبيتات المحمولة تلقائيًا. نزّل أحدث إصدار مناسب لنظامك من GitHub Releases وثبّته في المجلد نفسه — يبقى مجلد Data/ (الإعدادات والنماذج والتسجيلات) في مكانه.",
-    "portableUpdateBrowseButton": "فتح GitHub Releases"
+    "portableUpdateBrowseButton": "فتح GitHub Releases",
+    "checkForNewVersion": "Check for new version"
   },
   "common": {
     "loading": "...جاري التحميل",

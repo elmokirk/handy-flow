@@ -615,22 +615,27 @@
         "description": "Visualizar código fonte e contribuir",
         "button": "Ver no GitHub"
       },
-      "supportDevelopment": {
-        "title": "Apoiar o Desenvolvimento",
-        "description": "Ajude-nos a continuar construindo o Handy",
-        "button": "Doar"
-      },
       "acknowledgments": {
         "title": "Agradecimentos",
         "ggml": {
           "title": "ggml",
           "description": "Inferência de alto desempenho do modelo de reconhecimento automático de fala Whisper da OpenAI",
           "details": "O Handy usa ggml para processamento rápido e local de fala para texto. Agradecemos ao incrível trabalho de Georgi Gerganov e colaboradores."
+        },
+        "upstream": {
+          "title": "Handy (upstream)",
+          "description": "Handy Flow is a fork of the open-source Handy dictation app",
+          "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
         }
       },
       "whatsNewUpdates": {
         "label": "Mostrar novidades",
         "description": "Mostrar notas de versão após atualizações do Handy"
+      },
+      "releases": {
+        "title": "Releases",
+        "description": "Download the latest version from GitHub Releases",
+        "button": "Open Releases"
       }
     }
   },
@@ -648,7 +653,8 @@
     "portableUpdateMessage": "Instalações portáteis não podem ser atualizadas automaticamente. Baixe abaixo o instalador para o seu sistema, execute-o e instale na mesma pasta — a sua pasta Data/ (configurações, modelos, gravações) é mantida.",
     "portableUpdateButton": "Baixar instalador",
     "portableUpdateBrowseMessage": "Instalações portáteis não podem ser atualizadas automaticamente. Baixe a versão mais recente para o seu sistema no GitHub Releases e instale-a na mesma pasta — a sua pasta Data/ (configurações, modelos, gravações) é mantida.",
-    "portableUpdateBrowseButton": "Abrir GitHub Releases"
+    "portableUpdateBrowseButton": "Abrir GitHub Releases",
+    "checkForNewVersion": "Check for new version"
   },
   "common": {
     "loading": "Carregando...",

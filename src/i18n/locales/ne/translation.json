@@ -619,18 +619,23 @@
         "description": "स्रोत कोड हेर्नुहोस् र योगदान गर्नुहोस्",
         "button": "GitHub मा हेर्नुहोस्"
       },
-      "supportDevelopment": {
-        "title": "विकासलाई सहयोग गर्नुहोस्",
-        "description": "Handy निर्माण जारी राख्न हामीलाई सहयोग गर्नुहोस्",
-        "button": "दान गर्नुहोस्"
-      },
       "acknowledgments": {
         "title": "आभार",
         "ggml": {
           "title": "ggml",
           "description": "अन-डिभाइस मेसिन लर्निङ अनुमानका लागि उच्च-प्रदर्शन टेन्सर लाइब्रेरी",
           "details": "Handy को स्थानीय स्पिच-टु-टेक्स्ट transcribe.cpp र ggml मा आधारित छ। Georgi Gerganov र योगदानकर्ताहरूको उत्कृष्ट कामका लागि धन्यवाद।"
+        },
+        "upstream": {
+          "title": "Handy (upstream)",
+          "description": "Handy Flow is a fork of the open-source Handy dictation app",
+          "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
         }
+      },
+      "releases": {
+        "title": "Releases",
+        "description": "Download the latest version from GitHub Releases",
+        "button": "Open Releases"
       }
     }
   },
@@ -648,7 +653,8 @@
     "portableUpdateMessage": "पोर्टेबल इन्स्टलहरू स्वतः अपडेट गर्न सकिँदैन। तलबाट आफ्नो प्रणालीका लागि इन्स्टलर डाउनलोड गर्नुहोस्, चलाउनुहोस् र उही फोल्डरमा इन्स्टल गर्नुहोस् — तपाईंको Data/ फोल्डर (सेटिङ, मोडेल, रेकर्डिङ) जस्ताको तस्तै रहन्छ।",
     "portableUpdateButton": "इन्स्टलर डाउनलोड गर्नुहोस्",
     "portableUpdateBrowseMessage": "पोर्टेबल इन्स्टलहरू स्वतः अपडेट गर्न सकिँदैन। GitHub Releases बाट आफ्नो प्रणालीका लागि पछिल्लो संस्करण डाउनलोड गर्नुहोस् र उही फोल्डरमा इन्स्टल गर्नुहोस् — तपाईंको Data/ फोल्डर (सेटिङ, मोडेल, रेकर्डिङ) जस्ताको तस्तै रहन्छ।",
-    "portableUpdateBrowseButton": "GitHub Releases खोल्नुहोस्"
+    "portableUpdateBrowseButton": "GitHub Releases खोल्नुहोस्",
+    "checkForNewVersion": "Check for new version"
   },
   "whatsNew": {
     "title": "Handy v{{version}} मा नयाँ"

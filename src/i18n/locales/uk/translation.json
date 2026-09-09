@@ -615,22 +615,27 @@
         "description": "Переглянути вихідний код та зробити внесок",
         "button": "Переглянути на GitHub"
       },
-      "supportDevelopment": {
-        "title": "Підтримати розробку",
-        "description": "Допоможіть нам продовжувати розвивати Handy",
-        "button": "Підтримати"
-      },
       "acknowledgments": {
         "title": "Подяки",
         "ggml": {
           "title": "ggml",
           "description": "Високопродуктивний інференс моделі автоматичного розпізнавання мовлення Whisper від OpenAI",
           "details": "Handy використовує ggml для швидкої локальної обробки мовлення в текст. Дякуємо за чудову роботу Георгію Герганову та контриб'юторам."
+        },
+        "upstream": {
+          "title": "Handy (upstream)",
+          "description": "Handy Flow is a fork of the open-source Handy dictation app",
+          "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
         }
       },
       "whatsNewUpdates": {
         "label": "Показувати новини",
         "description": "Показувати примітки до випуску після оновлень Handy"
+      },
+      "releases": {
+        "title": "Releases",
+        "description": "Download the latest version from GitHub Releases",
+        "button": "Open Releases"
       }
     }
   },
@@ -648,7 +653,8 @@
     "portableUpdateMessage": "Портативні встановлення не можна оновити автоматично. Завантажте нижче інсталятор для вашої системи, запустіть його та встановіть у ту саму теку — ваша тека Data/ (налаштування, моделі, записи) залишиться на місці.",
     "portableUpdateButton": "Завантажити інсталятор",
     "portableUpdateBrowseMessage": "Портативні встановлення не можна оновити автоматично. Завантажте найновішу версію для вашої системи зі сторінки GitHub Releases та встановіть її в ту саму теку — ваша тека Data/ (налаштування, моделі, записи) залишиться на місці.",
-    "portableUpdateBrowseButton": "Відкрити GitHub Releases"
+    "portableUpdateBrowseButton": "Відкрити GitHub Releases",
+    "checkForNewVersion": "Check for new version"
   },
   "common": {
     "loading": "Завантаження...",
