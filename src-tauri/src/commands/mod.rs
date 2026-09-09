@@ -104,6 +104,16 @@ pub fn cancel_operation(app: AppHandle) {
     cancel_current_operation(&app);
 }
 
+/// Toggle dictation from UI surfaces without a keyboard shortcut (FEAT-104
+/// floating bar, tray alternatives). Routes through the same coordinator the
+/// global shortcut and `--toggle-transcription` CLI flag use, so start/stop
+/// semantics stay identical across entry points.
+#[tauri::command]
+#[specta::specta]
+pub fn toggle_transcription(app: AppHandle) {
+    crate::signal_handle::send_transcription_input(&app, "transcribe", "UI");
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn is_portable() -> bool {

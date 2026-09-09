@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "Loại bỏ từ đệm",
         "description": "Loại bỏ các từ ngập ngừng phổ biến khỏi bản chép lời. Tắt để giữ lại các từ này."
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

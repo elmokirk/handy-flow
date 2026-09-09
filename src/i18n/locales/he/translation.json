@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "הסרת מילות מילוי",
         "description": "מסיר מילות היסוס נפוצות מתמלולים. השבת כדי להשאיר אותן."
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

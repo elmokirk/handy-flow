@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "フィラー語を削除",
         "description": "文字起こしから一般的なフィラー語を削除します。残すにはオフにしてください。"
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

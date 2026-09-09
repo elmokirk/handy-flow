@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "Dolgu Sözcüklerini Kaldır",
         "description": "Transkripsiyonlardaki yaygın duraksama sözcüklerini kaldırır. Bunları korumak için kapatın."
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

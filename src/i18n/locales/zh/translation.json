@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "移除语气词",
         "description": "从转录中移除常见的语气词。关闭此选项即可保留这些词。"
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {

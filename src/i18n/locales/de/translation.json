@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "Füllwörter entfernen",
         "description": "Entfernt häufige Verzögerungslaute aus Transkriptionen. Deaktivieren Sie diese Option, um sie beizubehalten."
+      },
+      "floatingBar": {
+        "title": "Diktat-Leiste",
+        "description": "Kleine, immer sichtbare Leiste am unteren Bildschirmrand. Ein Klick startet oder stoppt das Diktat ohne Tastenkürzel."
       }
     },
     "postProcessing": {

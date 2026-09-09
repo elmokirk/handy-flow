@@ -367,6 +367,13 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
     // Create the floating scratchpad window (hidden by default, PAD-302)
     create_scratchpad_window(app_handle);
+
+    // Create the always-on dictation launcher bar (FEAT-104, bottom-center).
+    // Created unconditionally so the window exists; whether it shows at all is
+    // the floating_bar_enabled setting, applied right here.
+    if settings.floating_bar_enabled {
+        create_floating_bar_window(app_handle);
+    }
 }
 
 const SCRATCHPAD_WIDTH: f64 = 420.0;
@@ -424,6 +431,89 @@ fn show_scratchpad(app: AppHandle) -> Result<(), String> {
 #[specta::specta]
 fn hide_scratchpad(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("scratchpad") {
+        let _ = win.hide();
+    }
+    Ok(())
+}
+
+const FLOATING_BAR_WIDTH: f64 = 132.0;
+const FLOATING_BAR_HEIGHT: f64 = 34.0;
+const FLOATING_BAR_MARGIN: f64 = 24.0;
+
+/// Creates the always-on floating dictation launcher bar (FEAT-104), hidden by
+/// default. Small, click-to-toggle, bottom-center above the taskbar — mirrors
+/// the recording overlay's window posture (no decorations, always on top,
+/// skip taskbar, not focusable so it never steals keyboard focus mid-dictate).
+fn create_floating_bar_window(app_handle: &AppHandle) {
+    if app_handle.get_webview_window("floating_bar").is_some() {
+        return;
+    }
+
+    // Bottom-center of the primary monitor's work area. The monitor query can
+    // fail on unusual setups; falling back to a raw-screen estimate keeps the
+    // bar reachable and the position is user-draggable afterwards anyway.
+    let (x, y) = app_handle
+        .available_monitors()
+        .ok()
+        .and_then(|monitors| {
+            monitors.first().cloned().map(|m| {
+                let wa = m.work_area();
+                let scale = m.scale_factor();
+                let logical_w = wa.size.width as f64 / scale;
+                let logical_h = wa.size.height as f64 / scale;
+                let x = wa.position.x as f64 / scale + (logical_w - FLOATING_BAR_WIDTH) / 2.0;
+                let y = wa.position.y as f64 / scale + logical_h
+                    - FLOATING_BAR_HEIGHT
+                    - FLOATING_BAR_MARGIN;
+                (x.round() as i32, y.round() as i32)
+            })
+        })
+        .unwrap_or((0, 0));
+
+    let mut builder = tauri::WebviewWindowBuilder::new(
+        app_handle,
+        "floating_bar",
+        tauri::WebviewUrl::App("src/floating-bar/index.html".into()),
+    )
+    .title("Handy Flow")
+    .inner_size(FLOATING_BAR_WIDTH, FLOATING_BAR_HEIGHT)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .closable(false)
+    .decorations(false)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focusable(false)
+    .focused(false)
+    .visible(true)
+    .position(x as f64, y as f64);
+
+    if let Some(data_dir) = portable::data_dir() {
+        builder = builder.data_directory(data_dir.join("webview"));
+    }
+
+    match builder.build() {
+        Ok(_) => log::debug!("Floating bar window created"),
+        Err(e) => log::error!("Failed to create floating bar window: {e}"),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+fn show_floating_bar(app: AppHandle) -> Result<(), String> {
+    create_floating_bar_window(&app);
+    if let Some(win) = app.get_webview_window("floating_bar") {
+        let _ = win.show();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn hide_floating_bar(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("floating_bar") {
         let _ = win.hide();
     }
     Ok(())
@@ -849,6 +939,9 @@ pub fn run(cli_args: CliArgs) {
             commands::history::update_history_limit,
             commands::history::update_recording_retention_period,
             helpers::clamshell::is_laptop,
+            show_floating_bar,
+            hide_floating_bar,
+            commands::toggle_transcription,
         ])
         .events(collect_events![
             managers::history::HistoryUpdatePayload,

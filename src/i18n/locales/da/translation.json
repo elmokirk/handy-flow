@@ -407,6 +407,10 @@
       "fillerWordRemoval": {
         "title": "Fjern fyldord",
         "description": "Fjerner almindelige tøveord fra transskriptioner. Slå fra for at beholde dem."
+      },
+      "floatingBar": {
+        "title": "Dictation launcher bar",
+        "description": "Small always-on bar at the bottom of the screen. Click it to start or stop dictation without the keyboard shortcut."
       }
     },
     "postProcessing": {
