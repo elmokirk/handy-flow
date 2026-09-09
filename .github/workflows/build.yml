@@ -50,6 +50,10 @@ on:
 
 env:
   TSC_VERSION: "0.9.0"
+  # elmokirk/handy-flow is a public repo, so release assets are fetchable
+  # without auth and the in-app updater may call the configured endpoint.
+  # Local/dev builds without this var keep the updater disabled by design.
+  VITE_UPDATE_SOURCE: "public"
 
 jobs:
   build:

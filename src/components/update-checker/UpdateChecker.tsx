@@ -17,10 +17,10 @@ interface UpdateCheckerProps {
   className?: string;
 }
 
-// In-app self-updates target the private fork release, whose assets require
-// authentication. The built-in updater plugin cannot attach a GitHub token,
-// so the app must never call it in that posture — the footer routes users
-// to the authenticated GitHub release page instead.
+// The updater endpoint resolves to this repo's public releases. A build made
+// without VITE_UPDATE_SOURCE=public (e.g. local dev) must never call the
+// updater against a source it wasn't built to trust, so the footer routes
+// to the GitHub releases page instead.
 const PRIVATE_RELEASE_ENDPOINT =
   "https://github.com/elmokirk/handy-flow/releases";
 
