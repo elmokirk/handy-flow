@@ -7,40 +7,30 @@
 
 :root {
   --s-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  /* Near-opaque app surface (theme.css --color-background at 98%). Auto-flips
-     light/dark with --color-background, so no dark-mode override is needed. */
-  --s-surface: color-mix(in srgb, var(--color-background) 98%, transparent);
-  /* Accent = logo pink; flips automatically via --color-logo-primary. */
-  --s-accent: var(--color-logo-primary);
+  /* Brand posture: black surface, orange accents, white hairline border —
+     the same pill spec as the in-app footer ping, kept readable over any
+     content in light and dark regardless of --color-background. */
+  --s-surface: #0a0a0a;
+  /* Accent = logo orange; the light variant reads better on black. */
+  --s-accent: #fb923c;
   /* Light/dark pairs for the tokens that can't flip through a shared palette
      variable on their own. Same shape as theme.css: each value is written once
      here, and the active token below is re-pointed by the media query or by the
      `data-theme` overrides. */
-  --light-s-accent-soft: color-mix(
-    in srgb,
-    var(--color-background-ui) 16%,
-    transparent
-  );
-  /* Dark uses the lighter logo pink — reads better on the dark surface than the
-     deeper UI pink. */
-  --dark-s-accent-soft: color-mix(
-    in srgb,
-    var(--color-logo-primary) 20%,
-    transparent
-  );
-  /* Neutrals. muted/faint are overlay-specific secondary/tertiary text grays
-     (no theme equivalent). */
-  --light-s-muted: #6e6e6e;
-  --dark-s-muted: #a3a09a;
-  --light-s-faint: #9a9a9a;
-  --dark-s-faint: #6f6c66;
-  /* Hairlines reuse the app's mid-gray at low opacity in light — same vocabulary
-     as the app's border-mid-gray/* utilities — and flip to the near-white text
-     token for contrast on dark. */
-  --light-s-border: color-mix(in srgb, var(--color-mid-gray) 22%, transparent);
-  --dark-s-border: color-mix(in srgb, var(--color-text) 12%, transparent);
-  --light-s-hair: color-mix(in srgb, var(--color-mid-gray) 12%, transparent);
-  --dark-s-hair: color-mix(in srgb, var(--color-text) 8%, transparent);
+  /* Accent soft: fixed orange wash on the black surface (no theme deps). */
+  --light-s-accent-soft: rgba(251, 146, 60, 0.18);
+  --dark-s-accent-soft: rgba(251, 146, 60, 0.22);
+  /* Neutrals are fixed for the black pill: mid grays for secondary text,
+     near-white for the hairline border (1px spec) and soft dividers. */
+  --light-s-muted: #a3a3a3;
+  --dark-s-muted: #a3a3a3;
+  --light-s-faint: #8a8a8a;
+  --dark-s-faint: #8a8a8a;
+  /* 1px solid white border, as specced; hairlines derive from white too. */
+  --light-s-border: rgba(255, 255, 255, 0.95);
+  --dark-s-border: rgba(255, 255, 255, 0.95);
+  --light-s-hair: rgba(255, 255, 255, 0.14);
+  --dark-s-hair: rgba(255, 255, 255, 0.14);
 
   /* Active neutrals — default light, flipped by the media query below or forced
      by `data-theme`. */
@@ -163,10 +153,11 @@
   margin: 0;
 }
 
-/* Shared base card. Flat: theme surface + hairline border, no shadow or blur. */
+/* Shared base card. Flat: black surface + 1px white border, full pill radius.
+   The radius stays 9999px in every state so the card is always a true pill. */
 .scard {
   width: var(--ov-pill-w);
-  border-radius: 24px;
+  border-radius: 9999px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -202,11 +193,9 @@
 }
 .scard.open {
   width: var(--ov-open-w);
-  border-radius: 16px;
 }
 .scard.working {
   width: var(--ov-work-w);
-  border-radius: 18px;
 }
 
 /* Compact form: two fixed widths so the recording→working change is an animatable
@@ -253,7 +242,7 @@
   font-style: italic;
   line-height: 1.35;
   letter-spacing: -0.003em;
-  color: color-mix(in srgb, var(--color-text) 90%, transparent);
+  color: rgba(255, 255, 255, 0.92);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
   mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
   scrollbar-width: none; /* Firefox */
@@ -433,7 +422,7 @@
 }
 .sx:hover {
   background: var(--s-accent-soft);
-  color: var(--color-text);
+  color: #ffffff;
   transform: scale(1.05);
 }
 .sx:active {
