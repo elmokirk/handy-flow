@@ -11,6 +11,9 @@ import { ShowWhatsNewOnUpdate } from "../ShowWhatsNewOnUpdate";
 import { ThemeSelector } from "../ThemeSelector";
 import { LogDirectory } from "../debug";
 
+const RELEASES_URL = "https://github.com/elmokirk/handy-flow/releases";
+const SOURCE_URL = "https://github.com/elmokirk/handy-flow";
+
 export const AboutSettings: React.FC = () => {
   const { t } = useTranslation();
   const [version, setVersion] = useState("");
@@ -22,20 +25,12 @@ export const AboutSettings: React.FC = () => {
         setVersion(appVersion);
       } catch (error) {
         console.error("Failed to get app version:", error);
-        setVersion("0.1.2");
+        setVersion("0.0.0");
       }
     };
 
     fetchVersion();
   }, []);
-
-  const handleDonateClick = async () => {
-    try {
-      await openUrl("https://github.com/elmokirk/handy-flow");
-    } catch (error) {
-      console.error("Failed to open donate link:", error);
-    }
-  };
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
@@ -54,12 +49,16 @@ export const AboutSettings: React.FC = () => {
         <ShowWhatsNewOnUpdate descriptionMode="tooltip" grouped={true} />
 
         <SettingContainer
-          title={t("settings.about.supportDevelopment.title")}
-          description={t("settings.about.supportDevelopment.description")}
+          title={t("settings.about.releases.title")}
+          description={t("settings.about.releases.description")}
           grouped={true}
         >
-          <Button variant="primary" size="md" onClick={handleDonateClick}>
-            {t("settings.about.supportDevelopment.button")}
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => openUrl(RELEASES_URL)}
+          >
+            {t("settings.about.releases.button")}
           </Button>
         </SettingContainer>
 
@@ -71,7 +70,7 @@ export const AboutSettings: React.FC = () => {
           <Button
             variant="secondary"
             size="md"
-            onClick={() => openUrl("https://github.com/elmokirk/handy-flow")}
+            onClick={() => openUrl(SOURCE_URL)}
           >
             {t("settings.about.sourceCode.button")}
           </Button>
@@ -90,6 +89,16 @@ export const AboutSettings: React.FC = () => {
         >
           <div className="text-sm text-mid-gray">
             {t("settings.about.acknowledgments.ggml.details")}
+          </div>
+        </SettingContainer>
+        <SettingContainer
+          title={t("settings.about.acknowledgments.upstream.title")}
+          description={t("settings.about.acknowledgments.upstream.description")}
+          grouped={true}
+          layout="stacked"
+        >
+          <div className="text-sm text-mid-gray">
+            {t("settings.about.acknowledgments.upstream.details")}
           </div>
         </SettingContainer>
       </SettingsGroup>

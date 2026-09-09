@@ -615,22 +615,27 @@
         "description": "ソースコードを見て貢献する",
         "button": "GitHub で見る"
       },
-      "supportDevelopment": {
-        "title": "開発を支援",
-        "description": "Handy の開発を支援してください",
-        "button": "寄付する"
-      },
       "acknowledgments": {
         "title": "謝辞",
         "ggml": {
           "title": "ggml",
           "description": "オンデバイス機械学習推論のための高性能テンソルライブラリ",
           "details": "Handy のローカルの音声からテキストへの文字起こしは transcribe.cpp と ggml を基盤としています。Georgi Gerganov 氏と貢献者の皆様の素晴らしい仕事に感謝します。"
+        },
+        "upstream": {
+          "title": "Handy (upstream)",
+          "description": "Handy Flow is a fork of the open-source Handy dictation app",
+          "details": "Thanks to Christian Pais and all upstream contributors. Handy Flow builds on their work: https://github.com/cjpais/Handy"
         }
       },
       "whatsNewUpdates": {
         "label": "新機能を表示",
         "description": "Handy のアップデート後にリリースノートを表示"
+      },
+      "releases": {
+        "title": "Releases",
+        "description": "Download the latest version from GitHub Releases",
+        "button": "Open Releases"
       }
     }
   },
@@ -648,7 +653,8 @@
     "portableUpdateMessage": "ポータブル版は自動的に更新できません。下のボタンからお使いのシステム向けのインストーラーをダウンロードし、実行して同じフォルダーにインストールしてください。Data フォルダー(設定、モデル、録音)はそのまま残ります。",
     "portableUpdateButton": "インストーラーをダウンロード",
     "portableUpdateBrowseMessage": "ポータブル版は自動的に更新できません。GitHub Releases からお使いのシステム向けの最新版をダウンロードし、同じフォルダーにインストールしてください。Data フォルダー(設定、モデル、録音)はそのまま残ります。",
-    "portableUpdateBrowseButton": "GitHub Releases を開く"
+    "portableUpdateBrowseButton": "GitHub Releases を開く",
+    "checkForNewVersion": "Check for new version"
   },
   "common": {
     "loading": "読み込み中…",

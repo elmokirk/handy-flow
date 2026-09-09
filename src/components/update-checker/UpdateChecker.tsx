@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { arch, platform } from "@tauri-apps/plugin-os";
@@ -17,15 +18,32 @@ interface UpdateCheckerProps {
   className?: string;
 }
 
-// In-app self-updates target the private fork release, whose assets require
-// authentication. The built-in updater plugin cannot attach a GitHub token,
-// so the app must never call it in that posture — the footer routes users
-// to the authenticated GitHub release page instead.
+// The updater endpoint resolves to this repo's public releases. A build made
+// without VITE_UPDATE_SOURCE=public (e.g. local dev) must never call the
+// updater against a source it wasn't built to trust, so the footer routes
+// to the GitHub releases page instead.
 const PRIVATE_RELEASE_ENDPOINT =
   "https://github.com/elmokirk/handy-flow/releases";
 
 const isInAppUpdaterDisabled = () =>
   import.meta.env.VITE_UPDATE_SOURCE !== "public";
+
+// Latest-version probe for the browser-fallback footer link: reads the signed
+// updater manifest from the public repo (no auth needed) so the footer can
+// ping "new version available" even though in-app download is gated off.
+const LATEST_MANIFEST_URL =
+  "https://github.com/elmokirk/handy-flow/releases/latest/download/latest.json";
+
+const fetchLatestManifestVersion = async (): Promise<string | null> => {
+  try {
+    const res = await fetch(LATEST_MANIFEST_URL, { cache: "no-store" });
+    if (!res.ok) return null;
+    const manifest = (await res.json()) as { version?: string };
+    return manifest.version ?? null;
+  } catch {
+    return null;
+  }
+};
 
 const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   const { t } = useTranslation();
@@ -40,6 +58,11 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   const [portableInstallerUrl, setPortableInstallerUrl] = useState<string>(
     PORTABLE_RELEASES_URL,
   );
+  // Browser-fallback ping: version found in the public latest.json that is
+  // newer than the running app. Drives the footer badge next to the
+  // "Update via GitHub" link.
+  const [fallbackUpdateAvailable, setFallbackUpdateAvailable] =
+    useState(false);
 
   const { settings, isLoading } = useSettings();
   const settingsLoaded = !isLoading && settings !== null;
@@ -82,6 +105,34 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
       updateUnlisten.then((fn) => fn());
     };
   }, []);
+
+  // Browser-fallback ping: when the in-app updater is gated off, probe the
+  // public latest.json once on mount (and on manual clicks) so the footer can
+  // still surface that a new release exists.
+  useEffect(() => {
+    if (!isInAppUpdaterDisabled()) return;
+    const probe = async () => {
+      const [latest, current] = await Promise.all([
+        fetchLatestManifestVersion(),
+        getVersion(),
+      ]);
+      if (latest && current && latest !== current) {
+        setFallbackUpdateAvailable(true);
+      }
+    };
+    probe();
+  }, []);
+
+  const handleFallbackCheck = async () => {
+    const [latest, current] = await Promise.all([
+      fetchLatestManifestVersion(),
+      getVersion(),
+    ]);
+    if (latest && current) {
+      setFallbackUpdateAvailable(latest !== current);
+    }
+    openUrl(PRIVATE_RELEASE_ENDPOINT);
+  };
 
   // Update checking functions
   const checkForUpdates = async () => {
@@ -200,9 +251,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
 
   const getUpdateStatusAction = () => {
     if (!updateChecksEnabled) {
-      return isInAppUpdaterDisabled()
-        ? () => openUrl(PRIVATE_RELEASE_ENDPOINT)
-        : undefined;
+      return isInAppUpdaterDisabled() ? handleFallbackCheck : undefined;
     }
     if (updateAvailable && !isInstalling) return installUpdate;
     if (!isChecking && !isInstalling && !updateAvailable)
@@ -213,6 +262,10 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   const isUpdateDisabled = !updateChecksEnabled || isChecking || isInstalling;
   const isUpdateClickable =
     !isUpdateDisabled && (updateAvailable || (!isChecking && !showUpToDate));
+  // The fallback link is always a real button: clicking it pings latest.json
+  // and opens the releases page.
+  const isFallbackLink =
+    !updateChecksEnabled && isInAppUpdaterDisabled() && !isUpdateClickable;
 
   // When no installer could be resolved for this target the button falls back to
   // the releases index, so the dialog has to say "browse" rather than "download".
@@ -254,12 +307,12 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
         </div>
       )}
       <div className={`flex items-center gap-3 ${className}`}>
-        {isUpdateClickable ? (
+        {isUpdateClickable || isFallbackLink ? (
           <button
             onClick={getUpdateStatusAction()}
             disabled={isUpdateDisabled}
             className={`transition-colors disabled:opacity-50 tabular-nums ${
-              updateAvailable
+              updateAvailable || (isFallbackLink && fallbackUpdateAvailable)
                 ? "text-logo-primary hover:text-logo-primary/80 font-medium"
                 : "text-text/60 hover:text-text/80"
             }`}
@@ -269,6 +322,19 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
         ) : (
           <span className="text-text/60 tabular-nums">
             {getUpdateStatusText()}
+          </span>
+        )}
+
+        {/* Ping badge: drawn whenever a newer release is known (in-app updater
+            or the browser-fallback probe), so an update is visible at a glance
+            even when the label itself is a plain state string. */}
+        {(updateAvailable || (isFallbackLink && fallbackUpdateAvailable)) && (
+          <span
+            className="relative flex h-2.5 w-2.5 shrink-0"
+            title={t("footer.updateAvailableShort")}
+          >
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-logo-primary opacity-60" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-logo-primary" />
           </span>
         )}
 

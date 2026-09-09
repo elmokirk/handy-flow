@@ -974,7 +974,7 @@
         "KB-404"
       ],
       "gate": "G6",
-      "status": "NOT_STARTED",
+      "status": "DONE",
       "allowed_paths": [
         "src-tauri/tauri.conf.json",
         "src-tauri/icons/**",

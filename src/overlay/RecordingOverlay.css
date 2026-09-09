@@ -1,3 +1,8 @@
+/* Brand palette must load before theme.css: the overlay is a separate
+   webview window that never imports App.css, so without this import every
+   --hf-* token is undefined here, --color-background resolves invalid and
+   the card renders with no background at all. */
+@import "../styles/hf-brand.css";
 @import "../styles/theme.css";
 
 :root {
