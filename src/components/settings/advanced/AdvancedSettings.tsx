@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { ShowOverlay } from "../ShowOverlay";
 import { FloatingBarToggle } from "../FloatingBarToggle";
+import { WisprMigration } from "../WisprMigration";
 import { ModelUnloadTimeoutSetting } from "../ModelUnloadTimeout";
 import { CustomWords } from "../CustomWords";
 import { SettingsGroup } from "../../ui/SettingsGroup";
@@ -63,6 +64,10 @@ export const AdvancedSettings: React.FC = () => {
           descriptionMode="tooltip"
           grouped={true}
         />
+      </SettingsGroup>
+
+      <SettingsGroup title={t("settings.advanced.groups.migration")}>
+        <WisprMigration grouped={true} />
       </SettingsGroup>
 
       {experimentalEnabled && (
