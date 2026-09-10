@@ -6,6 +6,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { arch, platform } from "@tauri-apps/plugin-os";
+import { RefreshCw } from "lucide-react";
 import { ProgressBar } from "../shared";
 import { useSettings } from "../../hooks/useSettings";
 import { commands } from "../../bindings";
@@ -310,6 +311,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
           <button
             onClick={getUpdateStatusAction()}
             disabled={isUpdateDisabled}
+            title={t("footer.checkForNewVersion")}
             className={`transition-colors disabled:opacity-50 tabular-nums ${
               updateAvailable || (isFallbackLink && fallbackUpdateAvailable)
                 ? "text-logo-primary hover:text-logo-primary/80 font-medium"
@@ -322,6 +324,25 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
           <span className="text-text/60 tabular-nums">
             {getUpdateStatusText()}
           </span>
+        )}
+
+        {/* Rescan icon: always-visible affordance that a manual update check
+            (or, when an update is known, the install) is one click away.
+            Hover brightens it with the same transition the label uses. */}
+        {!isChecking && !isInstalling && (
+          <button
+            onClick={getUpdateStatusAction()}
+            disabled={isUpdateDisabled}
+            title={t("footer.checkForNewVersion")}
+            aria-label={t("footer.checkForNewVersion")}
+            className={`transition-colors duration-200 disabled:opacity-50 cursor-pointer ${
+              updateAvailable || (isFallbackLink && fallbackUpdateAvailable)
+                ? "text-logo-primary hover:text-logo-primary/80"
+                : "text-text/50 hover:text-text/90"
+            }`}
+          >
+            <RefreshCw size={13} strokeWidth={2.2} />
+          </button>
         )}
 
         {/* Ping badge: drawn whenever a newer release is known (in-app updater
