@@ -81,3 +81,34 @@ jobs:
       # stale cached native lib can never be linked into a shipped artifact.
       no-cache: true
     secrets: inherit
+
+  finalize-release:
+    permissions:
+      contents: write
+    needs: publish-tauri
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the draft release
+        # The updater flow depends on this: a draft release's latest.json is
+        # not publicly downloadable, so every installed app reports "no
+        # update" until the draft is published. Skipped macOS signing jobs
+        # (missing Apple certificate secrets) must not block publishing —
+        # the platform matrix with fail-fast:false already reported them,
+        # and Windows/Linux artifacts are what the updater serves.
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: release } = await github.rest.repos.getRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ needs.create-release.outputs.release-id }},
+            })
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.id,
+              draft: false,
+              make_latest: "legacy",
+              prerelease: release.prerelease,
+            })
+            console.log(`Published release ${release.tag_name} (id ${release.id})`)
