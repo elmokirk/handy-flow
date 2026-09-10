@@ -170,8 +170,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className="flex flex-col w-40 h-full border-e border-mid-gray/20 items-center px-2">
-      <HandyFlowTextLogo width={140} className="m-4" />
+    <div className="flex flex-col w-64 h-full border-e-2 border-logo-stroke/70 items-center px-3">
+      <HandyFlowTextLogo width={190} className="m-4" />
       <div className="flex flex-col w-full items-center gap-1 pt-2 border-t border-mid-gray/20">
         {primarySections.map(renderLabelledSection)}
       </div>

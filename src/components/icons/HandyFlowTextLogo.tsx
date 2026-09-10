@@ -8,10 +8,11 @@ const HandyFlowTextLogo = ({
 }) => (
   <svg
     width={width}
-    viewBox="0 0 460 84"
+    viewBox="0 0 400 84"
     className={className}
     role="img"
     aria-label="Handy Flow"
+    style={{ maxWidth: "100%", height: "auto" }}
   >
     <defs>
       <linearGradient id="hf-wave" x1="0" y1="0" x2="1" y2="0">
@@ -21,13 +22,14 @@ const HandyFlowTextLogo = ({
     </defs>
     <text
       x="0"
-      y="62"
+      y="60"
       fontFamily="Segoe UI, Arial, sans-serif"
-      fontSize="58"
+      fontSize="48"
       fontWeight="700"
+      letterSpacing="0.5"
       fill="url(#hf-wave)"
     >
-      Handy Flow
+      HandyFlow
     </text>
   </svg>
 );

@@ -411,7 +411,7 @@
       },
       "floatingBar": {
         "title": "Diktat-Leiste",
-        "description": "Kleine, immer sichtbare Leiste am unteren Bildschirmrand. Ein Klick startet oder stoppt das Diktat ohne Tastenkürzel."
+        "description": "Kleine, immer sichtbare Leiste am unteren Bildschirmrand. Klick startet/stoppt das Diktat ohne Tastenkürzel — zum Verschieben einfach an anderer Position ablegen."
       }
     },
     "postProcessing": {

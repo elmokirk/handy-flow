@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands, events } from "@/bindings";
 import { VulcanHand } from "./VulcanHand";
 import "@/i18n";
@@ -51,9 +52,39 @@ const FloatingBar: React.FC = () => {
   const label =
     state === "idle" ? "Start" : state === "recording" ? "Stop" : "…";
 
+  // Click = toggle dictation; press-and-move = drag (the threshold prevents
+  // the drag gesture from swallowing plain clicks).
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dragged = false;
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const onMove = (ev: PointerEvent) => {
+      if (
+        !dragged &&
+        Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4
+      ) {
+        dragged = true;
+        void getCurrentWindow().startDragging();
+      }
+    };
+    const onUp = (ev: PointerEvent) => {
+      el.releasePointerCapture(e.pointerId);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      if (!dragged && ev.button === 0) {
+        void toggle();
+      }
+    };
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+  };
+
   return (
     <div
-      onClick={toggle}
+      onPointerDown={onPointerDown}
       style={{
         width: "100%",
         height: "100%",
@@ -78,6 +109,7 @@ const FloatingBar: React.FC = () => {
       onMouseUp={(e) => {
         (e.currentTarget as HTMLDivElement).style.transform = "scale(1)";
       }}
+      title="Handy Flow — click to toggle, drag to move"
     >
       <VulcanHand
         width={16}

@@ -483,6 +483,10 @@ fn create_floating_bar_window(app_handle: &AppHandle) {
     .closable(false)
     .decorations(false)
     .shadow(false)
+    // Transparent so only the pill itself is visible — the html/body are
+    // already transparent; without this the WebView paints an opaque box
+    // behind the rounded pill.
+    .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
     .focusable(false)
@@ -1114,7 +1118,7 @@ pub fn run(cli_args: CliArgs) {
             // for portable mode (redirects WebView2 cache to portable Data dir)
             let mut win_builder =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("/".into()))
-                    .title("Handy")
+                    .title("Handy Flow")
                     .inner_size(680.0, 570.0)
                     .min_inner_size(680.0, 570.0)
                     .resizable(true)
