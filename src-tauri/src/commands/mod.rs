@@ -95,7 +95,7 @@ impl HistoryAdapter {
 
 use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
 use crate::utils::cancel_current_operation;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
@@ -126,9 +126,12 @@ pub fn is_portable() -> bool {
 #[tauri::command]
 #[specta::specta]
 pub fn wispr_dry_run(
+    app: AppHandle,
     db_path: String,
 ) -> Result<crate::managers::wispr_import::ImportReport, String> {
-    crate::managers::wispr_import::dry_run(std::path::Path::new(&db_path))
+    let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
+    let db = AppDatabase::open(dir.join("history.db")).map_err(|e| e.to_string())?;
+    crate::managers::wispr_import::dry_run(std::path::Path::new(&db_path), &db)
 }
 
 /// Full Wispr Flow import (IMP-002). Idempotent: re-runs skip already
@@ -143,11 +146,13 @@ pub fn wispr_run_import(
     let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
     let db = AppDatabase::open(dir.join("history.db")).map_err(|e| e.to_string())?;
     let recordings_dir = dir.join("recordings");
-    crate::managers::wispr_import::run_import(
+    let report = crate::managers::wispr_import::run_import(
         std::path::Path::new(&db_path),
         &db,
         Some(&recordings_dir),
-    )
+    )?;
+    let _ = app.emit("canonical-history-changed", ());
+    Ok(report)
 }
 
 #[tauri::command]

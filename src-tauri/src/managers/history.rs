@@ -377,6 +377,56 @@ impl HistoryManager {
         }
     }
 
+    /// Apply retention to the canonical, user-created history only. Imported
+    /// captures carry an import_ref and are deliberately retained until the
+    /// user explicitly removes them.
+    pub fn cleanup_canonical_entries(&self) -> Result<()> {
+        use crate::settings::RecordingRetentionPeriod;
+
+        let period = crate::settings::get_recording_retention_period(&self.app_handle);
+        if period == RecordingRetentionPeriod::Never {
+            return Ok(());
+        }
+        let db = self.canonical_db()?;
+        let conn = db.conn();
+        let ids: Vec<String> = match period {
+            RecordingRetentionPeriod::PreserveLimit => {
+                let limit = crate::settings::get_history_limit(&self.app_handle) as i64;
+                let mut stmt = conn.prepare(
+                    "SELECT id FROM captures
+                     WHERE deleted_at_ms IS NULL AND saved = 0 AND import_ref IS NULL
+                     ORDER BY created_at_ms DESC, id DESC LIMIT -1 OFFSET ?1",
+                )?;
+                stmt.query_map([limit], |row| row.get(0))?
+                    .collect::<std::result::Result<_, _>>()?
+            }
+            RecordingRetentionPeriod::Days3
+            | RecordingRetentionPeriod::Weeks2
+            | RecordingRetentionPeriod::Months3 => {
+                let days = match period {
+                    RecordingRetentionPeriod::Days3 => 3,
+                    RecordingRetentionPeriod::Weeks2 => 14,
+                    RecordingRetentionPeriod::Months3 => 90,
+                    _ => unreachable!(),
+                };
+                let cutoff = Utc::now().timestamp_millis() - days * 24 * 60 * 60 * 1000;
+                let mut stmt = conn.prepare(
+                    "SELECT id FROM captures
+                     WHERE deleted_at_ms IS NULL AND saved = 0 AND import_ref IS NULL
+                       AND created_at_ms < ?1",
+                )?;
+                stmt.query_map([cutoff], |row| row.get(0))?
+                    .collect::<std::result::Result<_, _>>()?
+            }
+            RecordingRetentionPeriod::Never => unreachable!(),
+        };
+        drop(conn);
+        for id in ids {
+            crate::storage::repositories::captures::trash_capture(&db, &id)?;
+        }
+        Ok(())
+    }
+
     fn delete_entries_and_files(&self, entries: &[(i64, String)]) -> Result<usize> {
         if entries.is_empty() {
             return Ok(0);

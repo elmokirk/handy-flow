@@ -20,6 +20,7 @@ use crate::storage::repositories::snippets as snip_repo;
 pub struct ImportReport {
     pub history_imported: usize,
     pub history_skipped: usize,
+    pub history_invalid_timestamp: usize,
     pub audio_extracted: usize,
     pub dictionary_imported: usize,
     pub snippet_triggers_imported: usize,
@@ -38,27 +39,25 @@ fn open_wispr_ro(path: &Path) -> Result<Connection, rusqlite::Error> {
     )
 }
 
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
-
 /// Wispr stores chrono strings (`2026-08-27 18:22:20.079 +00:00`).
-/// Parse to epoch ms via a throwaway sqlite connection (robust, no new deps).
-fn parse_wispr_time(raw: &Option<String>) -> i64 {
-    let Some(ts) = raw else { return now_ms() };
-    let conn = match Connection::open_in_memory() {
-        Ok(c) => c,
-        Err(_) => return now_ms(),
-    };
-    conn.query_row(
-        "SELECT CAST((julianday(?1) - 2440587.5) * 86400000 AS INTEGER)",
-        [ts],
-        |r| r.get::<_, i64>(0),
-    )
-    .unwrap_or_else(|_| now_ms())
+/// Parse the original instant directly so fractional milliseconds cannot drift.
+fn parse_wispr_time(raw: &Option<String>) -> Result<i64, String> {
+    let ts = raw
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "missing timestamp".to_string())?;
+    chrono::DateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S%.f %:z")
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(ts))
+        .map(|value| value.timestamp_millis())
+        .or_else(|_| {
+            chrono::NaiveDate::parse_from_str(ts, "%Y-%m-%d").map(|date| {
+                date.and_hms_opt(0, 0, 0)
+                    .expect("midnight is valid")
+                    .and_utc()
+                    .timestamp_millis()
+            })
+        })
+        .map_err(|_| format!("invalid timestamp: {ts}"))
 }
 
 fn first_line(s: &str) -> String {
@@ -84,13 +83,43 @@ fn extract_audio(dir: &Path, blob: &[u8]) -> Result<(String, String, i64), Strin
 }
 
 /// Count-only dry run (no writes anywhere).
-pub fn dry_run(wispr_db: &Path) -> Result<ImportReport, String> {
+pub fn dry_run(wispr_db: &Path, target: &AppDatabase) -> Result<ImportReport, String> {
     let con = open_wispr_ro(wispr_db).map_err(|e| format!("cannot open Wispr DB: {e}"))?;
     let mut report = ImportReport::default();
-    report.history_imported = con
-        .query_row("SELECT COUNT(*) FROM History", [], |r| r.get::<_, i64>(0))
-        .map(|n| n as usize)
+    let mut stmt = con
+        .prepare(
+            "SELECT transcriptEntityId, timestamp,
+                    CASE WHEN audio IS NOT NULL AND length(audio) > 0 THEN 1 ELSE 0 END
+             FROM History",
+        )
         .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let entity_id: String = row.get(0).map_err(|e| e.to_string())?;
+        let timestamp: Option<String> = row.get(1).unwrap_or(None);
+        let has_audio: bool = row.get::<_, i64>(2).unwrap_or(0) == 1;
+        if parse_wispr_time(&timestamp).is_err() {
+            report.history_invalid_timestamp += 1;
+            continue;
+        }
+        let import_ref = format!("wispr:{entity_id}");
+        let exists: i64 = target
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM captures WHERE import_ref = ?1",
+                [&import_ref],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if exists > 0 {
+            report.history_skipped += 1;
+        } else {
+            report.history_imported += 1;
+            if has_audio {
+                report.audio_extracted += 1;
+            }
+        }
+    }
     report.dictionary_imported = con
         .query_row(
             "SELECT COUNT(*) FROM Dictionary WHERE isDeleted = 0",
@@ -138,7 +167,14 @@ pub fn run_import(
         }
 
         let timestamp_s: Option<String> = row.get(1).unwrap_or(None);
-        let created_ms = parse_wispr_time(&timestamp_s);
+        let created_ms = match parse_wispr_time(&timestamp_s) {
+            Ok(created_ms) => created_ms,
+            Err(error) => {
+                report.history_invalid_timestamp += 1;
+                report.errors.push(format!("{entity_id}: {error}"));
+                continue;
+            }
+        };
         let asr: Option<String> = row.get(2).unwrap_or(None);
         let formatted: Option<String> = row.get(3).unwrap_or(None);
         let edited: Option<String> = row.get(4).unwrap_or(None);
@@ -288,6 +324,29 @@ pub fn run_import(
             continue;
         };
         let Some(text) = polished else { continue };
+        let created_ms = match parse_wispr_time(&created) {
+            Ok(created_ms) => created_ms,
+            Err(error) => {
+                report.errors.push(format!("{entity_id}: polish {error}"));
+                continue;
+            }
+        };
+        let prompt = instruction.unwrap_or_default();
+        let exists: i64 = target
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM representations\
+                 WHERE attempt_id = ?1 AND processor = 'wispr_polish'\
+                   AND text = ?2 AND created_at_ms = ?3\
+                   AND COALESCE(effective_prompt_snapshot, '') = ?4\
+                   AND COALESCE(provider_snapshot, '') = COALESCE(?5, '')",
+                rusqlite::params![attempt_id, text, created_ms, prompt, model_version],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if exists > 0 {
+            continue;
+        }
 
         target
             .conn()
@@ -299,9 +358,9 @@ pub fn run_import(
                     ids::new_id(),
                     attempt_id,
                     text,
-                    instruction.unwrap_or_default(),
+                    prompt,
                     model_version,
-                    parse_wispr_time(&created)
+                    created_ms
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -324,4 +383,23 @@ pub fn run_import_reported(
 #[allow(dead_code)]
 fn _touch() -> String {
     ids::new_id()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_wispr_time;
+
+    #[test]
+    fn preserves_milliseconds_and_rejects_missing_time() {
+        assert_eq!(
+            parse_wispr_time(&Some("2026-08-27 18:22:20.079 +00:00".to_string())).unwrap(),
+            1_787_854_940_079,
+        );
+        assert!(parse_wispr_time(&None).is_err());
+        assert!(parse_wispr_time(&Some("not a timestamp".to_string())).is_err());
+        assert_eq!(
+            parse_wispr_time(&Some("2026-08-27".to_string())).unwrap(),
+            1_787_788_800_000,
+        );
+    }
 }
