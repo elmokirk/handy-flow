@@ -73,7 +73,7 @@ pub fn insert_capture(
             "INSERT INTO captures(
                 id, audio_file_name, audio_sha256, audio_size_bytes, title,
                 source_app, saved, integrity_state, created_at_ms, updated_at_ms
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?8)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, ?8)",
             params![
                 id,
                 new.audio_file_name,

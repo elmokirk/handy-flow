@@ -69,7 +69,9 @@ export const WisprMigration: React.FC<{ grouped?: boolean }> = ({
 
   const counts = (r: ImportReport) =>
     [
-      ["history", r.history_imported],
+      ["newHistory", r.history_imported, "New history entries"],
+      ["alreadyImported", r.history_skipped, "Already imported"],
+      ["invalidTimestamp", r.history_invalid_timestamp, "Invalid timestamps"],
       ["audio", r.audio_extracted],
       ["dictionary", r.dictionary_imported],
       ["snippets", r.snippet_triggers_imported],
@@ -118,10 +120,10 @@ export const WisprMigration: React.FC<{ grouped?: boolean }> = ({
               {t("settings.wisprMigration.dryRunTitle")}
             </div>
             <ul className="text-sm text-text/70 grid grid-cols-2 gap-x-6 gap-y-1">
-              {counts(dry).map(([key, n]) => (
+              {counts(dry).map(([key, n, defaultValue]) => (
                 <li key={key}>
                   {t(`settings.wisprMigration.counts.${key}`, {
-                    defaultValue: key,
+                    defaultValue: defaultValue ?? key,
                   })}
                   : <b>{n}</b>
                 </li>

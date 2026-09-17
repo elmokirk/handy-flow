@@ -9,6 +9,7 @@
 //!   5  canonical schema: app_meta, captures, transcription_attempts,
 //!      representations + legacy data backfill.
 //!   12 export outbox: export_targets, export_jobs (KB-402).
+//!   13 reconcile legacy favourites into canonical captures.
 //!
 //! Safety gate: before raising the version, an online backup is created
 //! and verified (`PRAGMA integrity_check = ok` on the reopened copy).
@@ -21,7 +22,7 @@ use rusqlite::Connection;
 use super::database::{AppDatabase, StorageError};
 use super::ids;
 
-pub const TARGET_VERSION: i64 = 12;
+pub const TARGET_VERSION: i64 = 13;
 /// `query_contract_version` advertised to REST/MCP companions later on.
 pub const QUERY_CONTRACT_VERSION: i64 = 1;
 
@@ -56,7 +57,7 @@ CREATE TABLE IF NOT EXISTS captures (
     audio_duration_ms INTEGER,
     title TEXT NOT NULL,
     source_app TEXT,
-    saved INTEGER NOT NULL DEFAULT 1 CHECK (saved IN (0, 1)),
+    saved INTEGER NOT NULL DEFAULT 0 CHECK (saved IN (0, 1)),
     integrity_state TEXT NOT NULL CHECK (integrity_state IN (
         'pending_audio', 'audio_valid', 'audio_missing',
         'audio_corrupt', 'recovered_orphan'
@@ -386,6 +387,19 @@ fn apply_migrations(
                         ON export_jobs (status, next_attempt_at_ms);
                     CREATE INDEX idx_export_jobs_export
                         ON export_jobs (export_id);",
+                )?;
+            }
+            13 => {
+                // The temporary dual-write path used one audio filename in
+                // both models. Preserve the user's existing favourite choice
+                // before the UI starts reading captures exclusively.
+                tx.execute_batch(
+                    "UPDATE captures
+                     SET saved = COALESCE((
+                         SELECT h.saved FROM transcription_history h
+                         WHERE h.file_name = captures.audio_file_name
+                     ), 0)
+                     WHERE import_ref IS NULL;",
                 )?;
             }
             other => {

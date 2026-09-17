@@ -20,7 +20,7 @@
 //! a hidden tray relies on tray-icon recreating it from the last applied
 //! icon/menu/tooltip, so those must only ever be set through the applier.
 
-use crate::managers::history::{HistoryEntry, HistoryManager};
+use crate::managers::history::HistoryEntry;
 use crate::managers::model::ModelManager;
 use crate::managers::transcription::TranscriptionManager;
 use crate::settings;
@@ -628,23 +628,28 @@ pub fn recreate_tray_icon(app: &AppHandle) {
 }
 
 pub fn copy_last_transcript(app: &AppHandle) {
-    let history_manager = app.state::<Arc<HistoryManager>>();
-    let entry = match history_manager.get_latest_completed_entry() {
-        Ok(Some(entry)) => entry,
-        Ok(None) => {
-            warn!("No completed transcription history entries available for tray copy.");
-            return;
-        }
-        Err(err) => {
-            error!(
-                "Failed to fetch last completed transcription entry: {}",
-                err
-            );
-            return;
-        }
-    };
-
-    let text = last_transcript_text(&entry);
+    let text: String = (|| -> Result<String, String> {
+        let dir = crate::portable::app_data_dir(app).map_err(|e| e.to_string())?;
+        let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
+            .map_err(|e| e.to_string())?;
+        let text = db
+            .conn()
+            .query_row(
+                "SELECT a.normalized_stt FROM captures c\
+                 JOIN transcription_attempts a ON a.capture_id = c.id AND a.is_canonical = 1\
+                 WHERE c.deleted_at_ms IS NULL AND a.normalized_stt IS NOT NULL\
+                   AND a.normalized_stt != ''\
+                 ORDER BY c.created_at_ms DESC, c.id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(text)
+    })()
+    .unwrap_or_else(|err| {
+        warn!("No completed canonical transcription available for tray copy: {err}");
+        String::new()
+    });
     if text.trim().is_empty() {
         warn!("Last completed transcription is empty; skipping tray copy.");
         return;

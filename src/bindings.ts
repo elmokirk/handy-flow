@@ -1095,6 +1095,46 @@ async historySearch(query: string, limit: number, offset: number) : Promise<Resu
     else return { status: "error", error: e  as any };
 }
 },
+async canonicalHistoryPage(filter: CanonicalHistoryFilter, limit: number, cursor: string | null) : Promise<Result<CanonicalHistoryPage, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("canonical_history_page", { filter, limit, cursor }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async toggleCanonicalHistorySaved(captureId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("toggle_canonical_history_saved", { captureId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async canonicalAudioFilePath(captureId: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("canonical_audio_file_path", { captureId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async trashCanonicalHistoryEntry(captureId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("trash_canonical_history_entry", { captureId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async retryCanonicalHistoryEntry(captureId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("retry_canonical_history_entry", { captureId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getHistoryEntries(cursor: number | null, limit: number | null) : Promise<Result<PaginatedHistory, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_history_entries", { cursor, limit }) };
@@ -1301,6 +1341,9 @@ export type CanonicalEntry = { capture_id: string; legacy_history_id: number | n
  * Relative audio file name; resolve via `canonical_audio_path`.
  */
 audio_file_name: string | null; raw_text: string | null; derived: DerivedTextSummary[] }
+export type CanonicalHistoryEntry = { capture_id: string; created_at_ms: number; title: string; text: string; saved: boolean; audio_file_name: string | null; source_app: string | null; origin: string; integrity_state: string }
+export type CanonicalHistoryFilter = { from_ms: number | null; to_ms: number | null; origin: string | null }
+export type CanonicalHistoryPage = { entries: CanonicalHistoryEntry[]; next_cursor: string | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
 /**
@@ -1332,7 +1375,7 @@ export type ImplementationChangeResult = { success: boolean;
  * List of binding IDs that were reset to defaults due to incompatibility
  */
 reset_bindings: string[] }
-export type ImportReport = { history_imported: number; history_skipped: number; audio_extracted: number; dictionary_imported: number; snippet_triggers_imported: number; polish_imported: number; errors: string[] }
+export type ImportReport = { history_imported: number; history_skipped: number; history_invalid_timestamp: number; audio_extracted: number; dictionary_imported: number; snippet_triggers_imported: number; polish_imported: number; errors: string[] }
 export type KeyboardDiagnosticReport = { secure_input_enabled: boolean; culprit_pid: number | null; culprit_name: string | null; 
 /**
  * Counts only — key identity is deliberately never captured.

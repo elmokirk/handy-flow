@@ -77,7 +77,7 @@ fn record_canonical_dictation(
     // not two.
     let title = hm.format_timestamp_title(chrono::Utc::now().timestamp());
 
-    record_dictation(
+    let source = record_dictation(
         &db,
         &DictationInput {
             title: &title,
@@ -94,7 +94,13 @@ fn record_canonical_dictation(
         },
     )
     .map_err(|e| error!("Failed to record canonical dictation: {e}"))
-    .ok()
+    .ok();
+    if source.is_some() {
+        if let Err(e) = hm.cleanup_canonical_entries() {
+            warn!("Failed to apply canonical history retention: {e}");
+        }
+    }
+    source
 }
 
 /// PAD-306: record a dictation whose transcription failed, so the failure is
@@ -121,6 +127,8 @@ fn record_canonical_failure(
         error_message,
     ) {
         error!("Failed to record failed dictation: {e}");
+    } else if let Err(e) = hm.cleanup_canonical_entries() {
+        warn!("Failed to apply canonical history retention: {e}");
     }
 }
 
@@ -890,19 +898,6 @@ impl ShortcutAction for TranscribeAction {
                                 return;
                             }
 
-                            // Save to history if WAV was saved
-                            if wav_saved {
-                                if let Err(err) = hm.save_entry(
-                                    file_name.clone(),
-                                    transcription,
-                                    post_process,
-                                    processed.post_processed_text.clone(),
-                                    processed.post_process_prompt.clone(),
-                                ) {
-                                    error!("Failed to save history entry: {}", err);
-                                }
-                            }
-
                             // PAD-306: write the canonical rows. This is what
                             // gives the delivery below an immutable source to
                             // name; without it delivery_events can never be
@@ -916,6 +911,7 @@ impl ShortcutAction for TranscribeAction {
                                 &output,
                                 &processed,
                             );
+                            let _ = ah.emit("canonical-history-changed", ());
 
                             if processed.final_text.is_empty() {
                                 utils::hide_recording_overlay(&ah);
@@ -984,19 +980,6 @@ impl ShortcutAction for TranscribeAction {
                             // Surface the failure to the UI (toast). The full
                             // message is also in handy.log via the line above.
                             let _ = ah.emit("transcription-error", err.to_string());
-                            // Save entry with empty text so user can retry
-                            if wav_saved {
-                                if let Err(save_err) = hm.save_entry(
-                                    file_name.clone(),
-                                    String::new(),
-                                    post_process,
-                                    None,
-                                    None,
-                                ) {
-                                    error!("Failed to save failed history entry: {}", save_err);
-                                }
-                            }
-
                             // PAD-306: a failed dictation is representable too —
                             // a terminal attempt carrying the error, never
                             // canonical. Without it the failure is invisible in
@@ -1007,6 +990,7 @@ impl ShortcutAction for TranscribeAction {
                                 &wav_path_for_verify,
                                 &err.to_string(),
                             );
+                            let _ = ah.emit("canonical-history-changed", ());
                             utils::hide_recording_overlay(&ah);
                             set_tray_state(&ah, TrayIconState::Idle);
                         }
