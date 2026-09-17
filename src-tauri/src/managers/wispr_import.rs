@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension};
 
-use crate::storage::database::{AppDatabase, StorageError};
+use crate::storage::database::AppDatabase;
 use crate::storage::ids;
 use crate::storage::models::IntegrityState;
 use crate::storage::repositories::captures::{insert_capture, NewCapture};
@@ -335,15 +335,15 @@ pub fn run_import(
         let exists: i64 = target
             .conn()
             .query_row(
-                "SELECT COUNT(*) FROM representations\
-                 WHERE attempt_id = ?1 AND processor = 'wispr_polish'\
-                   AND text = ?2 AND created_at_ms = ?3\
-                   AND COALESCE(effective_prompt_snapshot, '') = ?4\
-                   AND COALESCE(provider_snapshot, '') = COALESCE(?5, '')",
+                r#"SELECT COUNT(*) FROM representations
+                   WHERE attempt_id = ?1 AND processor = 'wispr_polish'
+                     AND text = ?2 AND created_at_ms = ?3
+                     AND COALESCE(effective_prompt_snapshot, '') = ?4
+                     AND COALESCE(provider_snapshot, '') = COALESCE(?5, '')"#,
                 rusqlite::params![attempt_id, text, created_ms, prompt, model_version],
                 |r| r.get(0),
             )
-            .unwrap_or(0);
+            .map_err(|e| e.to_string())?;
         if exists > 0 {
             continue;
         }

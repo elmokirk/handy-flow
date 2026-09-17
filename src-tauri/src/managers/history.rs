@@ -397,8 +397,10 @@ impl HistoryManager {
                      WHERE deleted_at_ms IS NULL AND saved = 0 AND import_ref IS NULL
                      ORDER BY created_at_ms DESC, id DESC LIMIT -1 OFFSET ?1",
                 )?;
-                stmt.query_map([limit], |row| row.get(0))?
-                    .collect::<std::result::Result<_, _>>()?
+                let rows = stmt
+                    .query_map([limit], |row| row.get(0))?
+                    .collect::<std::result::Result<_, _>>()?;
+                rows
             }
             RecordingRetentionPeriod::Days3
             | RecordingRetentionPeriod::Weeks2
@@ -415,8 +417,10 @@ impl HistoryManager {
                      WHERE deleted_at_ms IS NULL AND saved = 0 AND import_ref IS NULL
                        AND created_at_ms < ?1",
                 )?;
-                stmt.query_map([cutoff], |row| row.get(0))?
-                    .collect::<std::result::Result<_, _>>()?
+                let rows = stmt
+                    .query_map([cutoff], |row| row.get(0))?
+                    .collect::<std::result::Result<_, _>>()?;
+                rows
             }
             RecordingRetentionPeriod::Never => unreachable!(),
         };

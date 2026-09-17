@@ -58,17 +58,17 @@ fn canonical_page(
     use rusqlite::{params_from_iter, types::ToSql};
 
     let mut sql = String::from(
-        "SELECT c.id, c.created_at_ms, c.title,\
-                COALESCE(a.normalized_stt, (\
-                    SELECT r.text FROM representations r\
-                    WHERE r.attempt_id = a.id ORDER BY r.created_at_ms ASC LIMIT 1\
-                ), ''),\
-                c.saved, c.audio_file_name, c.source_app, c.integrity_state,\
-                CASE WHEN c.import_ref LIKE 'wispr:%' THEN 'wispr' ELSE 'handy' END\
-         FROM captures c\
-         LEFT JOIN transcription_attempts a\
-           ON a.capture_id = c.id AND a.is_canonical = 1\
-         WHERE c.deleted_at_ms IS NULL",
+        r#"SELECT c.id, c.created_at_ms, c.title,
+                  COALESCE(a.normalized_stt, (
+                      SELECT r.text FROM representations r
+                      WHERE r.attempt_id = a.id ORDER BY r.created_at_ms ASC LIMIT 1
+                  ), ''),
+                  c.saved, c.audio_file_name, c.source_app, c.integrity_state,
+                  CASE WHEN c.import_ref LIKE 'wispr:%' THEN 'wispr' ELSE 'handy' END
+           FROM captures c
+           LEFT JOIN transcription_attempts a
+             ON a.capture_id = c.id AND a.is_canonical = 1
+           WHERE c.deleted_at_ms IS NULL"#,
     );
     let mut values: Vec<Box<dyn ToSql>> = Vec::new();
 

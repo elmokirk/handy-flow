@@ -628,11 +628,12 @@ pub fn recreate_tray_icon(app: &AppHandle) {
 }
 
 pub fn copy_last_transcript(app: &AppHandle) {
-    let text: String = (|| {
+    let text: String = (|| -> Result<String, String> {
         let dir = crate::portable::app_data_dir(app).map_err(|e| e.to_string())?;
         let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
             .map_err(|e| e.to_string())?;
-        db.conn()
+        let text = db
+            .conn()
             .query_row(
                 "SELECT a.normalized_stt FROM captures c\
                  JOIN transcription_attempts a ON a.capture_id = c.id AND a.is_canonical = 1\
@@ -642,7 +643,8 @@ pub fn copy_last_transcript(app: &AppHandle) {
                 [],
                 |row| row.get(0),
             )
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        Ok(text)
     })()
     .unwrap_or_else(|err| {
         warn!("No completed canonical transcription available for tray copy: {err}");
