@@ -25,6 +25,8 @@ pub struct CanonicalHistoryEntry {
     pub source_app: Option<String>,
     pub origin: String,
     pub integrity_state: String,
+    pub attempt_status: String,
+    pub attempt_error: Option<String>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, specta::Type)]
@@ -64,7 +66,11 @@ fn canonical_page(
                       WHERE r.attempt_id = a.id ORDER BY r.created_at_ms ASC LIMIT 1
                   ), ''),
                   c.saved, c.audio_file_name, c.source_app, c.integrity_state,
-                  CASE WHEN c.import_ref LIKE 'wispr:%' THEN 'wispr' ELSE 'handy' END
+                  CASE WHEN c.import_ref LIKE 'wispr:%' THEN 'wispr' ELSE 'handy' END,
+                  COALESCE((SELECT latest.status FROM transcription_attempts latest
+                    WHERE latest.capture_id = c.id ORDER BY latest.attempt_number DESC LIMIT 1), 'none'),
+                  (SELECT latest.error FROM transcription_attempts latest
+                    WHERE latest.capture_id = c.id ORDER BY latest.attempt_number DESC LIMIT 1)
            FROM captures c
            LEFT JOIN transcription_attempts a
              ON a.capture_id = c.id AND a.is_canonical = 1
@@ -110,6 +116,8 @@ fn canonical_page(
                 source_app: row.get(6)?,
                 integrity_state: row.get(7)?,
                 origin: row.get(8)?,
+                attempt_status: row.get(9)?,
+                attempt_error: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?;

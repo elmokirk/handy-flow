@@ -483,6 +483,7 @@
       "transcribing": "Transkribiere...",
       "transcriptionFailed": "Transkription fehlgeschlagen. Du kannst über das Wiederholen-Symbol erneut transkribieren.",
       "pendingAudio": "Aufnahme läuft oder wartet auf Transkription",
+      "transcriptionPending": "Transkription wartet oder läuft",
       "recoveredAudio": "Wiederhergestellt – noch nicht transkribiert (Aufnahmezeit geschätzt)",
       "audioCorrupt": "Audio ist leer oder beschädigt – Originaldatei erhalten"
     },

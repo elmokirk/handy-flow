@@ -1341,7 +1341,7 @@ export type CanonicalEntry = { capture_id: string; legacy_history_id: number | n
  * Relative audio file name; resolve via `canonical_audio_path`.
  */
 audio_file_name: string | null; raw_text: string | null; derived: DerivedTextSummary[] }
-export type CanonicalHistoryEntry = { capture_id: string; created_at_ms: number; title: string; text: string; saved: boolean; audio_file_name: string | null; source_app: string | null; origin: string; integrity_state: string }
+export type CanonicalHistoryEntry = { capture_id: string; created_at_ms: number; title: string; text: string; saved: boolean; audio_file_name: string | null; source_app: string | null; origin: string; integrity_state: string; attempt_status: string; attempt_error: string | null }
 export type CanonicalHistoryFilter = { from_ms: number | null; to_ms: number | null; origin: string | null }
 export type CanonicalHistoryPage = { entries: CanonicalHistoryEntry[]; next_cursor: string | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"

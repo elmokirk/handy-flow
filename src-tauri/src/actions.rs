@@ -3,7 +3,7 @@ use crate::apple_intelligence;
 use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, SoundType};
 use crate::audio_toolkit::{is_microphone_access_denied, is_no_input_device_error, VadPolicy};
 use crate::delivery::pipeline::{
-    record_dictation_for_capture, record_failed_dictation_for_capture, DictationInput,
+    complete_failed_prepared_dictation, complete_prepared_dictation, DictationInput,
 };
 use crate::delivery::{deliver_with_audit, DeliverySource, SqliteDeliveryAudit};
 use crate::managers::audio::AudioRecordingManager;
@@ -50,6 +50,7 @@ pub(crate) fn record_cancelled_capture(app: &AppHandle) {
     record_canonical_failure(
         &hm,
         Some(&capture.capture_id),
+        None,
         valid.then_some(capture.file_name.as_str()),
         &capture.wav_path,
         "Recording cancelled by user",
@@ -101,6 +102,7 @@ fn audio_facts(
 fn record_canonical_dictation(
     hm: &Arc<HistoryManager>,
     capture_id: Option<&str>,
+    attempt_id: Option<&str>,
     file_name: Option<&str>,
     wav_path: &std::path::Path,
     output: &TranscriptionOutput,
@@ -115,7 +117,7 @@ fn record_canonical_dictation(
     // not two.
     let title = hm.format_timestamp_title(chrono::Utc::now().timestamp());
 
-    let source = record_dictation_for_capture(
+    let source = complete_prepared_dictation(
         &db,
         &DictationInput {
             title: &title,
@@ -131,6 +133,7 @@ fn record_canonical_dictation(
             post_process_prompt: processed.post_process_prompt.as_deref(),
         },
         capture_id,
+        attempt_id,
     )
     .map_err(|e| error!("Failed to record canonical dictation: {e}"))
     .ok();
@@ -147,6 +150,7 @@ fn record_canonical_dictation(
 fn record_canonical_failure(
     hm: &Arc<HistoryManager>,
     capture_id: Option<&str>,
+    attempt_id: Option<&str>,
     file_name: Option<&str>,
     wav_path: &std::path::Path,
     error_message: &str,
@@ -158,7 +162,7 @@ fn record_canonical_failure(
     let (audio_file_name, audio_sha256, audio_size_bytes) = audio_facts(file_name, wav_path);
     let title = hm.format_timestamp_title(chrono::Utc::now().timestamp());
 
-    if let Err(e) = record_failed_dictation_for_capture(
+    if let Err(e) = complete_failed_prepared_dictation(
         &db,
         &title,
         audio_file_name.as_deref(),
@@ -166,6 +170,7 @@ fn record_canonical_failure(
         audio_size_bytes,
         error_message,
         capture_id,
+        attempt_id,
     ) {
         error!("Failed to record failed dictation: {e}");
     } else if let Err(e) = hm.cleanup_canonical_entries() {
@@ -895,6 +900,7 @@ impl ShortcutAction for TranscribeAction {
                             &hm,
                             Some(&capture.capture_id),
                             None,
+                            None,
                             &capture.wav_path,
                             "Recording has no audio samples",
                         );
@@ -942,6 +948,40 @@ impl ShortcutAction for TranscribeAction {
                             );
                         }
                     }
+                    let prepared_attempt_id = if wav_saved {
+                        let facts = audio_facts(Some(file_name), wav_path_for_verify);
+                        match (hm.canonical_db(), facts.1, facts.2) {
+                            (Ok(db), Some(sha), Some(size)) => {
+                                let prepared = crate::storage::repositories::captures::attach_audio(
+                                    &db, &capture.capture_id, file_name, &sha, size,
+                                ).and_then(|_| {
+                                    crate::storage::repositories::transcriptions::insert_attempt(
+                                        &db,
+                                        &crate::storage::repositories::transcriptions::NewAttempt {
+                                            capture_id: capture.capture_id.clone(),
+                                            engine_raw: None,
+                                            normalized_stt: None,
+                                            model_id: None,
+                                            language: None,
+                                            normalizer_version: crate::NORMALIZER_VERSION.to_string(),
+                                            dictionary_snapshot_sha256: None,
+                                        },
+                                    )
+                                });
+                                prepared.map(|attempt| attempt.id).map_err(|e| {
+                                    error!("Could not prepare canonical transcription attempt: {e}");
+                                    e
+                                }).ok()
+                            }
+                            _ => {
+                                error!("Could not verify original WAV before inference");
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    let _ = ah.emit("canonical-history-changed", ());
 
                     // The original WAV was finalized by the recorder before inference.
                     // If a live stream was running, use its text; otherwise batch
@@ -1017,6 +1057,7 @@ impl ShortcutAction for TranscribeAction {
                             let source = record_canonical_dictation(
                                 &hm,
                                 Some(&capture.capture_id),
+                                prepared_attempt_id.as_deref(),
                                 wav_saved.then_some(file_name.as_str()),
                                 wav_path_for_verify,
                                 &output,
@@ -1098,6 +1139,7 @@ impl ShortcutAction for TranscribeAction {
                             record_canonical_failure(
                                 &hm,
                                 Some(&capture.capture_id),
+                                prepared_attempt_id.as_deref(),
                                 wav_saved.then_some(file_name.as_str()),
                                 wav_path_for_verify,
                                 &err.to_string(),
@@ -1114,6 +1156,7 @@ impl ShortcutAction for TranscribeAction {
                     record_canonical_failure(
                         &hm,
                         Some(&capture.capture_id),
+                        None,
                         Some(&capture.file_name),
                         &capture.wav_path,
                         "Recording stop failed",

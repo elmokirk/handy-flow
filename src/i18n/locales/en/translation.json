@@ -483,6 +483,7 @@
       "transcribing": "Transcribing...",
       "transcriptionFailed": "Transcription failed. You can re-transcribe using the retry icon.",
       "pendingAudio": "Recording or waiting for transcription",
+      "transcriptionPending": "Transcription is waiting or running",
       "recoveredAudio": "Recovered – not yet transcribed (recording time estimated)",
       "audioCorrupt": "Audio is empty or damaged – original file preserved"
     },

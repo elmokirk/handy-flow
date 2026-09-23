@@ -170,6 +170,26 @@ pub fn complete_attempt(
     model_id: Option<&str>,
     language: Option<&str>,
 ) -> Result<(), super::super::database::StorageError> {
+    complete_attempt_with_raw(
+        db,
+        attempt_id,
+        None,
+        normalized_stt,
+        error,
+        model_id,
+        language,
+    )
+}
+
+pub fn complete_attempt_with_raw(
+    db: &AppDatabase,
+    attempt_id: &str,
+    engine_raw: Option<&str>,
+    normalized_stt: Option<&str>,
+    error: Option<&str>,
+    model_id: Option<&str>,
+    language: Option<&str>,
+) -> Result<(), super::super::database::StorageError> {
     use super::super::database::StorageError;
     let conn = db.conn();
     let current: Option<String> = conn
@@ -202,13 +222,15 @@ pub fn complete_attempt(
 
     let changed = conn.execute(
         "UPDATE transcription_attempts SET
-            status = ?2, normalized_stt = COALESCE(?3, normalized_stt),
-            error = ?4, model_id = COALESCE(?5, model_id), language = COALESCE(?6, language),
-            completed_at_ms = ?7
+            status = ?2, engine_raw = COALESCE(?3, engine_raw),
+            normalized_stt = COALESCE(?4, normalized_stt),
+            error = ?5, model_id = COALESCE(?6, model_id), language = COALESCE(?7, language),
+            completed_at_ms = ?8
          WHERE id = ?1 AND status IN ('pending','running')",
         params![
             attempt_id,
             new_status,
+            engine_raw,
             normalized_stt,
             error,
             model_id,
@@ -276,4 +298,18 @@ pub fn attempts_for_capture(
     ))?;
     let rows = stmt.query_map([capture_id], row_to_record)?;
     rows.collect()
+}
+
+/// Startup-only repair: an in-flight attempt cannot survive its worker process.
+pub fn fail_interrupted_attempts(db: &AppDatabase) -> Result<usize, rusqlite::Error> {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default();
+    db.conn().execute(
+        "UPDATE transcription_attempts SET status = 'failed',
+         error = 'Transcription interrupted by app shutdown', completed_at_ms = ?1
+         WHERE status IN ('pending', 'running')",
+        [now_ms],
+    )
 }

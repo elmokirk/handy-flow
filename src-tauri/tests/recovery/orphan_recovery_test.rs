@@ -163,6 +163,56 @@ fn history_refresh_leaves_active_capture_pending_but_restart_recovers_it() {
 }
 
 #[test]
+fn startup_turns_interrupted_attempt_into_visible_retryable_failure() {
+    let (db, _db_path, recordings) = workspace("interrupted-attempt");
+    let capture = handy_app_lib::storage::repositories::captures::insert_capture(
+        &db,
+        &handy_app_lib::storage::repositories::captures::NewCapture {
+            audio_file_name: Some("interrupted.wav".into()),
+            audio_sha256: None,
+            audio_size_bytes: None,
+            title: "Interrupted".into(),
+            source_app: None,
+            integrity_state: handy_app_lib::storage::models::IntegrityState::AudioValid,
+        },
+    )
+    .unwrap();
+    std::fs::write(recordings.join("interrupted.wav"), minimal_wav()).unwrap();
+    let attempt = handy_app_lib::storage::repositories::transcriptions::insert_attempt(
+        &db,
+        &handy_app_lib::storage::repositories::transcriptions::NewAttempt {
+            capture_id: capture.id.clone(),
+            engine_raw: None,
+            normalized_stt: None,
+            model_id: None,
+            language: None,
+            normalizer_version: "1".into(),
+            dictionary_snapshot_sha256: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        reconcile_startup(&db, &recordings)
+            .unwrap()
+            .interrupted_attempts,
+        1
+    );
+    let attempts = handy_app_lib::storage::repositories::transcriptions::attempts_for_capture(
+        &db,
+        &capture.id,
+    )
+    .unwrap();
+    assert_eq!(attempts[0].id, attempt.id);
+    assert_eq!(attempts[0].status, "failed");
+    assert_eq!(
+        reconcile_startup(&db, &recordings)
+            .unwrap()
+            .interrupted_attempts,
+        0
+    );
+}
+
+#[test]
 fn usage_reports_preservation_state_and_policy_is_off() {
     let (db, db_path, recordings) = workspace("usage");
 

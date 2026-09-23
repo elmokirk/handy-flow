@@ -355,6 +355,7 @@ const CanonicalHistoryCard: React.FC<{
   const audioCorrupt = entry.integrity_state === "audio_corrupt";
   const pending = entry.integrity_state === "pending_audio";
   const recovered = entry.integrity_state === "recovered_orphan";
+  const processing = ["pending", "running"].includes(entry.attempt_status);
   const copy = async () => {
     await navigator.clipboard.writeText(entry.text);
     setCopied(true);
@@ -430,7 +431,7 @@ const CanonicalHistoryCard: React.FC<{
           </IconButton>
           <IconButton
             onClick={retry}
-            disabled={!entry.audio_file_name || audioCorrupt || pending || retrying}
+            disabled={!entry.audio_file_name || audioCorrupt || pending || processing || retrying}
             title={t("settings.history.retranscribe")}
           >
             <RotateCcw
@@ -460,10 +461,15 @@ const CanonicalHistoryCard: React.FC<{
             ? t("settings.history.audioCorrupt")
             : pending
               ? t("settings.history.pendingAudio")
+              : processing
+                ? t("settings.history.transcriptionPending")
               : recovered
                 ? t("settings.history.recoveredAudio")
                 : t("settings.history.transcriptionFailed")}
         </p>
+      )}
+      {!entry.text && entry.attempt_status === "failed" && entry.attempt_error && (
+        <p className="text-xs text-text/60 select-text break-words">{entry.attempt_error}</p>
       )}
       <p className="italic text-sm text-text/90 select-text cursor-text whitespace-pre-wrap break-words">
         {entry.text}

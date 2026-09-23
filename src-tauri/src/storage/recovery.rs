@@ -26,6 +26,8 @@ pub struct RecoveryReport {
     pub marked_audio_missing: Vec<String>,
     /// Final WAVs on disk with no capture row -> captured as orphans.
     pub adopted_orphan_recordings: Vec<String>,
+    /// Pending/running attempts from a previous process, now retryable failures.
+    pub interrupted_attempts: usize,
 }
 
 /// Run all startup reconciliations. Idempotent and safe to re-run.
@@ -51,6 +53,11 @@ fn reconcile(
     recover_pending: bool,
 ) -> Result<RecoveryReport, StorageError> {
     let mut report = RecoveryReport::default();
+    if recover_pending {
+        report.interrupted_attempts =
+            crate::storage::repositories::transcriptions::fail_interrupted_attempts(db)
+                .map_err(StorageError::from)?;
+    }
 
     // 1. Unfinalized staging temps: try to promote valid ones.
     for temp in scan_staged(recording_dir) {
