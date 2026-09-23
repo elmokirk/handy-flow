@@ -40,6 +40,7 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 - dynamic Snippet variables;
 - wispr-like idle bubble (owner request, 2026-08-31): click-to-record floating button when idle; complements the recording overlay; requires tray/overlay coexistence and an E2 UI ADR before implementation.
 - richer import/export.
+- Future idea (owner, 2026-09-23): drag-and-drop import of external audio recordings into the same capture/transcription pipeline; not part of AUDIO-240.
 
 ## P2 — Rich Text
 

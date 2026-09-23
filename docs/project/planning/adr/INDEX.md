@@ -39,3 +39,4 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 - [[planning/adr/ADR-022|ADR-022 — Metadata and Logging Privacy]]
 - [[planning/adr/ADR-023|ADR-023 — Autonomous Agent Safety Budget]]
 - [[planning/adr/ADR-024|ADR-024 — Derived Mutable State]]
+- [[planning/adr/ADR-025|ADR-025 — One checkpointed final WAV for live recording]]

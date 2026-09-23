@@ -78,6 +78,7 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 - [[planning/tickets/INT-590|INT-590 — Local Integrations settings and launch configuration]]
 
 ## Phase 6
+- [[planning/tickets/AUDIO-240|AUDIO-240 — Long transcription without lost captures]]
 - [[planning/tickets/REL-601|REL-601 — Distribution identity and updater hardening]]
 - [[planning/tickets/REL-602|REL-602 — Backup, upgrade and recovery validation]]
 - [[planning/tickets/REL-603|REL-603 — Security, privacy and license review]]

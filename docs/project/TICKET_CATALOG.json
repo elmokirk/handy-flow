@@ -2216,6 +2216,21 @@
       "max_agent_cycles": 3,
       "task_packet_required": false
     },
+    "AUDIO-240": {
+      "ticket_id": "AUDIO-240",
+      "phase": "6",
+      "title": "Long transcription without lost captures",
+      "owner": "Integrator",
+      "dependencies": ["HIST-240", "PAD-306"],
+      "gate": "G6",
+      "status": "IN_PROGRESS",
+      "allowed_paths": ["repo/**", "planning/**", "status/**"],
+      "forbidden_paths": ["C:/Users/Kirk/AppData/Roaming/Wispr Flow/**"],
+      "qa_profile": ["unit", "integration", "windows-native"],
+      "architecture_refs": ["planning/adr/ADR-025.md", "orchestration/ARCHITECTURE_FREEZE.md"],
+      "max_agent_cycles": 3,
+      "task_packet_required": false
+    },
     "IMP-002": {
       "ticket_id": "IMP-002",
       "phase": "6",
