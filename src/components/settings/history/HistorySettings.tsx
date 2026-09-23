@@ -468,7 +468,7 @@ const CanonicalHistoryCard: React.FC<{
       <p className="italic text-sm text-text/90 select-text cursor-text whitespace-pre-wrap break-words">
         {entry.text}
       </p>
-      {entry.audio_file_name && !audioCorrupt && (
+      {entry.audio_file_name && !audioCorrupt && !pending && (
         <AudioPlayer
           onLoadRequest={() => getAudioUrl(entry.capture_id)}
           className="w-full"

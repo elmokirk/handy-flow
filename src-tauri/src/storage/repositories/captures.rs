@@ -107,6 +107,20 @@ pub fn get_capture(db: &AppDatabase, id: &str) -> Result<Option<CaptureRecord>, 
     .optional()
 }
 
+/// Replace the keypress time with the first actual microphone-sample instant.
+pub fn set_recording_started_at(
+    db: &AppDatabase,
+    capture_id: &str,
+    started_at_ms: i64,
+) -> Result<(), rusqlite::Error> {
+    db.conn().execute(
+        "UPDATE captures SET created_at_ms = ?2, updated_at_ms = ?2
+         WHERE id = ?1 AND integrity_state = 'pending_audio'",
+        params![capture_id, started_at_ms],
+    )?;
+    Ok(())
+}
+
 /// Explicitly record the integrity verdict after lifecycle events.
 pub fn set_integrity_state(
     db: &AppDatabase,

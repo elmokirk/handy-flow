@@ -33,6 +33,23 @@ pub fn reconcile_startup(
     db: &AppDatabase,
     recording_dir: &Path,
 ) -> Result<RecoveryReport, StorageError> {
+    reconcile(db, recording_dir, true)
+}
+
+/// History refreshes may run while the microphone is recording, so they
+/// adopt old orphan files but must not finalize an active pending capture.
+pub fn reconcile_history(
+    db: &AppDatabase,
+    recording_dir: &Path,
+) -> Result<RecoveryReport, StorageError> {
+    reconcile(db, recording_dir, false)
+}
+
+fn reconcile(
+    db: &AppDatabase,
+    recording_dir: &Path,
+    recover_pending: bool,
+) -> Result<RecoveryReport, StorageError> {
     let mut report = RecoveryReport::default();
 
     // 1. Unfinalized staging temps: try to promote valid ones.
@@ -74,13 +91,23 @@ pub fn reconcile_startup(
         }
     }
 
-    // 2. Captures still pending_audio whose staged temp is gone.
-    for capture in
+    // 2. A process can die after creating the capture but before finalizing
+    // its directly-written WAV. The last checkpointed header is still useful.
+    for capture in if recover_pending {
         list_by_integrity_state(db, IntegrityState::PendingAudio).map_err(StorageError::from)?
-    {
-        if capture.audio_file_name.is_none() {
-            set_integrity_state(db, &capture.id, IntegrityState::AudioMissing)
-                .map_err(StorageError::from)?;
+    } else {
+        Vec::new()
+    } {
+        let state = match capture.audio_file_name.as_deref() {
+            None => IntegrityState::AudioMissing,
+            Some(name) if !recording_dir.join(name).is_file() => IntegrityState::AudioMissing,
+            Some(name) => match hound::WavReader::open(recording_dir.join(name)) {
+                Ok(reader) if reader.duration() > 0 => IntegrityState::RecoveredOrphan,
+                _ => IntegrityState::AudioCorrupt,
+            },
+        };
+        set_integrity_state(db, &capture.id, state).map_err(StorageError::from)?;
+        if state == IntegrityState::AudioMissing {
             report.marked_audio_missing.push(capture.id.clone());
         }
     }

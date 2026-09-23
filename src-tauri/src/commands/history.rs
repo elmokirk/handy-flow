@@ -143,7 +143,7 @@ pub fn canonical_history_page(
     let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
     let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
         .map_err(|e| e.to_string())?;
-    crate::storage::recovery::reconcile_startup(&db, &dir.join("recordings"))
+    crate::storage::recovery::reconcile_history(&db, &dir.join("recordings"))
         .map_err(|e| e.to_string())?;
     canonical_page(&db, &filter, cursor.as_deref(), limit)
 }
@@ -234,7 +234,17 @@ pub async fn retry_canonical_history_entry(
     let name = capture
         .audio_file_name
         .ok_or_else(|| "history entry has no audio".to_string())?;
-    let samples = crate::audio_toolkit::read_wav_samples(&dir.join("recordings").join(name))
+    let wav_path = dir.join("recordings").join(name);
+    let reader =
+        hound::WavReader::open(&wav_path).map_err(|e| format!("Failed to inspect audio: {e}"))?;
+    if reader.duration() as usize > crate::audio_toolkit::constants::MAX_UNISOLATED_BATCH_SAMPLES {
+        return Err(
+            "Recording preserved; retry is deferred until bounded worker inference is available"
+                .into(),
+        );
+    }
+    drop(reader);
+    let samples = crate::audio_toolkit::read_wav_samples(&wav_path)
         .map_err(|e| format!("Failed to load audio: {e}"))?;
     if samples.is_empty() {
         return Err("Recording has no audio samples".to_string());

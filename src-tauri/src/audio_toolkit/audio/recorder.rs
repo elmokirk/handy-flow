@@ -1,5 +1,8 @@
 use std::{
+    fs::File,
+    io::BufWriter,
     io::Error,
+    path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
@@ -23,14 +26,70 @@ enum Cmd {
     /// Begin capturing. Carries the send timestamp so the consumer can log how
     /// long the command sat in the channel, plus a one-shot acknowledgement
     /// sent only after the first microphone sample chunk is processed.
-    Start(VadPolicy, Instant, mpsc::Sender<()>),
-    Stop(mpsc::Sender<Vec<f32>>),
+    Start(VadPolicy, Instant, mpsc::Sender<()>, Option<OriginalWav>),
+    Stop(mpsc::Sender<Result<Vec<f32>, String>>),
     Shutdown,
 }
 
 enum AudioChunk {
     Samples(Vec<f32>),
     EndOfStream,
+}
+
+/// The one original WAV. The consumer, not the microphone callback, owns it.
+struct OriginalWav {
+    writer: hound::WavWriter<BufWriter<File>>,
+    sync_file: File,
+    last_sync: Instant,
+}
+
+impl OriginalWav {
+    fn create(path: &Path) -> Result<Self, String> {
+        let file = File::create(path).map_err(|e| e.to_string())?;
+        let sync_file = file.try_clone().map_err(|e| e.to_string())?;
+        let writer = hound::WavWriter::new(
+            BufWriter::new(file),
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: constants::WHISPER_SAMPLE_RATE,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(Self {
+            writer,
+            sync_file,
+            last_sync: Instant::now(),
+        })
+    }
+
+    fn append(&mut self, samples: &[f32]) -> Result<(), String> {
+        for sample in samples {
+            self.writer
+                .write_sample((sample * i16::MAX as f32) as i16)
+                .map_err(|e| e.to_string())?;
+        }
+        if self.last_sync.elapsed() >= Duration::from_secs(30) {
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<(), String> {
+        let start = Instant::now();
+        self.writer.flush().map_err(|e| e.to_string())?;
+        self.sync_file.sync_data().map_err(|e| e.to_string())?;
+        self.last_sync = Instant::now();
+        log::debug!("Original WAV flush+sync took {:?}", start.elapsed());
+        Ok(())
+    }
+
+    fn finish(mut self) -> Result<(), String> {
+        self.flush()?;
+        self.writer.finalize().map_err(|e| e.to_string())?;
+        self.sync_file.sync_all().map_err(|e| e.to_string())
+    }
 }
 
 /// How 16 kHz mono frames should be filtered for one recording session.
@@ -376,7 +435,27 @@ impl AudioRecorder {
             .as_ref()
             .ok_or_else(|| Error::other("Recorder is not open"))?;
         let (ready_tx, ready_rx) = mpsc::channel();
-        tx.send(Cmd::Start(vad_policy, Instant::now(), ready_tx))?;
+        tx.send(Cmd::Start(vad_policy, Instant::now(), ready_tx, None))?;
+        Ok(ready_rx)
+    }
+
+    pub fn start_to_file(
+        &self,
+        vad_policy: VadPolicy,
+        path: &Path,
+    ) -> Result<mpsc::Receiver<()>, Box<dyn std::error::Error>> {
+        let tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| Error::other("Recorder is not open"))?;
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let original = OriginalWav::create(path).map_err(Error::other)?;
+        tx.send(Cmd::Start(
+            vad_policy,
+            Instant::now(),
+            ready_tx,
+            Some(original),
+        ))?;
         Ok(ready_rx)
     }
 
@@ -385,7 +464,9 @@ impl AudioRecorder {
         if let Some(tx) = &self.cmd_tx {
             tx.send(Cmd::Stop(resp_tx))?;
         }
-        Ok(resp_rx.recv()?) // wait for the samples
+        resp_rx
+            .recv()?
+            .map_err(|e| Box::new(Error::other(e)) as Box<dyn std::error::Error>)
     }
 
     /// True when the active capture stream must be rebuilt.
@@ -568,7 +649,25 @@ pub fn is_no_input_device_error(error_message: &str) -> bool {
 mod tests {
     use super::{
         is_microphone_access_denied, is_no_input_device_error, run_consumer, AudioRecorder, Cmd,
+        OriginalWav,
     };
+
+    #[test]
+    fn original_wav_flushes_same_file_and_finalizes_at_stop() {
+        let path = std::env::temp_dir().join(format!(
+            "handy-original-wav-{}-{}.wav",
+            std::process::id(),
+            crate::storage::ids::new_id()
+        ));
+        let mut original = OriginalWav::create(&path).unwrap();
+        original.append(&[0.1; 16_000]).unwrap();
+        original.last_sync = Instant::now() - Duration::from_secs(31);
+        original.append(&[0.2; 16_000]).unwrap();
+        assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 32_000);
+        original.finish().unwrap();
+        assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 32_000);
+        std::fs::remove_file(path).unwrap();
+    }
     use std::{
         sync::{
             atomic::{AtomicBool, Ordering},
@@ -679,6 +778,8 @@ fn run_consumer(
     );
 
     let mut processed_samples = Vec::<f32>::new();
+    let mut original: Option<OriginalWav> = None;
+    let mut original_error: Option<String> = None;
     let mut recording = false;
     let mut vad_policy = VadPolicy::Offline;
 
@@ -718,6 +819,8 @@ fn run_consumer(
         vad: &Option<VadConfig>,
         audio_cb: &Option<AudioFrameCallback>,
         out_buf: &mut Vec<f32>,
+        original: &mut Option<OriginalWav>,
+        original_error: &mut Option<String>,
     ) {
         if !recording {
             return;
@@ -725,6 +828,13 @@ fn run_consumer(
 
         let mut emit = |buf: &[f32]| {
             out_buf.extend_from_slice(buf);
+            if original_error.is_none() {
+                if let Some(writer) = original {
+                    if let Err(error) = writer.append(buf) {
+                        *original_error = Some(error);
+                    }
+                }
+            }
             if let Some(cb) = audio_cb {
                 cb(buf);
             }
@@ -761,7 +871,7 @@ fn run_consumer(
         // ~100ms on Bluetooth) at every recording start.
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                Cmd::Start(policy, sent_at, ready_tx) => {
+                Cmd::Start(policy, sent_at, ready_tx, wav) => {
                     log::debug!(
                         "Cmd::Start processed {:?} after send; capture begins with {} chunk",
                         sent_at.elapsed(),
@@ -776,6 +886,8 @@ fn run_consumer(
                     stop_flag.store(false, Ordering::Relaxed);
                     vad_policy = policy;
                     processed_samples.clear();
+                    original = wav;
+                    original_error = None;
                     recording = true;
                     visualizer.reset();
                     frame_resampler.reset();
@@ -809,6 +921,8 @@ fn run_consumer(
                                 &vad,
                                 &audio_cb,
                                 &mut processed_samples,
+                                &mut original,
+                                &mut original_error,
                             )
                         });
                     }
@@ -828,6 +942,8 @@ fn run_consumer(
                                         &vad,
                                         &audio_cb,
                                         &mut processed_samples,
+                                        &mut original,
+                                        &mut original_error,
                                     )
                                 });
                             }
@@ -847,10 +963,21 @@ fn run_consumer(
                             &vad,
                             &audio_cb,
                             &mut processed_samples,
+                            &mut original,
+                            &mut original_error,
                         )
                     });
 
-                    let _ = reply_tx.send(std::mem::take(&mut processed_samples));
+                    if let Some(writer) = original.take() {
+                        if let Err(error) = writer.finish() {
+                            original_error.get_or_insert(error);
+                        }
+                    }
+                    let result = match original_error.take() {
+                        Some(error) => Err(error),
+                        None => Ok(std::mem::take(&mut processed_samples)),
+                    };
+                    let _ = reply_tx.send(result);
 
                     // Resume the audio callback so the consumer loop can continue
                     // receiving chunks (important for always-on microphone mode).
@@ -903,6 +1030,8 @@ fn run_consumer(
                     &vad,
                     &audio_cb,
                     &mut processed_samples,
+                    &mut original,
+                    &mut original_error,
                 )
             });
         }

@@ -4,7 +4,7 @@
 use handy_app_lib::storage::audio_files::{stage_new, verify_finalized};
 use handy_app_lib::storage::database::AppDatabase;
 use handy_app_lib::storage::migrations::open_and_migrate;
-use handy_app_lib::storage::recovery::reconcile_startup;
+use handy_app_lib::storage::recovery::{reconcile_history, reconcile_startup};
 use handy_app_lib::storage::usage::{automatic_retention_enabled, measure};
 
 fn workspace(tag: &str) -> (AppDatabase, std::path::PathBuf, std::path::PathBuf) {
@@ -125,6 +125,41 @@ fn corrupt_orphan_has_a_visible_non_retryable_integrity_state() {
         .unwrap()
         .adopted_orphan_recordings
         .is_empty());
+}
+
+#[test]
+fn history_refresh_leaves_active_capture_pending_but_restart_recovers_it() {
+    let (db, _db_path, recordings) = workspace("pending-direct-wav");
+    let name = "handy-active.wav";
+    std::fs::write(recordings.join(name), minimal_wav()).unwrap();
+    let capture = handy_app_lib::storage::repositories::captures::insert_capture(
+        &db,
+        &handy_app_lib::storage::repositories::captures::NewCapture {
+            audio_file_name: Some(name.into()),
+            audio_sha256: None,
+            audio_size_bytes: None,
+            title: "Recording".into(),
+            source_app: None,
+            integrity_state: handy_app_lib::storage::models::IntegrityState::PendingAudio,
+        },
+    )
+    .unwrap();
+    reconcile_history(&db, &recordings).unwrap();
+    assert_eq!(
+        handy_app_lib::storage::repositories::captures::get_capture(&db, &capture.id)
+            .unwrap()
+            .unwrap()
+            .integrity_state,
+        "pending_audio"
+    );
+    reconcile_startup(&db, &recordings).unwrap();
+    assert_eq!(
+        handy_app_lib::storage::repositories::captures::get_capture(&db, &capture.id)
+            .unwrap()
+            .unwrap()
+            .integrity_state,
+        "recovered_orphan"
+    );
 }
 
 #[test]

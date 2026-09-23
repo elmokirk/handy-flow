@@ -74,20 +74,43 @@ pub fn record_dictation(
     db: &AppDatabase,
     input: &DictationInput<'_>,
 ) -> Result<DeliverySource, StorageError> {
-    let capture = insert_capture(
-        db,
-        &new_capture(
-            input.title,
-            input.audio_file_name,
-            input.audio_sha256,
-            input.audio_size_bytes,
-        ),
-    )?;
+    record_dictation_for_capture(db, input, None)
+}
+
+/// Finish an already-visible live capture without inserting a duplicate card.
+pub fn record_dictation_for_capture(
+    db: &AppDatabase,
+    input: &DictationInput<'_>,
+    existing_capture_id: Option<&str>,
+) -> Result<DeliverySource, StorageError> {
+    let capture_id = match existing_capture_id {
+        Some(id) => id.to_string(),
+        None => {
+            insert_capture(
+                db,
+                &new_capture(
+                    input.title,
+                    input.audio_file_name,
+                    input.audio_sha256,
+                    input.audio_size_bytes,
+                ),
+            )?
+            .id
+        }
+    };
+    if let (Some(id), Some(name), Some(sha), Some(size)) = (
+        existing_capture_id,
+        input.audio_file_name,
+        input.audio_sha256,
+        input.audio_size_bytes,
+    ) {
+        crate::storage::repositories::captures::attach_audio(db, id, name, sha, size)?;
+    }
 
     let attempt = insert_attempt(
         db,
         &NewAttempt {
-            capture_id: capture.id.clone(),
+            capture_id: capture_id.clone(),
             engine_raw: Some(input.engine_raw.to_string()),
             normalized_stt: Some(input.normalized_stt.to_string()),
             model_id: input.model_id.map(str::to_string),
@@ -126,7 +149,7 @@ pub fn record_dictation(
     };
 
     Ok(DeliverySource {
-        capture_id: Some(capture.id),
+        capture_id: Some(capture_id),
         attempt_id: attempt.id,
         representation_id,
         kind,
@@ -146,17 +169,51 @@ pub fn record_failed_dictation(
     audio_size_bytes: Option<i64>,
     error: &str,
 ) -> Result<String, StorageError> {
-    let capture = insert_capture(
+    record_failed_dictation_for_capture(
         db,
-        &new_capture(title, audio_file_name, audio_sha256, audio_size_bytes),
-    )?;
+        title,
+        audio_file_name,
+        audio_sha256,
+        audio_size_bytes,
+        error,
+        None,
+    )
+}
+
+pub fn record_failed_dictation_for_capture(
+    db: &AppDatabase,
+    title: &str,
+    audio_file_name: Option<&str>,
+    audio_sha256: Option<&str>,
+    audio_size_bytes: Option<i64>,
+    error: &str,
+    existing_capture_id: Option<&str>,
+) -> Result<String, StorageError> {
+    let capture_id = match existing_capture_id {
+        Some(id) => id.to_string(),
+        None => {
+            insert_capture(
+                db,
+                &new_capture(title, audio_file_name, audio_sha256, audio_size_bytes),
+            )?
+            .id
+        }
+    };
+    if let (Some(id), Some(name), Some(sha), Some(size)) = (
+        existing_capture_id,
+        audio_file_name,
+        audio_sha256,
+        audio_size_bytes,
+    ) {
+        crate::storage::repositories::captures::attach_audio(db, id, name, sha, size)?;
+    }
 
     // No normalized_stt => the attempt starts pending and never becomes
     // canonical; complete_attempt then moves it to terminal `failed`.
     let attempt = insert_attempt(
         db,
         &NewAttempt {
-            capture_id: capture.id.clone(),
+            capture_id: capture_id.clone(),
             engine_raw: None,
             normalized_stt: None,
             model_id: None,
@@ -167,5 +224,5 @@ pub fn record_failed_dictation(
     )?;
     complete_attempt(db, &attempt.id, None, Some(error), None, None)?;
 
-    Ok(capture.id)
+    Ok(capture_id)
 }

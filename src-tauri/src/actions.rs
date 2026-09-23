@@ -2,7 +2,9 @@
 use crate::apple_intelligence;
 use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, SoundType};
 use crate::audio_toolkit::{is_microphone_access_denied, is_no_input_device_error, VadPolicy};
-use crate::delivery::pipeline::{record_dictation, record_failed_dictation, DictationInput};
+use crate::delivery::pipeline::{
+    record_dictation_for_capture, record_failed_dictation_for_capture, DictationInput,
+};
 use crate::delivery::{deliver_with_audit, DeliverySource, SqliteDeliveryAudit};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
@@ -22,12 +24,47 @@ use log::{debug, error, warn};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
+struct ActiveDictation {
+    capture_id: String,
+    file_name: String,
+    wav_path: std::path::PathBuf,
+}
+
+static ACTIVE_DICTATION: Lazy<Mutex<Option<ActiveDictation>>> = Lazy::new(|| Mutex::new(None));
+
+pub(crate) fn record_cancelled_capture(app: &AppHandle) {
+    let Some(capture) = ACTIVE_DICTATION.lock().unwrap().take() else {
+        return;
+    };
+    let hm = app.state::<Arc<HistoryManager>>();
+    let valid = hound::WavReader::open(&capture.wav_path)
+        .map(|reader| reader.duration() > 0)
+        .unwrap_or(false);
+    record_canonical_failure(
+        &hm,
+        Some(&capture.capture_id),
+        valid.then_some(capture.file_name.as_str()),
+        &capture.wav_path,
+        "Recording cancelled by user",
+    );
+    if !valid {
+        if let Ok(db) = hm.canonical_db() {
+            let _ = crate::storage::repositories::captures::set_integrity_state(
+                &db,
+                &capture.capture_id,
+                crate::storage::models::IntegrityState::AudioCorrupt,
+            );
+        }
+    }
+    let _ = app.emit("canonical-history-changed", ());
+}
 
 #[derive(Clone, serde::Serialize)]
 struct RecordingErrorEvent {
@@ -63,6 +100,7 @@ fn audio_facts(
 /// dropped transcript is worse.
 fn record_canonical_dictation(
     hm: &Arc<HistoryManager>,
+    capture_id: Option<&str>,
     file_name: Option<&str>,
     wav_path: &std::path::Path,
     output: &TranscriptionOutput,
@@ -77,7 +115,7 @@ fn record_canonical_dictation(
     // not two.
     let title = hm.format_timestamp_title(chrono::Utc::now().timestamp());
 
-    let source = record_dictation(
+    let source = record_dictation_for_capture(
         &db,
         &DictationInput {
             title: &title,
@@ -92,6 +130,7 @@ fn record_canonical_dictation(
             post_processed_text: processed.post_processed_text.as_deref(),
             post_process_prompt: processed.post_process_prompt.as_deref(),
         },
+        capture_id,
     )
     .map_err(|e| error!("Failed to record canonical dictation: {e}"))
     .ok();
@@ -107,6 +146,7 @@ fn record_canonical_dictation(
 /// diagnosable in the canonical tables instead of legacy-history-only.
 fn record_canonical_failure(
     hm: &Arc<HistoryManager>,
+    capture_id: Option<&str>,
     file_name: Option<&str>,
     wav_path: &std::path::Path,
     error_message: &str,
@@ -118,13 +158,14 @@ fn record_canonical_failure(
     let (audio_file_name, audio_sha256, audio_size_bytes) = audio_facts(file_name, wav_path);
     let title = hm.format_timestamp_title(chrono::Utc::now().timestamp());
 
-    if let Err(e) = record_failed_dictation(
+    if let Err(e) = record_failed_dictation_for_capture(
         &db,
         &title,
         audio_file_name.as_deref(),
         audio_sha256.as_deref(),
         audio_size_bytes,
         error_message,
+        capture_id,
     ) {
         error!("Failed to record failed dictation: {e}");
     } else if let Err(e) = hm.cleanup_canonical_entries() {
@@ -573,6 +614,7 @@ impl ShortcutAction for TranscribeAction {
         // Load model in the background
         let tm = app.state::<Arc<TranscriptionManager>>();
         let rm = app.state::<Arc<AudioRecordingManager>>();
+        let hm = app.state::<Arc<HistoryManager>>();
 
         // Load ASR model and VAD model in parallel
         let kickoff_started = Instant::now();
@@ -638,10 +680,38 @@ impl ShortcutAction for TranscribeAction {
         );
         debug!("Microphone mode - always_on: {}", is_always_on);
 
+        let new_capture = (|| -> Result<ActiveDictation, String> {
+            let db = hm.canonical_db().map_err(|e| e.to_string())?;
+            let file_name = format!("handy-{}.wav", crate::storage::ids::new_id());
+            let capture = crate::storage::repositories::captures::insert_capture(
+                &db,
+                &crate::storage::repositories::captures::NewCapture {
+                    audio_file_name: Some(file_name.clone()),
+                    audio_sha256: None,
+                    audio_size_bytes: None,
+                    title: hm.format_timestamp_title(chrono::Utc::now().timestamp()),
+                    source_app: None,
+                    integrity_state: crate::storage::models::IntegrityState::PendingAudio,
+                },
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(ActiveDictation {
+                capture_id: capture.id,
+                wav_path: hm.recordings_dir().join(&file_name),
+                file_name,
+            })
+        })();
+        let _ = app.emit("canonical-history-changed", ());
         let mut recording_error: Option<String> = None;
         let recording_start_time = Instant::now();
-        match rm.try_start_recording(&binding_id, vad_policy) {
+        let start_result = new_capture
+            .as_ref()
+            .map_err(Clone::clone)
+            .and_then(|capture| rm.try_start_recording(&binding_id, vad_policy, &capture.wav_path));
+        match start_result {
             Ok(readiness) => {
+                let capture_id = new_capture.as_ref().unwrap().capture_id.clone();
+                *ACTIVE_DICTATION.lock().unwrap() = new_capture.ok();
                 debug!(
                     "Recording request accepted in {:?}; waiting for first microphone samples",
                     recording_start_time.elapsed()
@@ -654,6 +724,19 @@ impl ShortcutAction for TranscribeAction {
                         debug!("Microphone readiness wait ended without receiving samples");
                         return;
                     }
+                    let started_at_ms = chrono::Utc::now().timestamp_millis();
+                    if let Ok(db) = app_clone.state::<Arc<HistoryManager>>().canonical_db() {
+                        if let Err(error) =
+                            crate::storage::repositories::captures::set_recording_started_at(
+                                &db,
+                                &capture_id,
+                                started_at_ms,
+                            )
+                        {
+                            error!("Could not timestamp first microphone sample: {error}");
+                        }
+                    }
+                    let _ = app_clone.emit("canonical-history-changed", ());
 
                     // Development-only preview hook for evaluating the brief
                     // arming animation on hardware that normally starts too fast
@@ -692,6 +775,16 @@ impl ShortcutAction for TranscribeAction {
             }
             Err(e) => {
                 debug!("Failed to start recording: {}", e);
+                if let Ok(capture) = new_capture {
+                    if let Ok(db) = hm.canonical_db() {
+                        let _ = crate::storage::repositories::captures::set_integrity_state(
+                            &db,
+                            &capture.capture_id,
+                            crate::storage::models::IntegrityState::AudioMissing,
+                        );
+                    }
+                    let _ = app.emit("canonical-history-changed", ());
+                }
                 recording_error = Some(e);
             }
         }
@@ -770,6 +863,7 @@ impl ShortcutAction for TranscribeAction {
         let binding_id = binding_id.to_string(); // Clone binding_id for the async task
         let post_process = self.post_process;
         let cancel_generation = rm.cancel_generation();
+        let active = ACTIVE_DICTATION.lock().unwrap().take();
 
         tauri::async_runtime::spawn(async move {
             let _guard = FinishGuard(ah.clone());
@@ -795,26 +889,63 @@ impl ShortcutAction for TranscribeAction {
                 }
 
                 if samples.is_empty() {
-                    debug!("Recording produced no audio samples; skipping persistence");
+                    error!("Recording produced no audio samples");
+                    if let Some(capture) = &active {
+                        record_canonical_failure(
+                            &hm,
+                            Some(&capture.capture_id),
+                            None,
+                            &capture.wav_path,
+                            "Recording has no audio samples",
+                        );
+                        if let Ok(db) = hm.canonical_db() {
+                            let _ = crate::storage::repositories::captures::set_integrity_state(
+                                &db,
+                                &capture.capture_id,
+                                crate::storage::models::IntegrityState::AudioCorrupt,
+                            );
+                        }
+                        let _ = ah.emit("canonical-history-changed", ());
+                    }
                     // Tear down any streaming worker so its channel doesn't leak
                     // and block the next start_stream.
                     tm.cancel_stream();
                     utils::hide_recording_overlay(&ah);
                     set_tray_state(&ah, TrayIconState::Idle);
                 } else {
-                    // Save WAV concurrently with transcription
-                    let sample_count = samples.len();
-                    let file_name = format!("handy-{}.wav", chrono::Utc::now().timestamp());
-                    let wav_path = hm.recordings_dir().join(&file_name);
-                    let wav_path_for_verify = wav_path.clone();
-                    let samples_for_wav = samples.clone();
-                    let wav_handle = tauri::async_runtime::spawn_blocking(move || {
-                        crate::audio_toolkit::save_wav_file(&wav_path, &samples_for_wav)
-                    });
+                    let Some(capture) = &active else {
+                        error!("Recording stopped without an active canonical capture");
+                        utils::hide_recording_overlay(&ah);
+                        set_tray_state(&ah, TrayIconState::Idle);
+                        return;
+                    };
+                    let file_name = &capture.file_name;
+                    let wav_path_for_verify = &capture.wav_path;
+                    let wav_saved = hound::WavReader::open(wav_path_for_verify)
+                        .map(|reader| reader.duration() > 0)
+                        .unwrap_or(false);
+                    if !wav_saved {
+                        error!(
+                            "Original WAV missing or empty after recording stop: {}",
+                            file_name
+                        );
+                        if let Ok(db) = hm.canonical_db() {
+                            let state = if wav_path_for_verify.exists() {
+                                crate::storage::models::IntegrityState::AudioCorrupt
+                            } else {
+                                crate::storage::models::IntegrityState::AudioMissing
+                            };
+                            let _ = crate::storage::repositories::captures::set_integrity_state(
+                                &db,
+                                &capture.capture_id,
+                                state,
+                            );
+                        }
+                    }
 
-                    // Transcribe concurrently with WAV save. If a live stream was
-                    // running, finalize it and use its text (all audio was already
-                    // fed to the stream); otherwise batch-transcribe the samples.
+                    // The original WAV was finalized by the recorder before inference.
+                    // If a live stream was running, use its text; otherwise batch
+                    // inference still runs from the in-memory samples for now.
                     let transcription_time = Instant::now();
                     // PAD-306: the DETAILED variants are used so engine_raw and
                     // normalized_stt survive into the canonical tables. The
@@ -828,32 +959,11 @@ impl ShortcutAction for TranscribeAction {
                         // surfaced instead — the worker may still hold the engine,
                         // so a batch fallback would contend with it.
                         Ok(Some(output)) if !output.delivered_text.trim().is_empty() => Ok(output),
+                        Ok(_) if samples.len() > crate::audio_toolkit::constants::MAX_UNISOLATED_BATCH_SAMPLES => {
+                            Err(anyhow::anyhow!("Recording preserved; batch inference deferred because it exceeds the temporary safe limit"))
+                        }
                         Ok(_) => tm.transcribe_detailed(samples),
                         Err(err) => Err(err),
-                    };
-
-                    // Await WAV save and verify
-                    let wav_saved = match wav_handle.await {
-                        Ok(Ok(())) => {
-                            match crate::audio_toolkit::verify_wav_file(
-                                &wav_path_for_verify,
-                                sample_count,
-                            ) {
-                                Ok(()) => true,
-                                Err(e) => {
-                                    error!("WAV verification failed: {}", e);
-                                    false
-                                }
-                            }
-                        }
-                        Ok(Err(e)) => {
-                            error!("Failed to save WAV file: {}", e);
-                            false
-                        }
-                        Err(e) => {
-                            error!("WAV save task panicked: {}", e);
-                            false
-                        }
                     };
 
                     if rm.was_cancelled_since(cancel_generation) {
@@ -906,8 +1016,9 @@ impl ShortcutAction for TranscribeAction {
                             // optional and delivery proceeds unaudited.
                             let source = record_canonical_dictation(
                                 &hm,
+                                Some(&capture.capture_id),
                                 wav_saved.then_some(file_name.as_str()),
-                                &wav_path_for_verify,
+                                wav_path_for_verify,
                                 &output,
                                 &processed,
                             );
@@ -986,8 +1097,9 @@ impl ShortcutAction for TranscribeAction {
                             // the canonical tables.
                             record_canonical_failure(
                                 &hm,
+                                Some(&capture.capture_id),
                                 wav_saved.then_some(file_name.as_str()),
-                                &wav_path_for_verify,
+                                wav_path_for_verify,
                                 &err.to_string(),
                             );
                             let _ = ah.emit("canonical-history-changed", ());
@@ -998,6 +1110,16 @@ impl ShortcutAction for TranscribeAction {
                 }
             } else {
                 debug!("No samples retrieved from recording stop");
+                if let Some(capture) = &active {
+                    record_canonical_failure(
+                        &hm,
+                        Some(&capture.capture_id),
+                        Some(&capture.file_name),
+                        &capture.wav_path,
+                        "Recording stop failed",
+                    );
+                    let _ = ah.emit("canonical-history-changed", ());
+                }
                 // Tear down any streaming worker so its channel doesn't leak.
                 tm.cancel_stream();
                 utils::hide_recording_overlay(&ah);
