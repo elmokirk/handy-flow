@@ -70,6 +70,24 @@ fn orphan_wavs_are_adopted_and_staging_is_reconciled_without_deletion() {
     let orphans = list_by_integrity_state(&db, IntegrityState::RecoveredOrphan).unwrap();
     assert_eq!(orphans.len(), 2, "staged-promoted + adopted final");
 
+    let adopted = orphans
+        .iter()
+        .find(|c| c.audio_file_name.as_deref() == Some("rec-orphan.wav"))
+        .unwrap();
+    let file_end_ms = orphan_final
+        .metadata()
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    assert!(
+        adopted.created_at_ms <= file_end_ms - 1,
+        "recovery uses estimated start, not today"
+    );
+    assert!(adopted.created_at_ms >= file_end_ms - 1_000);
+
     for capture in &orphans {
         if let Some(name) = &capture.audio_file_name {
             let path = recordings.join(name);
@@ -88,6 +106,25 @@ fn orphan_wavs_are_adopted_and_staging_is_reconciled_without_deletion() {
             .len(),
         2
     );
+}
+
+#[test]
+fn corrupt_orphan_has_a_visible_non_retryable_integrity_state() {
+    let (db, _db_path, recordings) = workspace("corrupt-orphan");
+    std::fs::write(recordings.join("broken.wav"), b"not a wav").unwrap();
+    let first = reconcile_startup(&db, &recordings).unwrap();
+    assert_eq!(first.adopted_orphan_recordings, ["broken.wav"]);
+    let corrupt = handy_app_lib::storage::repositories::captures::list_by_integrity_state(
+        &db,
+        handy_app_lib::storage::models::IntegrityState::AudioCorrupt,
+    )
+    .unwrap();
+    assert_eq!(corrupt.len(), 1);
+    assert_eq!(corrupt[0].audio_file_name.as_deref(), Some("broken.wav"));
+    assert!(reconcile_startup(&db, &recordings)
+        .unwrap()
+        .adopted_orphan_recordings
+        .is_empty());
 }
 
 #[test]

@@ -352,6 +352,9 @@ const CanonicalHistoryCard: React.FC<{
   const { t, i18n } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const audioCorrupt = entry.integrity_state === "audio_corrupt";
+  const pending = entry.integrity_state === "pending_audio";
+  const recovered = entry.integrity_state === "recovered_orphan";
   const copy = async () => {
     await navigator.clipboard.writeText(entry.text);
     setCopied(true);
@@ -427,7 +430,7 @@ const CanonicalHistoryCard: React.FC<{
           </IconButton>
           <IconButton
             onClick={retry}
-            disabled={!entry.audio_file_name || retrying}
+            disabled={!entry.audio_file_name || audioCorrupt || pending || retrying}
             title={t("settings.history.retranscribe")}
           >
             <RotateCcw
@@ -451,10 +454,21 @@ const CanonicalHistoryCard: React.FC<{
       {entry.source_app && (
         <p className="text-xs text-text/50">{entry.source_app}</p>
       )}
+      {!entry.text && (
+        <p className="text-xs text-amber-400" role="status">
+          {audioCorrupt
+            ? t("settings.history.audioCorrupt")
+            : pending
+              ? t("settings.history.pendingAudio")
+              : recovered
+                ? t("settings.history.recoveredAudio")
+                : t("settings.history.transcriptionFailed")}
+        </p>
+      )}
       <p className="italic text-sm text-text/90 select-text cursor-text whitespace-pre-wrap break-words">
-        {entry.text || t("settings.history.transcriptionFailed")}
+        {entry.text}
       </p>
-      {entry.audio_file_name && (
+      {entry.audio_file_name && !audioCorrupt && (
         <AudioPlayer
           onLoadRequest={() => getAudioUrl(entry.capture_id)}
           className="w-full"

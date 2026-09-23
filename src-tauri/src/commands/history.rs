@@ -143,6 +143,8 @@ pub fn canonical_history_page(
     let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
     let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
         .map_err(|e| e.to_string())?;
+    crate::storage::recovery::reconcile_startup(&db, &dir.join("recordings"))
+        .map_err(|e| e.to_string())?;
     canonical_page(&db, &filter, cursor.as_deref(), limit)
 }
 

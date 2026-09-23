@@ -95,6 +95,18 @@ impl HistoryManager {
 
         // Initialize database and run migrations synchronously
         manager.init_database()?;
+        match manager.canonical_db() {
+            Ok(db) => {
+                if let Err(error) =
+                    crate::storage::recovery::reconcile_startup(&db, &manager.recordings_dir)
+                {
+                    log::error!("Audio recovery failed at startup: {error}");
+                }
+            }
+            Err(error) => {
+                log::error!("Could not open canonical database for audio recovery: {error}")
+            }
+        }
 
         Ok(manager)
     }
@@ -395,6 +407,10 @@ impl HistoryManager {
                 let mut stmt = conn.prepare(
                     "SELECT id FROM captures
                      WHERE deleted_at_ms IS NULL AND saved = 0 AND import_ref IS NULL
+                       AND integrity_state = 'audio_valid'
+                       AND EXISTS (SELECT 1 FROM transcription_attempts a
+                                   WHERE a.capture_id = captures.id
+                                     AND a.is_canonical = 1 AND a.status = 'success')
                      ORDER BY created_at_ms DESC, id DESC LIMIT -1 OFFSET ?1",
                 )?;
                 let rows = stmt
@@ -415,6 +431,10 @@ impl HistoryManager {
                 let mut stmt = conn.prepare(
                     "SELECT id FROM captures
                      WHERE deleted_at_ms IS NULL AND saved = 0 AND import_ref IS NULL
+                       AND integrity_state = 'audio_valid'
+                       AND EXISTS (SELECT 1 FROM transcription_attempts a
+                                   WHERE a.capture_id = captures.id
+                                     AND a.is_canonical = 1 AND a.status = 'success')
                        AND created_at_ms < ?1",
                 )?;
                 let rows = stmt

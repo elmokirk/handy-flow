@@ -4,14 +4,16 @@
 //! loss. Nothing here deletes audio â€” unknown or damaged files are
 //! surfaced in the report for the owner/explicit purge flow.
 
+use std::collections::HashSet;
 use std::path::Path;
+use std::time::UNIX_EPOCH;
 
 use crate::storage::audio_files::{scan_staged, StagedAudio};
 use crate::storage::database::{AppDatabase, StorageError};
 use crate::storage::models::IntegrityState;
 use crate::storage::repositories::captures::{
-    insert_capture, list_by_integrity_state, referenced_audio_names, set_integrity_state,
-    NewCapture,
+    insert_capture, insert_capture_at, list_by_integrity_state, referenced_audio_names,
+    set_integrity_state, NewCapture,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -84,7 +86,10 @@ pub fn reconcile_startup(
     }
 
     // 3. Final recordings with no capture row -> adopt as orphans.
-    let referenced = referenced_audio_names(db).map_err(StorageError::from)?;
+    let mut referenced: HashSet<String> = referenced_audio_names(db)
+        .map_err(StorageError::from)?
+        .into_iter()
+        .collect();
     if let Ok(entries) = std::fs::read_dir(recording_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -101,21 +106,45 @@ pub fn reconcile_startup(
                 continue;
             }
 
-            // Hash the orphan so the new capture carries verifiable facts.
+            // An old WAV's modification time is its best available end instant.
+            // Subtract actual duration; never re-date it to recovery time.
+            let metadata = path
+                .metadata()
+                .map_err(|e| StorageError::CorruptData(e.to_string()))?;
+            let end_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or_default();
+            let duration_ms = hound::WavReader::open(&path).ok().and_then(|reader| {
+                let spec = reader.spec();
+                (spec.sample_rate > 0 && reader.duration() > 0).then(|| {
+                    (i64::from(reader.duration()) * 1000 + i64::from(spec.sample_rate) - 1)
+                        / i64::from(spec.sample_rate)
+                })
+            });
+            let integrity_state = if duration_ms.is_some() {
+                IntegrityState::RecoveredOrphan
+            } else {
+                IntegrityState::AudioCorrupt
+            };
             let sha = crate::storage::audio_files::hash_file(&path)?;
-            let size = path.metadata().map(|m| m.len() as i64).unwrap_or(0);
-            insert_capture(
+            let size = metadata.len() as i64;
+            insert_capture_at(
                 db,
                 &NewCapture {
                     audio_file_name: Some(name.clone()),
                     audio_sha256: Some(sha),
                     audio_size_bytes: Some(size),
-                    title: format!("Adopted {name}"),
+                    title: format!("Recovered {name} (estimated time)"),
                     source_app: None,
-                    integrity_state: IntegrityState::RecoveredOrphan,
+                    integrity_state,
                 },
+                end_ms.saturating_sub(duration_ms.unwrap_or_default()),
             )
             .map_err(StorageError::from)?;
+            referenced.insert(name.clone());
             report.adopted_orphan_recordings.push(name);
         }
     }

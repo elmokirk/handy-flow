@@ -64,8 +64,16 @@ pub fn insert_capture(
     db: &AppDatabase,
     new: &NewCapture,
 ) -> Result<CaptureRecord, rusqlite::Error> {
+    insert_capture_at(db, new, now_ms())
+}
+
+/// Preserve the original recording instant for recovered audio.
+pub fn insert_capture_at(
+    db: &AppDatabase,
+    new: &NewCapture,
+    created_at_ms: i64,
+) -> Result<CaptureRecord, rusqlite::Error> {
     let id = ids::new_id();
-    let ts = now_ms();
     {
         // Scope the connection guard: get_capture below re-locks.
         let conn = db.conn();
@@ -82,7 +90,7 @@ pub fn insert_capture(
                 new.title,
                 new.source_app,
                 new.integrity_state.as_str(),
-                ts
+                created_at_ms
             ],
         )?;
     }

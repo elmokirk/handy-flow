@@ -481,7 +481,10 @@
       "retranscribe": "Re-transcribe",
       "retranscribeError": "Failed to re-transcribe. Please try again.",
       "transcribing": "Transcribing...",
-      "transcriptionFailed": "Transcription failed. You can re-transcribe using the retry icon."
+      "transcriptionFailed": "Transcription failed. You can re-transcribe using the retry icon.",
+      "pendingAudio": "Recording or waiting for transcription",
+      "recoveredAudio": "Recovered – not yet transcribed (recording time estimated)",
+      "audioCorrupt": "Audio is empty or damaged – original file preserved"
     },
     "debug": {
       "title": "Debug",
