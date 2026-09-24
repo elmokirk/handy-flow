@@ -46,6 +46,27 @@ pub struct AttemptRecord {
     pub completed_at_ms: Option<i64>,
 }
 
+#[derive(Clone, Debug)]
+pub struct ChunkRecord {
+    pub chunk_index: i64,
+    pub start_sample: i64,
+    pub end_sample: i64,
+    pub window_samples: i64,
+    pub payload_json: String,
+    pub seam_uncertain: bool,
+    pub seam_left: Option<String>,
+    pub seam_right: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct IncompleteJob {
+    pub attempt_id: String,
+    pub capture_id: String,
+    pub audio_file_name: String,
+    pub model_id: Option<String>,
+    pub audio_duration_ms: Option<i64>,
+}
+
 fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<AttemptRecord> {
     Ok(AttemptRecord {
         id: row.get("id")?,
@@ -271,6 +292,62 @@ pub fn mark_canonical(
     tx.commit()
 }
 
+/// Final text and canonical selection become visible together. A crash
+/// between separate writes must not leave a successful invisible attempt.
+pub fn complete_and_promote(
+    db: &AppDatabase,
+    capture_id: &str,
+    attempt_id: &str,
+    engine_raw: &str,
+    normalized_stt: &str,
+    model_id: Option<&str>,
+    language: Option<&str>,
+) -> Result<(), rusqlite::Error> {
+    let mut conn = db.conn();
+    let tx = conn.transaction()?;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default();
+    let changed = tx.execute(
+        "UPDATE transcription_attempts SET status = 'success', engine_raw = ?3,
+         normalized_stt = ?4, model_id = COALESCE(?5, model_id),
+         language = COALESCE(?6, language), error = NULL, completed_at_ms = ?7
+         WHERE id = ?1 AND capture_id = ?2 AND status IN ('pending', 'running')
+           AND EXISTS (SELECT 1 FROM captures WHERE id = ?2 AND deleted_at_ms IS NULL)",
+        params![
+            attempt_id,
+            capture_id,
+            engine_raw,
+            normalized_stt,
+            model_id,
+            language,
+            now_ms
+        ],
+    )?;
+    if changed != 1 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    tx.execute(
+        "UPDATE transcription_attempts SET is_canonical = 0
+         WHERE capture_id = ?1 AND is_canonical = 1",
+        [capture_id],
+    )?;
+    tx.execute(
+        "UPDATE transcription_attempts SET is_canonical = 1 WHERE id = ?1",
+        [attempt_id],
+    )?;
+    tx.execute(
+        "DELETE FROM transcription_chunks WHERE attempt_id = ?1 AND seam_uncertain = 0",
+        [attempt_id],
+    )?;
+    tx.execute(
+        "UPDATE transcription_chunks SET payload_json = '' WHERE attempt_id = ?1 AND seam_uncertain = 1",
+        [attempt_id],
+    )?;
+    tx.commit()
+}
+
 pub fn canonical_attempt(
     db: &AppDatabase,
     capture_id: &str,
@@ -300,7 +377,78 @@ pub fn attempts_for_capture(
     rows.collect()
 }
 
-/// Startup-only repair: an in-flight attempt cannot survive its worker process.
+pub fn incomplete_jobs(db: &AppDatabase) -> Result<Vec<IncompleteJob>, rusqlite::Error> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT a.id, c.id, c.audio_file_name, a.model_id, c.audio_duration_ms
+         FROM transcription_attempts a JOIN captures c ON c.id = a.capture_id
+         WHERE a.status IN ('pending', 'running') AND c.deleted_at_ms IS NULL
+           AND c.audio_file_name IS NOT NULL
+           AND c.integrity_state IN ('audio_valid', 'recovered_orphan')
+         ORDER BY c.created_at_ms DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(IncompleteJob {
+            attempt_id: row.get(0)?,
+            capture_id: row.get(1)?,
+            audio_file_name: row.get(2)?,
+            model_id: row.get(3)?,
+            audio_duration_ms: row.get(4)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn mark_running(db: &AppDatabase, attempt_id: &str) -> Result<(), rusqlite::Error> {
+    db.conn().execute(
+        "UPDATE transcription_attempts SET status = 'running'
+         WHERE id = ?1 AND status IN ('pending', 'running')",
+        [attempt_id],
+    )?;
+    Ok(())
+}
+
+pub fn chunks_for_attempt(
+    db: &AppDatabase,
+    attempt_id: &str,
+) -> Result<Vec<ChunkRecord>, rusqlite::Error> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT chunk_index, start_sample, end_sample, window_samples, payload_json, seam_uncertain, seam_left, seam_right
+         FROM transcription_chunks WHERE attempt_id = ?1 ORDER BY chunk_index",
+    )?;
+    let rows = stmt.query_map([attempt_id], |row| {
+        Ok(ChunkRecord {
+            chunk_index: row.get(0)?,
+            start_sample: row.get(1)?,
+            end_sample: row.get(2)?,
+            window_samples: row.get(3)?,
+            payload_json: row.get(4)?,
+            seam_uncertain: row.get::<_, i64>(5)? != 0,
+            seam_left: row.get(6)?,
+            seam_right: row.get(7)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn insert_chunk(
+    db: &AppDatabase,
+    attempt_id: &str,
+    chunk: &ChunkRecord,
+) -> Result<(), rusqlite::Error> {
+    db.conn().execute(
+        "INSERT INTO transcription_chunks
+         (attempt_id, chunk_index, start_sample, end_sample, window_samples, payload_json, seam_uncertain, seam_left, seam_right)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![attempt_id, chunk.chunk_index, chunk.start_sample, chunk.end_sample,
+            chunk.window_samples, chunk.payload_json, i64::from(chunk.seam_uncertain), chunk.seam_left, chunk.seam_right],
+    )?;
+    Ok(())
+}
+
+/// Startup repair: valid-audio attempts are resumed by the background queue;
+/// only jobs with no usable audio become terminal failures.
 pub fn fail_interrupted_attempts(db: &AppDatabase) -> Result<usize, rusqlite::Error> {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -309,7 +457,10 @@ pub fn fail_interrupted_attempts(db: &AppDatabase) -> Result<usize, rusqlite::Er
     db.conn().execute(
         "UPDATE transcription_attempts SET status = 'failed',
          error = 'Transcription interrupted by app shutdown', completed_at_ms = ?1
-         WHERE status IN ('pending', 'running')",
+         WHERE status IN ('pending', 'running')
+           AND NOT EXISTS (SELECT 1 FROM captures c
+                           WHERE c.id = transcription_attempts.capture_id
+                             AND c.integrity_state IN ('audio_valid', 'recovered_orphan'))",
         [now_ms],
     )
 }

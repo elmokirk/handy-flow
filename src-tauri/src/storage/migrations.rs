@@ -10,6 +10,7 @@
 //!      representations + legacy data backfill.
 //!   12 export outbox: export_targets, export_jobs (KB-402).
 //!   13 reconcile legacy favourites into canonical captures.
+//!   14 checkpoint bounded transcription windows.
 //!
 //! Safety gate: before raising the version, an online backup is created
 //! and verified (`PRAGMA integrity_check = ok` on the reopened copy).
@@ -22,7 +23,7 @@ use rusqlite::Connection;
 use super::database::{AppDatabase, StorageError};
 use super::ids;
 
-pub const TARGET_VERSION: i64 = 13;
+pub const TARGET_VERSION: i64 = 14;
 /// `query_contract_version` advertised to REST/MCP companions later on.
 pub const QUERY_CONTRACT_VERSION: i64 = 1;
 
@@ -400,6 +401,24 @@ fn apply_migrations(
                          WHERE h.file_name = captures.audio_file_name
                      ), 0)
                      WHERE import_ref IS NULL;",
+                )?;
+            }
+            14 => {
+                tx.execute_batch(
+                    "CREATE TABLE transcription_chunks (
+                        attempt_id TEXT NOT NULL REFERENCES transcription_attempts(id),
+                        chunk_index INTEGER NOT NULL,
+                        start_sample INTEGER NOT NULL,
+                        end_sample INTEGER NOT NULL,
+                        window_samples INTEGER NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        seam_uncertain INTEGER NOT NULL DEFAULT 0,
+                        seam_left TEXT,
+                        seam_right TEXT,
+                        PRIMARY KEY (attempt_id, chunk_index)
+                    );
+                    CREATE INDEX idx_transcription_chunks_attempt
+                        ON transcription_chunks (attempt_id, chunk_index);",
                 )?;
             }
             other => {

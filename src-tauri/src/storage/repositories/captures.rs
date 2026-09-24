@@ -73,6 +73,16 @@ pub fn insert_capture_at(
     new: &NewCapture,
     created_at_ms: i64,
 ) -> Result<CaptureRecord, rusqlite::Error> {
+    insert_capture_at_with_ref(db, new, created_at_ms, None)
+}
+
+/// Imports use the same capture row with an immutable origin marker.
+pub fn insert_capture_at_with_ref(
+    db: &AppDatabase,
+    new: &NewCapture,
+    created_at_ms: i64,
+    import_ref: Option<&str>,
+) -> Result<CaptureRecord, rusqlite::Error> {
     let id = ids::new_id();
     {
         // Scope the connection guard: get_capture below re-locks.
@@ -80,8 +90,8 @@ pub fn insert_capture_at(
         conn.execute(
             "INSERT INTO captures(
                 id, audio_file_name, audio_sha256, audio_size_bytes, title,
-                source_app, saved, integrity_state, created_at_ms, updated_at_ms
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, ?8)",
+                source_app, saved, integrity_state, created_at_ms, updated_at_ms, import_ref
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, ?8, ?9)",
             params![
                 id,
                 new.audio_file_name,
@@ -90,7 +100,8 @@ pub fn insert_capture_at(
                 new.title,
                 new.source_app,
                 new.integrity_state.as_str(),
-                created_at_ms
+                created_at_ms,
+                import_ref
             ],
         )?;
     }
@@ -150,6 +161,18 @@ pub fn attach_audio(
             audio_size_bytes = ?4, integrity_state = 'audio_valid', updated_at_ms = ?5
          WHERE id = ?1",
         params![capture_id, file_name, sha256, size_bytes, now_ms()],
+    )?;
+    Ok(())
+}
+
+pub fn set_audio_duration(
+    db: &AppDatabase,
+    capture_id: &str,
+    duration_ms: i64,
+) -> Result<(), rusqlite::Error> {
+    db.conn().execute(
+        "UPDATE captures SET audio_duration_ms = ?2, updated_at_ms = ?3 WHERE id = ?1",
+        params![capture_id, duration_ms, now_ms()],
     )?;
     Ok(())
 }

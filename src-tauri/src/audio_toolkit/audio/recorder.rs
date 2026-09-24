@@ -1,5 +1,5 @@
 use std::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::BufWriter,
     io::Error,
     path::Path,
@@ -45,7 +45,11 @@ struct OriginalWav {
 
 impl OriginalWav {
     fn create(path: &Path) -> Result<Self, String> {
-        let file = File::create(path).map_err(|e| e.to_string())?;
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|e| e.to_string())?;
         let sync_file = file.try_clone().map_err(|e| e.to_string())?;
         let writer = hound::WavWriter::new(
             BufWriter::new(file),
@@ -827,7 +831,15 @@ fn run_consumer(
         }
 
         let mut emit = |buf: &[f32]| {
-            out_buf.extend_from_slice(buf);
+            // The final WAV is the source of truth. Keep only enough in RAM to
+            // distinguish an empty capture for older stop callers.
+            if original.is_some() {
+                let remaining = constants::WHISPER_SAMPLE_RATE as usize
+                    - out_buf.len().min(constants::WHISPER_SAMPLE_RATE as usize);
+                out_buf.extend_from_slice(&buf[..buf.len().min(remaining)]);
+            } else {
+                out_buf.extend_from_slice(buf);
+            }
             if original_error.is_none() {
                 if let Some(writer) = original {
                     if let Err(error) = writer.append(buf) {

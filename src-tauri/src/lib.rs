@@ -13,6 +13,7 @@ pub mod delivery;
 mod helpers;
 mod input;
 mod llm_client;
+mod long_audio;
 mod managers;
 mod memory;
 mod overlay;
@@ -204,6 +205,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(model_manager.clone());
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
+    app_handle.manage(long_audio::TranscriptionQueue::start(app_handle.clone()));
     app_handle.manage(tray::TrayState::new());
 
     // Note: Shortcuts are NOT initialized here.
@@ -649,39 +651,14 @@ fn run_headless_transcription(app: &AppHandle, args: &CliArgs) -> i32 {
         return 0;
     };
 
-    // read_wav_samples reads 16-bit int samples and does no validation; the app
-    // only ever saves 16 kHz mono 16-bit PCM, so reject anything else rather than
-    // transcribe garbage / mis-time / mis-decode.
-    match hound::WavReader::open(&wav) {
-        Ok(reader) => {
-            let spec = reader.spec();
-            if spec.sample_rate != 16_000
-                || spec.channels != 1
-                || spec.bits_per_sample != 16
-                || spec.sample_format != hound::SampleFormat::Int
-            {
-                eprintln!(
-                    "error: expected 16 kHz mono 16-bit PCM WAV, got {} Hz / {} ch / {}-bit {:?}",
-                    spec.sample_rate, spec.channels, spec.bits_per_sample, spec.sample_format
-                );
-                return 2;
-            }
-        }
-        Err(e) => {
-            eprintln!("error: cannot open {}: {}", wav.display(), e);
-            return 2;
-        }
-    }
-
-    let samples = match crate::audio_toolkit::read_wav_samples(&wav) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: failed to read {}: {}", wav.display(), e);
+    let total_samples = match long_audio::inspect_wav(&wav) {
+        Ok(total) => total,
+        Err(error) => {
+            eprintln!("error: cannot use {}: {}", wav.display(), error);
             return 2;
         }
     };
-    let audio_secs = samples.len() as f64 / 16_000.0;
-
+    let audio_secs = total_samples as f64 / long_audio::SAMPLE_RATE as f64;
     let tm = app.state::<Arc<TranscriptionManager>>();
 
     let model_id = args
@@ -725,7 +702,13 @@ fn run_headless_transcription(app: &AppHandle, args: &CliArgs) -> i32 {
             }
         }
         let t = Instant::now();
-        match tm.transcribe(samples.clone()) {
+        match long_audio::transcribe_headless_file(
+            &tm,
+            &model_id,
+            device_index,
+            &wav,
+            total_samples,
+        ) {
             Ok(out) => text = out,
             Err(e) => {
                 eprintln!("error: transcribe failed: {}", e);
@@ -941,10 +924,12 @@ pub fn run(cli_args: CliArgs) {
             commands::history::delete_history_entry,
             commands::history::retry_history_entry_transcription,
             commands::history::canonical_history_page,
+            commands::history::canonical_seam_details,
             commands::history::toggle_canonical_history_saved,
             commands::history::canonical_audio_file_path,
             commands::history::trash_canonical_history_entry,
             commands::history::retry_canonical_history_entry,
+            commands::history::import_local_audio,
             commands::history::update_history_limit,
             commands::history::update_recording_retention_period,
             helpers::clamshell::is_laptop,
@@ -972,8 +957,10 @@ pub fn run(cli_args: CliArgs) {
 
     // The headless path must run as its own instance (see the single-instance
     // note below), not forward to an already-running app.
-    let headless_mode =
-        cli_args.transcribe_file.is_some() || cli_args.list_devices || cli_args.list_models;
+    let headless_mode = cli_args.transcription_worker
+        || cli_args.transcribe_file.is_some()
+        || cli_args.list_devices
+        || cli_args.list_models;
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
@@ -1101,7 +1088,13 @@ pub fn run(cli_args: CliArgs) {
                 let handle = app_handle.clone();
                 let args = cli_args.clone();
                 std::thread::spawn(move || {
-                    let code = run_headless_guarded(|| run_headless_transcription(&handle, &args));
+                    let code = run_headless_guarded(|| {
+                        if args.transcription_worker {
+                            long_audio::run_worker(&handle)
+                        } else {
+                            run_headless_transcription(&handle, &args)
+                        }
+                    });
                     // Drop the loaded engine before teardown: ggml-metal's global
                     // device free asserts (SIGABRT) if a model's Metal resources
                     // are still alive at C++ static-destructor time.

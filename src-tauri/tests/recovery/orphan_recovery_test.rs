@@ -163,7 +163,7 @@ fn history_refresh_leaves_active_capture_pending_but_restart_recovers_it() {
 }
 
 #[test]
-fn startup_turns_interrupted_attempt_into_visible_retryable_failure() {
+fn startup_preserves_valid_interrupted_attempt_for_resumption() {
     let (db, _db_path, recordings) = workspace("interrupted-attempt");
     let capture = handy_app_lib::storage::repositories::captures::insert_capture(
         &db,
@@ -195,7 +195,7 @@ fn startup_turns_interrupted_attempt_into_visible_retryable_failure() {
         reconcile_startup(&db, &recordings)
             .unwrap()
             .interrupted_attempts,
-        1
+        0
     );
     let attempts = handy_app_lib::storage::repositories::transcriptions::attempts_for_capture(
         &db,
@@ -203,7 +203,7 @@ fn startup_turns_interrupted_attempt_into_visible_retryable_failure() {
     )
     .unwrap();
     assert_eq!(attempts[0].id, attempt.id);
-    assert_eq!(attempts[0].status, "failed");
+    assert_eq!(attempts[0].status, "pending");
     assert_eq!(
         reconcile_startup(&db, &recordings)
             .unwrap()

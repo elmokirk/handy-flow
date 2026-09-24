@@ -1,16 +1,15 @@
-use crate::actions::process_transcription_output;
 use crate::managers::{
     history::{HistoryManager, PaginatedHistory},
     transcription::TranscriptionManager,
 };
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Clone, Debug, serde::Deserialize, specta::Type)]
 pub struct CanonicalHistoryFilter {
     pub from_ms: Option<i64>,
     pub to_ms: Option<i64>,
-    /// `handy` or `wispr`; absent means every origin.
+    /// `handy`, `wispr`, or `manual`; absent means every origin.
     pub origin: Option<String>,
 }
 
@@ -27,6 +26,10 @@ pub struct CanonicalHistoryEntry {
     pub integrity_state: String,
     pub attempt_status: String,
     pub attempt_error: Option<String>,
+    pub audio_duration_ms: Option<i64>,
+    pub completed_samples: i64,
+    pub completed_chunks: i64,
+    pub review_seams: i64,
 }
 
 #[derive(Clone, Debug, serde::Serialize, specta::Type)]
@@ -66,11 +69,24 @@ fn canonical_page(
                       WHERE r.attempt_id = a.id ORDER BY r.created_at_ms ASC LIMIT 1
                   ), ''),
                   c.saved, c.audio_file_name, c.source_app, c.integrity_state,
-                  CASE WHEN c.import_ref LIKE 'wispr:%' THEN 'wispr' ELSE 'handy' END,
+                  CASE WHEN c.import_ref LIKE 'wispr:%' THEN 'wispr'
+                       WHEN c.import_ref LIKE 'manual:%' THEN 'manual'
+                       ELSE 'handy' END,
                   COALESCE((SELECT latest.status FROM transcription_attempts latest
                     WHERE latest.capture_id = c.id ORDER BY latest.attempt_number DESC LIMIT 1), 'none'),
                   (SELECT latest.error FROM transcription_attempts latest
-                    WHERE latest.capture_id = c.id ORDER BY latest.attempt_number DESC LIMIT 1)
+                    WHERE latest.capture_id = c.id ORDER BY latest.attempt_number DESC LIMIT 1),
+                  c.audio_duration_ms,
+                  COALESCE((SELECT MAX(ch.end_sample) FROM transcription_chunks ch
+                    WHERE ch.attempt_id = (SELECT latest.id FROM transcription_attempts latest
+                    WHERE latest.capture_id = c.id ORDER BY latest.attempt_number DESC LIMIT 1)), 0),
+                  (SELECT COUNT(*) FROM transcription_chunks ch
+                    WHERE ch.attempt_id = (SELECT latest.id FROM transcription_attempts latest
+                    WHERE latest.capture_id = c.id ORDER BY latest.attempt_number DESC LIMIT 1)),
+                  (SELECT COUNT(*) FROM transcription_chunks ch
+                    JOIN transcription_attempts reviewed ON reviewed.id = ch.attempt_id
+                    WHERE reviewed.capture_id = c.id AND reviewed.is_canonical = 1
+                      AND ch.seam_uncertain = 1)
            FROM captures c
            LEFT JOIN transcription_attempts a
              ON a.capture_id = c.id AND a.is_canonical = 1
@@ -90,6 +106,7 @@ fn canonical_page(
         None | Some("all") => {}
         Some("wispr") => sql.push_str(" AND c.import_ref LIKE 'wispr:%'"),
         Some("handy") => sql.push_str(" AND c.import_ref IS NULL"),
+        Some("manual") => sql.push_str(" AND c.import_ref LIKE 'manual:%'"),
         Some(_) => return Err("invalid history origin".to_string()),
     }
     if let Some((created_at_ms, id)) = parse_cursor(cursor)? {
@@ -118,6 +135,10 @@ fn canonical_page(
                 origin: row.get(8)?,
                 attempt_status: row.get(9)?,
                 attempt_error: row.get(10)?,
+                audio_duration_ms: row.get(11)?,
+                completed_samples: row.get(12)?,
+                completed_chunks: row.get(13)?,
+                review_seams: row.get(14)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -154,6 +175,43 @@ pub fn canonical_history_page(
     crate::storage::recovery::reconcile_history(&db, &dir.join("recordings"))
         .map_err(|e| e.to_string())?;
     canonical_page(&db, &filter, cursor.as_deref(), limit)
+}
+
+#[derive(Clone, Debug, serde::Serialize, specta::Type)]
+pub struct CanonicalSeamDetail {
+    pub position_ms: i64,
+    pub left: String,
+    pub right: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn canonical_seam_details(
+    app: AppHandle,
+    capture_id: String,
+) -> Result<Vec<CanonicalSeamDetail>, String> {
+    let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
+    let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
+        .map_err(|e| e.to_string())?;
+    let conn = db.conn();
+    let mut stmt = conn
+        .prepare(
+            "SELECT ch.start_sample, ch.seam_left, ch.seam_right
+         FROM transcription_chunks ch JOIN transcription_attempts a ON a.id = ch.attempt_id
+         WHERE a.capture_id = ?1 AND a.is_canonical = 1 AND ch.seam_uncertain = 1
+         ORDER BY ch.chunk_index",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([capture_id], |row| {
+            Ok(CanonicalSeamDetail {
+                position_ms: row.get::<_, i64>(0)? * 1000 / 16_000,
+                left: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                right: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -230,79 +288,202 @@ pub fn trash_canonical_history_entry(app: AppHandle, capture_id: String) -> Resu
 #[specta::specta]
 pub async fn retry_canonical_history_entry(
     app: AppHandle,
-    transcription_manager: State<'_, Arc<TranscriptionManager>>,
+    _transcription_manager: State<'_, Arc<TranscriptionManager>>,
     capture_id: String,
 ) -> Result<(), String> {
+    queue_retry(&app, capture_id)
+}
+
+fn queue_retry(app: &AppHandle, capture_id: String) -> Result<(), String> {
+    use crate::storage::repositories::transcriptions as attempts;
     let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
     let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
         .map_err(|e| e.to_string())?;
     let capture = crate::storage::repositories::captures::get_capture(&db, &capture_id)
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "history entry not found".to_string())?;
+        .ok_or("history entry not found")?;
+    if !matches!(
+        capture.integrity_state.as_str(),
+        "audio_valid" | "recovered_orphan"
+    ) {
+        return Err("Recording audio is missing or corrupt".into());
+    }
     let name = capture
         .audio_file_name
-        .ok_or_else(|| "history entry has no audio".to_string())?;
-    let wav_path = dir.join("recordings").join(name);
-    let reader =
-        hound::WavReader::open(&wav_path).map_err(|e| format!("Failed to inspect audio: {e}"))?;
-    if reader.duration() as usize > crate::audio_toolkit::constants::MAX_UNISOLATED_BATCH_SAMPLES {
-        return Err(
-            "Recording preserved; retry is deferred until bounded worker inference is available"
-                .into(),
-        );
+        .ok_or("history entry has no audio")?;
+    if std::path::Path::new(&name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        != Some(name.as_str())
+    {
+        return Err("invalid recording filename".into());
     }
-    drop(reader);
-    let samples = crate::audio_toolkit::read_wav_samples(&wav_path)
-        .map_err(|e| format!("Failed to load audio: {e}"))?;
-    if samples.is_empty() {
-        return Err("Recording has no audio samples".to_string());
+    if !dir.join("recordings").join(&name).is_file() {
+        return Err("Original audio file is missing".into());
     }
-    transcription_manager.initiate_model_load();
-    let tm = Arc::clone(&transcription_manager);
-    let transcription = tauri::async_runtime::spawn_blocking(move || tm.transcribe(samples))
-        .await
-        .map_err(|e| format!("Transcription task panicked: {e}"))?
-        .map_err(|e| e.to_string())?;
-    if transcription.is_empty() {
-        return Err("Recording contains no speech".to_string());
+    if attempts::attempts_for_capture(&db, &capture_id)
+        .map_err(|e| e.to_string())?
+        .last()
+        .is_some_and(|attempt| matches!(attempt.status.as_str(), "pending" | "running"))
+    {
+        app.state::<crate::long_audio::TranscriptionQueue>().wake();
+        return Ok(());
     }
-    let processed = process_transcription_output(&app, &transcription, false).await;
-    use crate::storage::repositories::transcriptions as attempts;
-    let attempt = attempts::insert_attempt(
+    attempts::insert_attempt(
         &db,
         &attempts::NewAttempt {
-            capture_id: capture_id.clone(),
+            capture_id,
             engine_raw: None,
-            normalized_stt: Some(transcription),
-            model_id: None,
+            normalized_stt: None,
+            model_id: Some(crate::settings::get_settings(&app).selected_model),
             language: None,
             normalizer_version: crate::NORMALIZER_VERSION.to_string(),
             dictionary_snapshot_sha256: None,
         },
     )
     .map_err(|e| e.to_string())?;
-    attempts::mark_canonical(&db, &capture_id, &attempt.id).map_err(|e| e.to_string())?;
-    if let Some(text) = processed.post_processed_text {
-        crate::storage::repositories::representations::insert_representation(
-            &db,
-            &crate::storage::repositories::representations::NewRepresentation {
-                attempt_id: attempt.id,
-                parent_representation_id: None,
-                kind: "post_process".to_string(),
-                text,
-                processor: "retry".to_string(),
-                processor_version: crate::NORMALIZER_VERSION.to_string(),
-                prompt_profile_id: None,
-                effective_prompt_snapshot: processed.post_process_prompt,
-                provider_snapshot: None,
-            },
-        )
-        .map_err(|e| e.to_string())?;
-    }
+    app.state::<crate::long_audio::TranscriptionQueue>().wake();
     let _ = app.emit("canonical-history-changed", ());
     Ok(())
 }
 
+fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String, String> {
+    use crate::storage::models::IntegrityState;
+    use crate::storage::repositories::{captures, transcriptions};
+
+    let source = std::fs::canonicalize(&source_path).map_err(|e| e.to_string())?;
+    let metadata = std::fs::metadata(&source).map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.len() == 0 {
+        return Err("Choose a non-empty audio file".into());
+    }
+    let extension = source
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if extension != "wav" && extension != "mp3" {
+        return Err("Only WAV and MP3 files are supported".into());
+    }
+    let title = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("Invalid audio filename")?
+        .to_string();
+    let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
+    let recordings = dir.join("recordings");
+    std::fs::create_dir_all(&recordings).map_err(|e| e.to_string())?;
+    let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
+        .map_err(|e| e.to_string())?;
+    let unique = crate::storage::ids::new_id();
+    let file_name = format!("manual-{unique}.{extension}");
+    let capture = captures::insert_capture_at_with_ref(
+        &db,
+        &captures::NewCapture {
+            audio_file_name: Some(file_name.clone()),
+            audio_sha256: None,
+            audio_size_bytes: None,
+            title,
+            source_app: None,
+            integrity_state: IntegrityState::PendingAudio,
+        },
+        chrono::Utc::now().timestamp_millis(),
+        Some(&format!("manual:{unique}")),
+    )
+    .map_err(|e| e.to_string())?;
+    let _ = app.emit("canonical-history-changed", ());
+    let target = recordings.join(&file_name);
+    let staging_dir = recordings.join(".processing");
+    let staging = staging_dir.join(format!("{}.import.part", capture.id));
+    let mut decode_started = false;
+    let mut audio_decoded = false;
+    let prepared = (|| -> Result<(), String> {
+        std::fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
+        let original_hash =
+            crate::storage::audio_files::hash_file(&source).map_err(|e| e.to_string())?;
+        std::fs::copy(&source, &staging).map_err(|e| e.to_string())?;
+        std::fs::File::open(&staging)
+            .and_then(|file| file.sync_all())
+            .map_err(|e| e.to_string())?;
+        let copied_hash =
+            crate::storage::audio_files::hash_file(&staging).map_err(|e| e.to_string())?;
+        if original_hash != copied_hash {
+            return Err("Audio source changed during import; copied file was not accepted".into());
+        }
+        std::fs::rename(&staging, &target).map_err(|e| e.to_string())?;
+        captures::attach_audio(
+            &db,
+            &capture.id,
+            &file_name,
+            &copied_hash,
+            metadata.len() as i64,
+        )
+        .map_err(|e| e.to_string())?;
+        decode_started = true;
+        let working = crate::long_audio::prepare_working_wav(
+            &target,
+            &recordings.join(".processing"),
+            &capture.id,
+        )?;
+        let samples = crate::long_audio::inspect_wav(&working)?;
+        audio_decoded = true;
+        captures::set_audio_duration(&db, &capture.id, (samples * 1000 / 16_000) as i64)
+            .map_err(|e| e.to_string())?;
+        transcriptions::insert_attempt(
+            &db,
+            &transcriptions::NewAttempt {
+                capture_id: capture.id.clone(),
+                engine_raw: None,
+                normalized_stt: None,
+                model_id: Some(crate::settings::get_settings(&app).selected_model),
+                language: None,
+                normalizer_version: crate::NORMALIZER_VERSION.to_string(),
+                dictionary_snapshot_sha256: None,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if let Err(error) = prepared {
+        let _ = std::fs::remove_file(&staging);
+        let _ = std::fs::remove_file(staging_dir.join(format!("{}.part", capture.id)));
+        if !target.is_file() || (decode_started && !audio_decoded) {
+            let state = if target.is_file() {
+                IntegrityState::AudioCorrupt
+            } else {
+                IntegrityState::AudioMissing
+            };
+            let _ = captures::set_integrity_state(&db, &capture.id, state);
+        }
+        if let Ok(attempt) = transcriptions::insert_attempt(
+            &db,
+            &transcriptions::NewAttempt {
+                capture_id: capture.id.clone(),
+                engine_raw: None,
+                normalized_stt: None,
+                model_id: None,
+                language: None,
+                normalizer_version: crate::NORMALIZER_VERSION.to_string(),
+                dictionary_snapshot_sha256: None,
+            },
+        ) {
+            let _ =
+                transcriptions::complete_attempt(&db, &attempt.id, None, Some(&error), None, None);
+        }
+        let _ = app.emit("canonical-history-changed", ());
+        return Err(error);
+    }
+    app.state::<crate::long_audio::TranscriptionQueue>().wake();
+    let _ = app.emit("canonical-history-changed", ());
+    Ok(capture.id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn import_local_audio(app: AppHandle, source_path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || import_local_audio_file(app, source_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
 #[tauri::command]
 #[specta::specta]
 pub async fn get_history_entries(
@@ -360,47 +541,22 @@ pub async fn delete_history_entry(
 #[specta::specta]
 pub async fn retry_history_entry_transcription(
     app: AppHandle,
-    history_manager: State<'_, Arc<HistoryManager>>,
-    transcription_manager: State<'_, Arc<TranscriptionManager>>,
+    _history_manager: State<'_, Arc<HistoryManager>>,
+    _transcription_manager: State<'_, Arc<TranscriptionManager>>,
     id: i64,
 ) -> Result<(), String> {
-    let entry = history_manager
-        .get_entry_by_id(id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("History entry {} not found", id))?;
-
-    let audio_path = history_manager.get_audio_file_path(&entry.file_name);
-    let samples = crate::audio_toolkit::read_wav_samples(&audio_path)
-        .map_err(|e| format!("Failed to load audio: {}", e))?;
-
-    if samples.is_empty() {
-        return Err("Recording has no audio samples".to_string());
-    }
-
-    transcription_manager.initiate_model_load();
-
-    let tm = Arc::clone(&transcription_manager);
-    let transcription = tauri::async_runtime::spawn_blocking(move || tm.transcribe(samples))
-        .await
-        .map_err(|e| format!("Transcription task panicked: {}", e))?
+    let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
+    let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
         .map_err(|e| e.to_string())?;
-
-    if transcription.is_empty() {
-        return Err("Recording contains no speech".to_string());
-    }
-
-    let processed =
-        process_transcription_output(&app, &transcription, entry.post_process_requested).await;
-    history_manager
-        .update_transcription(
-            id,
-            transcription,
-            processed.post_processed_text,
-            processed.post_process_prompt,
+    let capture_id: String = db
+        .conn()
+        .query_row(
+            "SELECT id FROM captures WHERE legacy_history_id = ?1",
+            [id],
+            |row| row.get(0),
         )
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|_| "Legacy entry has no canonical capture".to_string())?;
+    queue_retry(&app, capture_id)
 }
 
 #[tauri::command]

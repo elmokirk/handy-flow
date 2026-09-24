@@ -4,6 +4,9 @@ use std::path::PathBuf;
 #[derive(Parser, Debug, Clone, Default)]
 #[command(name = "handy", about = "Handy - Speech to Text")]
 pub struct CliArgs {
+    /// Internal line-oriented worker protocol; not an interactive CLI mode.
+    #[arg(long, hide = true)]
+    pub transcription_worker: bool,
     /// Start with the main window hidden
     #[arg(long)]
     pub start_hidden: bool,

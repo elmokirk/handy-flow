@@ -53,7 +53,7 @@ pub const NORMALIZER_VERSION: &str = "1";
 /// `delivered_text` carries the post-normalization DERIVED layer
 /// (Dictionary snapshot already applied in normalized_stt; Snippets
 /// applied as last deterministic step before delivery).
-#[derive(Clone, Debug, Serialize, Type)]
+#[derive(Clone, Debug, serde::Deserialize, Serialize, Type)]
 pub struct TranscriptionOutput {
     pub engine_raw: String,
     pub normalized_stt: String,
@@ -394,6 +394,13 @@ impl TranscriptionManager {
                         break;
                     }
 
+                    if app_handle_cloned
+                        .try_state::<crate::CliArgs>()
+                        .is_some_and(|args| args.transcription_worker)
+                    {
+                        continue;
+                    }
+
                     let settings = get_settings(&app_handle_cloned);
                     let timeout = settings.model_unload_timeout;
 
@@ -537,6 +544,13 @@ impl TranscriptionManager {
 
     /// Unloads the model immediately if the setting is enabled and the model is loaded
     pub fn maybe_unload_immediately(&self, context: &str) {
+        if self
+            .app_handle
+            .try_state::<crate::CliArgs>()
+            .is_some_and(|args| args.transcription_worker)
+        {
+            return;
+        }
         let settings = get_settings(&self.app_handle);
         if settings.model_unload_timeout == ModelUnloadTimeout::Immediately
             && self.is_model_loaded()
@@ -857,6 +871,17 @@ impl TranscriptionManager {
             }
             Some(_) => Some("onnx".to_string()),
             None => None,
+        }
+    }
+
+    pub fn model_max_audio_samples(&self) -> Option<u64> {
+        let engine = self.lock_engine();
+        match engine.as_ref()? {
+            LoadedEngine::TranscribeCpp(session) => {
+                let ms = session.model().capabilities().max_audio_ms;
+                (ms > 0).then_some(ms as u64 * 16)
+            }
+            _ => None,
         }
     }
 
@@ -1271,7 +1296,7 @@ impl TranscriptionManager {
     /// later pipeline stage. `normalized_stt` is the durable "raw"
     /// knowledge text per planning/04.
     pub fn transcribe_detailed(&self, audio: Vec<f32>) -> Result<TranscriptionOutput> {
-        let output = self.transcribe_inner(audio)?;
+        let output = self.transcribe_inner(audio, false)?;
         Ok(output.unwrap_or_else(|| TranscriptionOutput {
             engine_raw: String::new(),
             normalized_stt: String::new(),
@@ -1282,7 +1307,60 @@ impl TranscriptionManager {
         }))
     }
 
-    fn transcribe_inner(&self, audio: Vec<f32>) -> Result<Option<TranscriptionOutput>> {
+    /// Bounded worker chunks keep the engine text untouched until all
+    /// overlaps are merged; text normalization runs once on the final result.
+    pub fn transcribe_engine_raw(&self, audio: Vec<f32>) -> Result<TranscriptionOutput> {
+        self.transcribe_inner(audio, true)?
+            .ok_or_else(|| anyhow::anyhow!("Empty audio window"))
+    }
+
+    /// Apply the existing deterministic text pipeline once to the merged
+    /// engine output, rather than once per overlapping audio window.
+    pub fn normalize_merged_raw(
+        &self,
+        raw: String,
+        language: Option<String>,
+    ) -> TranscriptionOutput {
+        let (is_whisper, languages) = match self.lock_engine().as_ref() {
+            Some(LoadedEngine::TranscribeCpp(session)) => {
+                let model = session.model();
+                (model.arch() == "whisper", model.capabilities().languages)
+            }
+            _ => (
+                false,
+                self.get_current_model()
+                    .and_then(|id| self.model_manager.get_model_info(&id))
+                    .map(|model| model.supported_languages)
+                    .unwrap_or_default(),
+            ),
+        };
+        let evidence = language
+            .clone()
+            .map(OutputLanguageEvidence::ModelDetected)
+            .unwrap_or(OutputLanguageEvidence::Unknown);
+        let normalized = post_process_transcription_text(
+            raw.clone(),
+            &get_settings(&self.app_handle),
+            is_whisper,
+            &evidence,
+            &languages,
+        );
+        let delivered = apply_derived_layers(&self.app_handle, &normalized);
+        TranscriptionOutput {
+            engine_raw: raw,
+            normalized_stt: normalized,
+            delivered_text: delivered,
+            model_id: self.get_current_model(),
+            language,
+            normalizer_version: NORMALIZER_VERSION.into(),
+        }
+    }
+
+    fn transcribe_inner(
+        &self,
+        audio: Vec<f32>,
+        raw_only: bool,
+    ) -> Result<Option<TranscriptionOutput>> {
         #[cfg(debug_assertions)]
         if std::env::var("HANDY_FORCE_TRANSCRIPTION_FAILURE").is_ok() {
             return Err(anyhow::anyhow!(
@@ -1605,6 +1683,17 @@ impl TranscriptionManager {
         // STT-103: exact engine output is captured BEFORE any deterministic
         // correction/cleanup so it can be persisted immutably.
         let engine_raw = result;
+
+        if raw_only {
+            return Ok(Some(TranscriptionOutput {
+                normalized_stt: String::new(),
+                delivered_text: String::new(),
+                engine_raw,
+                model_id: self.get_current_model(),
+                language: output_language_code(&output_language),
+                normalizer_version: NORMALIZER_VERSION.to_string(),
+            }));
+        }
 
         let filtered_result = post_process_transcription_text(
             engine_raw.clone(),

@@ -108,6 +108,14 @@ fn reconcile(
         let state = match capture.audio_file_name.as_deref() {
             None => IntegrityState::AudioMissing,
             Some(name) if !recording_dir.join(name).is_file() => IntegrityState::AudioMissing,
+            Some(name) if name.to_ascii_lowercase().ends_with(".mp3") => {
+                // A manual MP3 may have reached its final path just before a crash.
+                // Keep the original retryable; bounded decode will report damage.
+                match std::fs::metadata(recording_dir.join(name)) {
+                    Ok(meta) if meta.len() > 0 => IntegrityState::RecoveredOrphan,
+                    _ => IntegrityState::AudioCorrupt,
+                }
+            }
             Some(name) => match hound::WavReader::open(recording_dir.join(name)) {
                 Ok(reader) if reader.duration() > 0 => IntegrityState::RecoveredOrphan,
                 _ => IntegrityState::AudioCorrupt,
