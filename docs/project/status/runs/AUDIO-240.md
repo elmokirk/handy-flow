@@ -2,13 +2,13 @@
 id: "run-audio-240"
 title: "RUN_STATE — AUDIO-240"
 type: "run-state"
-status: "in_progress"
+status: "in_review"
 updated: "2026-09-24"
 project: "custom-handy"
 ticket_id: "AUDIO-240"
-run_status: "IN_PROGRESS"
+run_status: "IN_REVIEW"
 branch: "phase/06-long-audio-remediation"
-last_commit: "bf339bc"
+last_commit: "05bc97c"
 ---
 
 # RUN_STATE — AUDIO-240
@@ -89,30 +89,37 @@ last_commit: "bf339bc"
   the binary reports file/product version 0.9.12. Format check and Windows
   clippy ratchet passed (18 distinct warnings, ceiling 22).
 
-## Release blockers still open
+## Published 0.9.13 and verification
 
-- A **real 15-minute Windows microphone dictation** must succeed, with one
-  original WAV, one history card and a usable transcript.
-- The owner has not yet reviewed the one-shot transcript quality. The seam
-  editor and preferred Knowledge-Base text are coded but need installed UI
-  verification and a human seam-quality review.
-- A candidate must be installed and its focused-field paste,
-  spinner/no-flicker behavior, and >200-card progress/filter case exercised.
-- The owner superseded the prior public-release hold: publish a signed 0.9.13
-  Windows x64 NSIS update via the in-app updater, then perform real microphone,
-  listening and installed-UI validation. These results remain unproven and
-  must not be represented as passed.
-- Installed-app E2E must exercise WAV/MP3 import, worker kill/restart,
-  short-job preemption, playback, retry, and progress in the actual UI.
-- The public signed release and in-app updater test from installed 0.9.11 are
-  pending. Release workflow must verify the 0.9.13 NSIS signature and manifest
-  before publishing; the owner will exercise the actual update button.
-- The 0.9.13 GitHub quality run `36023511312` passed (Rust, Clippy, frontend,
-  Playwright). The Windows release build is pending.
-- Two independent reviews against installed baseline `a16698b` found and
-  rechecked release-path fixes: NSIS-only audit, commit-pinned tag/build,
-  manifest URL/signature equality, and public Rust API documentation.
-  No concrete code/release-path finding remains in that diff. New review
-  labels outside German and English currently use English fallback text;
-  installed in-app update and real audio quality remain owner validation.
-  macOS/Linux release-path testing has not yet been established.
+- Empty-tap regression: no-sample live captures and live recordings of at
+  most two seconds with no recognized word are discarded. Potentially
+  recoverable audio and all model failures remain visible. The targeted test
+  failed before the fix and passed after it; the full local Rust suite passed
+  (229 library tests plus integration tests), Windows Clippy ratchet passed
+  (18 warnings below ceiling 22), and frontend lint/build/translations passed.
+- GitHub quality run `36031618373` passed on release source SHA `05bc97c`:
+  Clippy, Rust, frontend build and Playwright smoke. Windows x64 NSIS build
+  and package audit passed in release run `36034565847`.
+- The release run's final job failed before verification because `gh` lacked
+  `-R` in a job without checkout. The same asset gate was performed manually:
+  the three draft assets existed; `latest.json` version, exact Windows x64
+  installer URL, and both Windows signatures matched the `.sig` asset. The
+  draft was then published as public Latest `v0.9.13`; the public updater
+  endpoint returns 0.9.13, installer HEAD returns HTTP 200, and the tag points
+  to `05bc97c`. Workflow-only fix `4e556e1` prevents this failure next time;
+  it was not part of the already-built app binary.
+
+## Owner validation still open
+
+- Update the installed 0.9.11 app via its bottom-right button when no
+  recording is active. The agent did not close or install the owner's app.
+- Perform a real 15-minute Windows microphone dictation and listening check:
+  one original WAV, one history card, usable transcript, focused-field paste
+  for ordinary dictations, calm spinner, and no UI flicker.
+- Exercise an empty trigger and a short no-speech dictation; old false cards
+  are not auto-deleted because missing audio may represent real failures.
+- Inspect seam review/confirmation and preferred text in copy/knowledge
+  export; exercise WAV/MP3 import, worker kill/restart, short-job priority,
+  playback, retry and a large filtered history in the installed app.
+- Mobile and macOS/Linux release validation, and guaranteed 60-minute
+  transcription success, remain outside this Windows owner-validation gate.

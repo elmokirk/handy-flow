@@ -2223,7 +2223,7 @@
       "owner": "Integrator",
       "dependencies": ["HIST-240", "PAD-306"],
       "gate": "G6",
-      "status": "IN_PROGRESS",
+      "status": "IN_REVIEW",
       "allowed_paths": ["repo/**", "planning/**", "status/**"],
       "forbidden_paths": ["C:/Users/Kirk/AppData/Roaming/Wispr Flow/**"],
       "qa_profile": ["unit", "integration", "windows-native"],
