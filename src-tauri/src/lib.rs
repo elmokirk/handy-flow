@@ -925,6 +925,7 @@ pub fn run(cli_args: CliArgs) {
             commands::history::retry_history_entry_transcription,
             commands::history::canonical_history_page,
             commands::history::canonical_seam_details,
+            commands::history::confirm_canonical_history_text,
             commands::history::toggle_canonical_history_saved,
             commands::history::canonical_audio_file_path,
             commands::history::trash_canonical_history_entry,

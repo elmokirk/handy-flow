@@ -637,7 +637,9 @@ pub fn copy_last_transcript(app: &AppHandle) {
         let text = db
             .conn()
             .query_row(
-                "SELECT a.normalized_stt FROM captures c\
+                "SELECT COALESCE((SELECT r.text FROM representations r\
+                   WHERE r.attempt_id = a.id AND r.kind = 'manual_edit' AND r.status = 'success'\
+                   ORDER BY r.created_at_ms DESC, r.id DESC LIMIT 1), a.normalized_stt) FROM captures c\
                  JOIN transcription_attempts a ON a.capture_id = c.id AND a.is_canonical = 1\
                  WHERE c.deleted_at_ms IS NULL AND a.normalized_stt IS NOT NULL\
                    AND a.normalized_stt != ''\

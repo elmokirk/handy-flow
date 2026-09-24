@@ -125,7 +125,10 @@ pub fn search(
         "SELECT f.ref_type, f.ref_id,
                 COALESCE((SELECT c.id FROM captures c
                           JOIN transcription_attempts t2 ON t2.capture_id = c.id
-                          WHERE t2.id = f.ref_id), NULL) AS capture_id
+                          WHERE t2.id = f.ref_id),
+                         (SELECT a.capture_id FROM representations r
+                          JOIN transcription_attempts a ON a.id = r.attempt_id
+                          WHERE r.id = f.ref_id)) AS capture_id
          FROM search_fts f
          WHERE search_fts MATCH ?1 AND (?2 IS NULL OR f.ref_type = ?2)
          ORDER BY rank

@@ -502,6 +502,26 @@ const CanonicalHistoryCard: React.FC<{
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [seams, setSeams] = useState<CanonicalSeamDetail[]>([]);
+  const [draft, setDraft] = useState(entry.text);
+  const [savingReview, setSavingReview] = useState(false);
+  const [editingReview, setEditingReview] = useState(false);
+  const reviewLabels = i18n.language.startsWith("de")
+    ? {
+        reviewed: "Text bestätigt",
+        left: "Ende davor",
+        right: "Anfang danach",
+        edit: "Gesamttext prüfen oder korrigieren",
+        save: "Fassung bestätigen",
+        error: "Fassung konnte nicht gespeichert werden",
+      }
+    : {
+        reviewed: "Text reviewed",
+        left: "Previous ending",
+        right: "Next beginning",
+        edit: "Review or correct full text",
+        save: "Confirm text",
+        error: "Could not save reviewed text",
+      };
   const audioCorrupt = entry.integrity_state === "audio_corrupt";
   const pending = entry.integrity_state === "pending_audio";
   const recovered = entry.integrity_state === "recovered_orphan";
@@ -517,7 +537,10 @@ const CanonicalHistoryCard: React.FC<{
         )
       : 0;
   useEffect(() => {
-    if (entry.review_seams === 0) return;
+    if (entry.review_seams === 0) {
+      setSeams([]);
+      return;
+    }
     commands
       .canonicalSeamDetails(entry.capture_id)
       .then((result) => setSeams(unwrap(result)))
@@ -525,6 +548,24 @@ const CanonicalHistoryCard: React.FC<{
         console.error("Could not load transcription seams:", error),
       );
   }, [entry.capture_id, entry.review_seams]);
+  useEffect(() => {
+    if (!editingReview) setDraft(entry.text);
+  }, [entry.text, editingReview]);
+  const confirmReview = async () => {
+    try {
+      setSavingReview(true);
+      unwrap(
+        await commands.confirmCanonicalHistoryText(entry.capture_id, draft),
+      );
+      setEditingReview(false);
+      onChanged();
+    } catch (error) {
+      console.error("Could not save reviewed transcript:", error);
+      toast.error(reviewLabels.error);
+    } finally {
+      setSavingReview(false);
+    }
+  };
   const copy = async () => {
     await navigator.clipboard.writeText(entry.text);
     setCopied(true);
@@ -684,24 +725,59 @@ const CanonicalHistoryCard: React.FC<{
       <p className="italic text-sm text-text/90 select-text cursor-text whitespace-pre-wrap break-words">
         {entry.text}
       </p>
-      {seams.length > 0 && (
+      {entry.review_seams > 0 && (
         <details className="text-xs text-amber-400">
           <summary>
-            {t("settings.history.reviewSeams", { count: seams.length })}
+            {entry.text_reviewed
+              ? reviewLabels.reviewed
+              : t("settings.history.reviewSeams", { count: seams.length })}
           </summary>
           {seams.map((seam) => (
-            <p key={seam.position_ms} className="mt-2 select-text">
+            <div key={seam.position_ms} className="mt-2 select-text">
               {Math.floor(seam.position_ms / 60000)}:
               {`${Math.floor((seam.position_ms % 60000) / 1000)}`.padStart(
                 2,
                 "0",
               )}
               {" · "}
-              <u>{seam.left}</u>
-              {" / "}
-              <u>{seam.right}</u>
-            </p>
+              <p>
+                {reviewLabels.left}: <u>{seam.left}</u>
+              </p>
+              <p>
+                {reviewLabels.right}: <u>{seam.right}</u>
+              </p>
+            </div>
           ))}
+          {editingReview ? (
+            <div className="mt-3 space-y-2">
+              <label htmlFor={`review-${entry.capture_id}`}>
+                {reviewLabels.edit}
+              </label>
+              <textarea
+                id={`review-${entry.capture_id}`}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                rows={10}
+                className="w-full rounded border border-mid-gray/30 bg-background p-2 text-sm text-text"
+              />
+              <Button
+                size="sm"
+                onClick={confirmReview}
+                disabled={savingReview || !draft.trim()}
+              >
+                {reviewLabels.save}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="mt-3"
+              onClick={() => setEditingReview(true)}
+            >
+              {reviewLabels.edit}
+            </Button>
+          )}
         </details>
       )}
       {entry.audio_file_name && !audioCorrupt && !pending && (

@@ -1111,6 +1111,14 @@ async canonicalSeamDetails(captureId: string) : Promise<Result<CanonicalSeamDeta
     else return { status: "error", error: e  as any };
 }
 },
+async confirmCanonicalHistoryText(captureId: string, text: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("confirm_canonical_history_text", { captureId, text }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async toggleCanonicalHistorySaved(captureId: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("toggle_canonical_history_saved", { captureId }) };
@@ -1357,7 +1365,7 @@ export type CanonicalEntry = { capture_id: string; legacy_history_id: number | n
  * Relative audio file name; resolve via `canonical_audio_path`.
  */
 audio_file_name: string | null; raw_text: string | null; derived: DerivedTextSummary[] }
-export type CanonicalHistoryEntry = { capture_id: string; created_at_ms: number; title: string; text: string; saved: boolean; audio_file_name: string | null; source_app: string | null; origin: string; integrity_state: string; attempt_status: string; attempt_error: string | null; audio_duration_ms: number | null; completed_samples: number; completed_chunks: number; review_seams: number }
+export type CanonicalHistoryEntry = { capture_id: string; created_at_ms: number; title: string; text: string; saved: boolean; audio_file_name: string | null; source_app: string | null; origin: string; integrity_state: string; attempt_status: string; attempt_error: string | null; audio_duration_ms: number | null; completed_samples: number; completed_chunks: number; review_seams: number; text_reviewed: boolean }
 export type CanonicalHistoryFilter = { from_ms: number | null; to_ms: number | null; origin: string | null }
 export type CanonicalHistoryPage = { entries: CanonicalHistoryEntry[]; next_cursor: string | null }
 export type CanonicalSeamDetail = { position_ms: number; left: string; right: string }

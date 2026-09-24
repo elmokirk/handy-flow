@@ -30,6 +30,7 @@ pub struct CanonicalHistoryEntry {
     pub completed_samples: i64,
     pub completed_chunks: i64,
     pub review_seams: i64,
+    pub text_reviewed: bool,
 }
 
 #[derive(Clone, Debug, serde::Serialize, specta::Type)]
@@ -64,7 +65,9 @@ fn canonical_page(
 
     let mut sql = String::from(
         r#"SELECT c.id, c.created_at_ms, c.title,
-                  COALESCE(a.normalized_stt, (
+                  COALESCE((SELECT r.text FROM representations r
+                      WHERE r.attempt_id = a.id AND r.kind = 'manual_edit' AND r.status = 'success'
+                      ORDER BY r.created_at_ms DESC, r.id DESC LIMIT 1), a.normalized_stt, (
                       SELECT r.text FROM representations r
                       WHERE r.attempt_id = a.id ORDER BY r.created_at_ms ASC LIMIT 1
                   ), ''),
@@ -86,7 +89,9 @@ fn canonical_page(
                   (SELECT COUNT(*) FROM transcription_chunks ch
                     JOIN transcription_attempts reviewed ON reviewed.id = ch.attempt_id
                     WHERE reviewed.capture_id = c.id AND reviewed.is_canonical = 1
-                      AND ch.seam_uncertain = 1)
+                      AND ch.seam_uncertain = 1),
+                  EXISTS(SELECT 1 FROM representations r WHERE r.attempt_id = a.id
+                    AND r.kind = 'manual_edit' AND r.processor = 'history_review' AND r.status = 'success')
            FROM captures c
            LEFT JOIN transcription_attempts a
              ON a.capture_id = c.id AND a.is_canonical = 1
@@ -139,6 +144,7 @@ fn canonical_page(
                 completed_samples: row.get(12)?,
                 completed_chunks: row.get(13)?,
                 review_seams: row.get(14)?,
+                text_reviewed: row.get::<_, i64>(15)? != 0,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -214,6 +220,25 @@ pub fn canonical_seam_details(
         })
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn confirm_canonical_history_text(
+    app: AppHandle,
+    capture_id: String,
+    text: String,
+) -> Result<(), String> {
+    if text.trim().is_empty() || text.len() > 1_000_000 {
+        return Err("reviewed transcript must contain 1 to 1000000 bytes".into());
+    }
+    let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
+    let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
+        .map_err(|e| e.to_string())?;
+    crate::storage::repositories::representations::confirm_transcript(&db, &capture_id, &text)
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("canonical-history-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -677,5 +702,38 @@ mod canonical_history_tests {
         .unwrap();
         assert_eq!(recent.entries.len(), 1);
         assert_eq!(recent.entries[0].capture_id, "handy-new");
+    }
+
+    #[test]
+    fn confirmed_text_is_preferred_without_changing_canonical_raw() {
+        let db = seeded_db();
+        crate::storage::repositories::representations::confirm_transcript(
+            &db,
+            "handy-new",
+            "Reviewed wording",
+        )
+        .unwrap();
+        let page = canonical_page(
+            &db,
+            &CanonicalHistoryFilter {
+                from_ms: None,
+                to_ms: None,
+                origin: None,
+            },
+            None,
+            30,
+        )
+        .unwrap();
+        assert_eq!(page.entries[0].text, "Reviewed wording");
+        assert!(page.entries[0].text_reviewed);
+        let raw: String = db
+            .conn()
+            .query_row(
+                "SELECT normalized_stt FROM transcription_attempts WHERE id = 'a-handy'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(raw, "newer Handy");
     }
 }

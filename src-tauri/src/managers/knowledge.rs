@@ -28,7 +28,7 @@ use crate::storage::repositories::transcriptions::canonical_attempt;
 
 /// Bumped only on a breaking change to the exported shape. Consumers that
 /// see an unknown version must refuse rather than guess.
-pub const KNOWLEDGE_CONTRACT_VERSION: &str = "1";
+pub const KNOWLEDGE_CONTRACT_VERSION: &str = "2";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -106,6 +106,9 @@ pub struct KnowledgeItem {
     /// The canonical text. `normalized_stt` for a dictation, current content
     /// for a note.
     pub raw: String,
+    /// User-confirmed transcript when present; otherwise the canonical raw.
+    pub preferred_text: String,
+    pub preferred_representation_id: Option<String>,
     pub language: Option<String>,
     pub model_id: Option<String>,
     pub created_at: String,
@@ -147,7 +150,17 @@ fn build_transcription(
         .clone()
         .ok_or(KnowledgeError::NoCanonicalAttempt)?;
 
-    let representations = representations_for_attempt(db, &attempt.id)?
+    let stored_representations = representations_for_attempt(db, &attempt.id)?;
+    let confirmed = stored_representations
+        .iter()
+        .rev()
+        .find(|r| r.kind == "manual_edit" && r.status == "success");
+    let preferred_text = confirmed.map_or_else(|| raw.clone(), |r| r.text.clone());
+    let preferred_representation_id = confirmed.map(|r| r.id.clone());
+    let updated_at_ms = confirmed.map_or(capture.updated_at_ms, |r| {
+        capture.updated_at_ms.max(r.created_at_ms)
+    });
+    let representations = stored_representations
         .into_iter()
         .map(|r| KnowledgeRepresentation {
             id: r.id,
@@ -167,10 +180,12 @@ fn build_transcription(
         attempt_id: Some(attempt.id),
         title: capture.title.clone(),
         raw,
+        preferred_text,
+        preferred_representation_id,
         language: attempt.language,
         model_id: attempt.model_id,
         created_at: rfc3339(capture.created_at_ms),
-        updated_at: rfc3339(capture.updated_at_ms),
+        updated_at: rfc3339(updated_at_ms),
         audio: audio_of(capture),
         representations,
     })
@@ -206,6 +221,8 @@ pub fn note_item(db: &AppDatabase, note_id: &str) -> Result<KnowledgeItem, Knowl
         source_id: note.id.clone(),
         attempt_id: None,
         title: note.title,
+        preferred_text: version.content.clone(),
+        preferred_representation_id: None,
         raw: version.content,
         language: None,
         model_id: None,
