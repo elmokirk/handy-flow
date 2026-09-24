@@ -224,6 +224,8 @@ pub fn canonical_seam_details(
 
 #[tauri::command]
 #[specta::specta]
+/// Save a user-reviewed version of the canonical transcript without changing
+/// the original attempt or recording.
 pub fn confirm_canonical_history_text(
     app: AppHandle,
     capture_id: String,

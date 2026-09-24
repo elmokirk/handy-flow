@@ -877,7 +877,8 @@ jobs:
 
           # Administrative install extracts the MSI payload without elevation.
           $msiPackages = Get-ChildItem (Join-Path $bundleBase "msi") -Filter "*.msi" -ErrorAction SilentlyContinue
-          if (-not $msiPackages) {
+          $nsisOnly = "${{ inputs.build-args }}" -match '(?i)(^|\s)--bundles\s+nsis(\s|$)'
+          if (-not $msiPackages -and -not $nsisOnly) {
             throw "No MSI packages found under $bundleBase for runtime DLL audit"
           }
 

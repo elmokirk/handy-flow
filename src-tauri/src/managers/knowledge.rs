@@ -108,6 +108,7 @@ pub struct KnowledgeItem {
     pub raw: String,
     /// User-confirmed transcript when present; otherwise the canonical raw.
     pub preferred_text: String,
+    /// Source version for `preferred_text`; absent when the raw is preferred.
     pub preferred_representation_id: Option<String>,
     pub language: Option<String>,
     pub model_id: Option<String>,

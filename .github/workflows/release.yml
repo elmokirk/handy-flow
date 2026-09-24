@@ -32,6 +32,7 @@ jobs:
               repo: context.repo.repo,
               tag_name: `v${{ steps.get-version.outputs.version }}`,
               name: `v${{ steps.get-version.outputs.version }}`,
+              target_commitish: context.sha,
               draft: true,
               prerelease: false,
               body: 'Windows x64 update for the long-audio and history hotfix. Real 15-minute microphone and listening validation is scheduled after installation by the owner; report any regression before wider rollout.',
@@ -58,6 +59,7 @@ jobs:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
+      ref: ${{ github.sha }}
       sign-binaries: true
       asset-prefix: "handy"
       upload-artifacts: false
@@ -81,16 +83,19 @@ jobs:
         run: |
           set -euo pipefail
           assets="$(gh release view "v${RELEASE_VERSION}" --json assets --jq '.assets[].name')"
-          echo "$assets" | grep -Eq 'x64-setup\.exe$'
-          echo "$assets" | grep -Eq 'x64-setup\.exe\.sig$'
+          installer="$(echo "$assets" | grep -E 'x64-setup\.exe$' | head -n 1)"
+          echo "$assets" | grep -Fxq "${installer}.sig"
           echo "$assets" | grep -Fxq 'latest.json'
           mkdir -p "$RUNNER_TEMP/handy-release-check"
-          gh release download "v${RELEASE_VERSION}" --pattern latest.json --dir "$RUNNER_TEMP/handy-release-check"
+          gh release download "v${RELEASE_VERSION}" --pattern latest.json --pattern "${installer}.sig" --dir "$RUNNER_TEMP/handy-release-check"
           jq -e --arg version "$RELEASE_VERSION" \
             '.version == $version and
-             (.platforms["windows-x86_64"].url | contains("x64-setup.exe")) and
              (.platforms["windows-x86_64"].signature | length > 50)' \
             "$RUNNER_TEMP/handy-release-check/latest.json"
+          manifest_url="$(jq -r '.platforms["windows-x86_64"].url' "$RUNNER_TEMP/handy-release-check/latest.json")"
+          manifest_signature="$(jq -r '.platforms["windows-x86_64"].signature' "$RUNNER_TEMP/handy-release-check/latest.json")"
+          [[ "$manifest_url" == "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${RELEASE_VERSION}/${installer}" ]]
+          [[ "$manifest_signature" == "$(cat "$RUNNER_TEMP/handy-release-check/${installer}.sig")" ]]
       - name: Publish the draft release
         # The updater flow depends on this: a draft release's latest.json is
         # not publicly downloadable, so every installed app reports "no
