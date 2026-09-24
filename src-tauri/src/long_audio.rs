@@ -17,6 +17,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
+use crate::storage::repositories::captures;
 use crate::storage::repositories::transcriptions::{self, ChunkRecord, IncompleteJob};
 use crate::TranscriptionOutput;
 
@@ -26,6 +27,36 @@ pub const OVERLAP_SAMPLES: u64 = 2 * SAMPLE_RATE as u64;
 // ponytail: six-minute one-shot ceiling preserves foreground dictation UX;
 // the isolated child falls back to small windows if a device cannot run it.
 const SINGLE_PASS_MAX_SAMPLES: u64 = 6 * 60 * SAMPLE_RATE as u64;
+const NO_SPEECH_ERROR: &str = "Audio contains no recognized speech";
+
+/// Discard only a confirmed empty live dictation; never use this for model or
+/// recorder failures that may contain recoverable speech.
+pub(crate) fn discard_silent_live_capture(
+    db: &crate::storage::database::AppDatabase,
+    capture_id: &str,
+    original: &Path,
+) -> Result<(), String> {
+    if !captures::trash_capture(db, capture_id).map_err(|error| error.to_string())? {
+        return Err("Capture was not active when discarding silence".into());
+    }
+    if original.exists() {
+        if let Err(error) = std::fs::remove_file(original) {
+            let _ = captures::restore_capture(db, capture_id);
+            return Err(error.to_string());
+        }
+    }
+    captures::purge_trashed(db, capture_id)
+        .map_err(|error| error.to_string())
+        .map(|_| ())
+}
+
+fn should_discard_silent_live_job(error: &str, duration_ms: Option<i64>, is_live: bool) -> bool {
+    error == NO_SPEECH_ERROR && duration_ms.is_some_and(|duration| duration <= 2_000) && is_live
+}
+
+fn has_recognized_word(text: &str) -> bool {
+    text.chars().any(char::is_alphanumeric)
+}
 
 fn bounded_window(model_limit: u64, overlap: u64) -> u64 {
     INITIAL_WINDOW_SAMPLES
@@ -630,10 +661,28 @@ impl TranscriptionQueue {
                     &mut loaded_model,
                     &live_for_worker,
                 ) {
+                    let was_live = live_for_worker
+                        .lock()
+                        .unwrap()
+                        .remove(&job.attempt_id)
+                        .is_some();
+                    if should_discard_silent_live_job(&error, job.audio_duration_ms, was_live) {
+                        let original = hm.recordings_dir().join(&job.audio_file_name);
+                        match discard_silent_live_capture(&db, &job.capture_id, &original) {
+                            Ok(()) => {
+                                log::debug!("Discarded silent live dictation {}", job.capture_id);
+                                let _ = app.emit("canonical-history-changed", ());
+                                continue;
+                            }
+                            Err(discard_error) => log::error!(
+                                "Could not discard silent dictation {}: {discard_error}",
+                                job.capture_id
+                            ),
+                        }
+                    }
                     log::error!("Transcription job {} failed: {error}", job.attempt_id);
                     worker = None;
                     loaded_model = None;
-                    live_for_worker.lock().unwrap().remove(&job.attempt_id);
                     let failed = transcriptions::complete_attempt_with_raw(
                         &db,
                         &job.attempt_id,
@@ -875,12 +924,12 @@ fn finish_job(
         previous_raw = output.engine_raw;
         language = language.or(output.language);
     }
-    if raw.trim().is_empty() {
-        return Err("Audio contains no recognized speech".into());
+    if !has_recognized_word(&raw) {
+        return Err(NO_SPEECH_ERROR.into());
     }
     let output = ensure_worker(worker, loaded_model, model_id)?.normalize(raw, language)?;
-    if output.normalized_stt.trim().is_empty() {
-        return Err("Audio contains no recognized speech".into());
+    if !has_recognized_word(&output.normalized_stt) {
+        return Err("Speech was recognized, but normalization produced no text".into());
     }
     transcriptions::complete_and_promote(
         db,
@@ -920,6 +969,111 @@ fn finish_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_short_live_no_speech_is_discardable() {
+        assert!(should_discard_silent_live_job(
+            NO_SPEECH_ERROR,
+            Some(2_000),
+            true
+        ));
+        assert!(!should_discard_silent_live_job(
+            NO_SPEECH_ERROR,
+            Some(2_001),
+            true
+        ));
+        assert!(!should_discard_silent_live_job(
+            NO_SPEECH_ERROR,
+            Some(1_000),
+            false
+        ));
+        assert!(!should_discard_silent_live_job(
+            "Model crashed",
+            Some(1_000),
+            true
+        ));
+        assert!(!should_discard_silent_live_job(
+            "Speech was recognized, but normalization produced no text",
+            Some(1_000),
+            true
+        ));
+        assert!(!has_recognized_word("  ... !"));
+        assert!(has_recognized_word("Ja."));
+    }
+
+    #[test]
+    fn silent_live_capture_removes_audio_attempt_and_checkpoint() {
+        use crate::storage::models::IntegrityState;
+        use crate::storage::repositories::captures::{get_capture, insert_capture, NewCapture};
+        use crate::storage::repositories::transcriptions::{
+            insert_attempt, insert_chunk, NewAttempt,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let (db, _) =
+            crate::storage::migrations::open_and_migrate(dir.path().join("history.db"), "0.9.13")
+                .unwrap();
+        let wav = dir.path().join("handy-silent.wav");
+        let mut writer = hound::WavWriter::create(
+            &wav,
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: SAMPLE_RATE,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            },
+        )
+        .unwrap();
+        for _ in 0..SAMPLE_RATE {
+            writer.write_sample(0_i16).unwrap();
+        }
+        writer.finalize().unwrap();
+        let capture = insert_capture(
+            &db,
+            &NewCapture {
+                audio_file_name: Some("handy-silent.wav".into()),
+                audio_sha256: None,
+                audio_size_bytes: None,
+                title: "Silent tap".into(),
+                source_app: None,
+                integrity_state: IntegrityState::AudioValid,
+            },
+        )
+        .unwrap();
+        let attempt = insert_attempt(
+            &db,
+            &NewAttempt {
+                capture_id: capture.id.clone(),
+                engine_raw: None,
+                normalized_stt: None,
+                model_id: None,
+                language: None,
+                normalizer_version: String::new(),
+                dictionary_snapshot_sha256: None,
+            },
+        )
+        .unwrap();
+        insert_chunk(
+            &db,
+            &attempt.id,
+            &ChunkRecord {
+                chunk_index: 0,
+                start_sample: 0,
+                end_sample: SAMPLE_RATE as i64,
+                window_samples: SAMPLE_RATE as i64,
+                payload_json: "{}".into(),
+                seam_uncertain: false,
+                seam_left: None,
+                seam_right: None,
+            },
+        )
+        .unwrap();
+        discard_silent_live_capture(&db, &capture.id, &wav).unwrap();
+        assert!(!wav.exists());
+        assert!(get_capture(&db, &capture.id).unwrap().is_none());
+        assert!(transcriptions::chunks_for_attempt(&db, &attempt.id)
+            .unwrap()
+            .is_empty());
+    }
 
     #[test]
     fn one_shot_requires_a_known_model_limit_and_no_checkpoint() {

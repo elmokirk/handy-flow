@@ -315,6 +315,11 @@ pub fn purge_trashed(db: &AppDatabase, capture_id: &str) -> Result<PurgedCapture
         [capture_id],
     )?;
     tx.execute(
+        "DELETE FROM transcription_chunks WHERE attempt_id IN \
+         (SELECT id FROM transcription_attempts WHERE capture_id = ?1)",
+        [capture_id],
+    )?;
+    tx.execute(
         "DELETE FROM transcription_attempts WHERE capture_id = ?1",
         [capture_id],
     )?;

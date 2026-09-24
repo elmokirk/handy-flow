@@ -70,6 +70,19 @@ pub(crate) fn record_cancelled_capture(app: &AppHandle) {
         return;
     };
     let hm = app.state::<Arc<HistoryManager>>();
+    if !wav_may_contain_audio(&capture.wav_path) {
+        if let Ok(db) = hm.canonical_db() {
+            if let Err(error) = crate::long_audio::discard_silent_live_capture(
+                &db,
+                &capture.capture_id,
+                &capture.wav_path,
+            ) {
+                error!("Could not discard cancelled empty recording: {error}");
+            }
+        }
+        let _ = app.emit("canonical-history-changed", ());
+        return;
+    }
     let valid = hound::WavReader::open(&capture.wav_path)
         .map(|reader| reader.duration() > 0)
         .unwrap_or(false);
@@ -118,6 +131,15 @@ fn audio_facts(
     };
     let size = std::fs::metadata(wav_path).ok().map(|m| m.len() as i64);
     (Some(name.to_string()), sha, size)
+}
+
+fn wav_may_contain_audio(path: &std::path::Path) -> bool {
+    match hound::WavReader::open(path) {
+        Ok(reader) => reader.duration() > 0,
+        // An interrupted WAV with payload bytes is still potentially
+        // recoverable; only our empty 44-byte header may be discarded.
+        Err(_) => path.metadata().is_ok_and(|metadata| metadata.len() > 44),
+    }
 }
 
 /// PAD-306: record a dictation whose transcription failed, so the failure is
@@ -981,20 +1003,33 @@ impl ShortcutAction for TranscribeAction {
                 if samples.is_empty() {
                     error!("Recording produced no audio samples");
                     if let Some(capture) = &active {
-                        record_canonical_failure(
-                            &hm,
-                            Some(&capture.capture_id),
-                            None,
-                            None,
-                            &capture.wav_path,
-                            "Recording has no audio samples",
-                        );
-                        if let Ok(db) = hm.canonical_db() {
-                            let _ = crate::storage::repositories::captures::set_integrity_state(
+                        if wav_may_contain_audio(&capture.wav_path) {
+                            record_canonical_failure(
+                                &hm,
+                                Some(&capture.capture_id),
+                                None,
+                                Some(&capture.file_name),
+                                &capture.wav_path,
+                                "Recorder returned no samples; original WAV preserved",
+                            );
+                            if hound::WavReader::open(&capture.wav_path).is_err() {
+                                if let Ok(db) = hm.canonical_db() {
+                                    let _ =
+                                        crate::storage::repositories::captures::set_integrity_state(
+                                            &db,
+                                            &capture.capture_id,
+                                            crate::storage::models::IntegrityState::AudioCorrupt,
+                                        );
+                                }
+                            }
+                        } else if let Ok(db) = hm.canonical_db() {
+                            if let Err(error) = crate::long_audio::discard_silent_live_capture(
                                 &db,
                                 &capture.capture_id,
-                                crate::storage::models::IntegrityState::AudioCorrupt,
-                            );
+                                &capture.wav_path,
+                            ) {
+                                error!("Could not discard empty recording: {error}");
+                            }
                         }
                         let _ = ah.emit("canonical-history-changed", ());
                     }
@@ -1194,12 +1229,51 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
 mod tests {
     use super::{
         complete_unless_cancelled, is_blank_transcription, should_auto_paste, strip_think_block,
+        wav_may_contain_audio,
     };
     use std::future;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn tap_without_audio_does_not_leave_a_history_card() {
+        use crate::storage::repositories::captures::{get_capture, insert_capture, NewCapture};
+        let dir = tempfile::tempdir().unwrap();
+        let (db, _) =
+            crate::storage::migrations::open_and_migrate(dir.path().join("history.db"), "0.9.13")
+                .unwrap();
+        let capture = insert_capture(
+            &db,
+            &NewCapture {
+                audio_file_name: Some("handy-empty.wav".into()),
+                audio_sha256: None,
+                audio_size_bytes: None,
+                title: "Empty tap".into(),
+                source_app: None,
+                integrity_state: crate::storage::models::IntegrityState::PendingAudio,
+            },
+        )
+        .unwrap();
+        crate::long_audio::discard_silent_live_capture(
+            &db,
+            &capture.id,
+            &dir.path().join("handy-empty.wav"),
+        )
+        .unwrap();
+        assert!(get_capture(&db, &capture.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn interrupted_wav_with_payload_is_never_classified_as_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let wav = dir.path().join("interrupted.wav");
+        std::fs::write(&wav, vec![1_u8; 100]).unwrap();
+        assert!(wav_may_contain_audio(&wav));
+        std::fs::write(&wav, vec![0_u8; 44]).unwrap();
+        assert!(!wav_may_contain_audio(&wav));
+    }
 
     #[test]
     fn blank_transcription_is_detected() {
