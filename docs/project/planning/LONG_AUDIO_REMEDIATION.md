@@ -81,6 +81,11 @@ or uploaded as fixtures.
    not the real-time microphone callback, writes 16 kHz mono PCM to that one
    file. Checkpoint its header every 30 seconds. On stop, finalize, validate,
    hash, and attach duration/size; insert a pending attempt before inference.
+   Exception approved on 2026-09-24: an accidental live tap with no audio is
+   discarded after stop. A live WAV of at most two seconds is also discarded
+   only when inference completes with no recognized word. A damaged WAV with
+   possible payload, model failure, or longer failed memo remains visible and
+   recoverable; existing historical cards are not auto-purged.
 2. Reconcile DB rows against final WAVs at startup and history open. Adopt
    orphans exactly once without modifying their bytes. Mark empty/corrupt
    files visibly and distinguish inferred timestamps from exact start times.
