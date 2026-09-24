@@ -3,7 +3,7 @@ id: "long-audio-remediation"
 title: "Long audio remediation — durable WAV and visible transcription jobs"
 type: "implementation-plan"
 status: "accepted"
-updated: "2026-09-23"
+updated: "2026-09-24"
 project: "custom-handy"
 ticket: "AUDIO-240"
 decision: "ADR-025"
@@ -44,8 +44,13 @@ or uploaded as fixtures.
   normalized transcript and compact seam diagnostics are committed. Failed
   or interrupted attempts retain progress for retry. Pending and failed
   captures are exempt from automatic retention.
-- No upstream merge, general backend update, drag-and-drop import, MCP, or
-  mobile release is included in AUDIO-240.
+- The release gate is one successful real 15-minute dictation on the owner's
+  Windows model/device. Test 30- and 60-minute files as best-effort cases;
+  failure must retain the original, history card and actionable error.
+- Local WAV/MP3 picker and drag-and-drop import are in AUDIO-240. Preserve
+  source bytes, label the capture `Manually imported`, and use import time
+  unless a trustworthy recording timestamp is available. No mobile release,
+  upstream merge, MCP, or general backend update is included.
 
 ## Implementation contract
 
@@ -58,13 +63,13 @@ or uploaded as fixtures.
    orphans exactly once without modifying their bytes. Mark empty/corrupt
    files visibly and distinguish inferred timestamps from exact start times.
    Startup recovery must not loop forever on a repeatedly crashing chunk.
-3. Route all native model inference through one headless child worker per
-   device, using the existing executable/headless path rather than another
-   model runtime. It reads bounded sample windows from the original WAV and
-   reports structured results; the parent alone mutates SQLite. Admit windows
-   against architecture/model limits and available device/system memory with
-   a reserve. The 80% target is not a hard allocation guarantee. Shrink a
-   failing window at most twice, then surface an actionable failure.
+3. Route all supported native model inference through one persistent headless
+   child worker per device, extending the existing executable rather than
+   adding another runtime. The parent alone mutates SQLite. Start with no
+   more than 30 seconds or the smaller model limit, read bounded sample
+   windows, and shrink a failing window at most twice. This is a processing
+   window, not a recording-duration cap. Device memory readings are diagnostic
+   hints, not a hard 80% allocation guarantee.
 4. Persist chunk boundaries, outputs, and attempt progress. Prefer silence
    cuts and start with about two seconds of overlap, increasing to five when
    needed. Use word timestamps where reliable; otherwise perform Unicode-safe
@@ -78,6 +83,13 @@ or uploaded as fixtures.
    short jobs, give a waiting long job one window. Keep one heavy inference
    call per device. Late results remain in history, while ordinary short
    dictations retain the existing immediate flow.
+6. A picker and drag-and-drop call the same import command. Validate WAV/MP3
+   by decoding, not extension alone; copy each source unchanged into the
+   recordings directory and retain its original filename in the capture
+   title. Reuse the existing MP3-capable decoder. A derived work format is
+   permitted only if bounded decoding requires it; it is not an original or
+   per-chunk audio file and is removed after terminal processing. Recording,
+   imported-file and retry attempts enter the same queue.
 
 ## Verification and release gate
 
@@ -90,10 +102,17 @@ or uploaded as fixtures.
   child crash leaves app open; restart resumes committed work; short dictation
   overtakes the remainder of a 20-minute job; original audio remains playable.
 - Local-only benchmark: hash the private 9:40 file before/after three runs on
-  the affected Parakeet Q8/Vulkan setup. Measure wall time, peak RAM/VRAM,
-  flush latency, overrun count, priority latency, worker exits, and quality
-  at seams. Also exercise 30- and 60-minute reproducible fixtures on CPU and
-  available accelerators. Do not invent a WER score without ground truth.
+  the affected Parakeet Q8/Vulkan setup. Prove one real 15-minute dictation
+  succeeds on the owner's Windows device. Measure wall time, peak RAM/VRAM,
+  flush latency, overrun count, priority latency, worker exits, and seam
+  quality. Exercise 30- and 60-minute WAV/MP3 fixtures; success is best effort
+  but failure must be visible and preserve source audio. Do not invent a WER
+  score without ground truth.
+- Review the pinned implementation diff on two separate axes: spec/data
+  safety and repository standards/simplicity. Block release for unbounded
+  audio loads, in-process native inference, missing capture/error paths,
+  unnecessary one-use abstractions, duplicated shared behavior, or unreadable
+  error flow. Re-review fixes; line count never trumps clarity or safety.
 - Verified SQLite backup before schema migration; Rust/frontend tests,
   formatting/lint, Tauri production build, version bump above published
   0.9.10, and a real in-app updater test from the installed version.
@@ -103,6 +122,7 @@ or uploaded as fixtures.
 Implementation ticket: [AUDIO-240](tickets/AUDIO-240.md). Decision:
 [ADR-025](adr/ADR-025.md). Historical source contract:
 `planning/04-DATA_PERSISTENCE.md` and `AUDIO-104` (superseded for live
-dictation only). Future external-audio drag and drop is recorded in the
-roadmap, not in this ticket. Agent completion requires catalog status,
+dictation only). Local audio drag and drop was pulled forward from the
+roadmap by the owner on 2026-09-24. Baseline before implementation:
+`297ee323e53575a76348f2c72baf99f2e49f1066`. Agent completion requires catalog status,
 RUN_STATE, status rendering, and a three-sentence user TL;DR.

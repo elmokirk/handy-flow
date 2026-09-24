@@ -3,7 +3,7 @@ id: "ticket-audio-240"
 title: "AUDIO-240 — Long transcription without lost captures"
 type: "ticket"
 status: "in_progress"
-updated: "2026-09-23"
+updated: "2026-09-24"
 project: "custom-handy"
 ticket_id: "AUDIO-240"
 phase: "6"
@@ -19,9 +19,11 @@ catalog_ref: "TICKET_CATALOG.json#AUDIO-240"
 
 ## Outcome
 
-A 60-minute recording remains one original WAV and one visible capture,
-transcribes in bounded work, survives worker failure/restart, and does not
-prevent a new short dictation from being recorded and prioritized.
+A real 15-minute recording succeeds on the owner's Windows device as one
+original WAV and one visible capture. Longer recordings remain safe and
+retryable, bounded work survives failure/restart, new short dictations can
+overtake long jobs, and local WAV/MP3 files can be imported into the same
+history and processing path.
 
 ## Allowed paths
 
@@ -31,16 +33,19 @@ files. No private recordings or Wispr source files may be written.
 
 ## Work and gates
 
-1. Commit this plan, owner decision, ADR, ticket, and deferred drag/drop note.
+1. Update the plan and owner decision to include local WAV/MP3 import and the
+   15-minute release gate. Pin baseline `297ee323e53575a76348f2c72baf99f2e49f1066`.
 2. Add a failing capture/WAV/history regression at the shared live seam.
 3. Implement direct final WAV with 30-second sync and durable capture-first
    lifecycle; prove crash/empty-audio recovery.
 4. Implement bounded child-worker inference, checkpoints, joins, and fair
-   priority queue; prove 60-minute fixture and short-job overtaking.
-5. Expose statuses, progress, uncertain-seam underlines, retries, and source
-   audio in the canonical history; prove app end-to-end behavior.
+   priority queue; prove 15-minute real dictation and short-job overtaking.
+5. Import WAV/MP3 by picker and drag-and-drop, using the same queue. Expose
+   statuses, progress, uncertain-seam underlines, retries, source labels and
+   original audio in canonical history; prove app end-to-end behavior.
 6. Run private local 9:40 benchmark without modifying/uploading the file;
-   run platform/build/update gates and bump the release version.
+   run 30/60-minute safe-failure tests, independent spec/simplicity reviews,
+   platform/build/update gates and bump the release version.
 
 ## Negative cases
 

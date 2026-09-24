@@ -26,7 +26,8 @@ Hardening decisions:
 - **ADR-022:** source-window metadata is opt-in and private body/secret logging is prohibited by default.
 - **ADR-023:** feature agents have destructive-Git prohibitions and a three-cycle implementation/fix budget.
 - **ADR-024:** Note current version and Capture transcription status are derived, not duplicated mutable state.
-- **2026-09-23 / AUDIO-240 / ADR-025:** One final WAV grows in the recordings directory from capture start; checkpoint/sync every 30 seconds and on stop. Capture precedes inference, failures and orphans remain visible, in-memory windows run in an isolated worker, CPU fallback requires user choice, short jobs outrank remaining long windows, and late long results are history-only. External-audio drag and drop is deferred.
+- **2026-09-23 / AUDIO-240 / ADR-025:** One final WAV grows in the recordings directory from capture start; checkpoint/sync every 30 seconds and on stop. Capture precedes inference, failures and orphans remain visible, in-memory windows run in an isolated worker, CPU fallback requires user choice, short jobs outrank remaining long windows, and late long results are history-only.
+- **2026-09-24 / AUDIO-240:** The release gate is a successful real 15-minute Windows dictation, not guaranteed 60-minute completion. WAV/MP3 picker and drag-and-drop import are included in the same release and use the same bounded queue; imported captures use import time and a manual-import label. Separate spec/safety and simplicity/standards reviews block release on open findings.
 
 ## Deferred decisions
 None block Bootstrap through Phase 5.
