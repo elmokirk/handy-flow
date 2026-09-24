@@ -58,6 +58,21 @@ or uploaded as fixtures.
   preview for streaming-capable models. Recording remains live and durable;
   transcription after stop runs only in the isolated worker. Restore live
   preview only through a separately reviewed worker protocol later.
+- Owner hotfix correction on 2026-09-24, reviewed against installed commit
+  `a16698b`: successful ordinary dictations must deliver one final text to
+  the focused field. The 0.9.11 implementation accidentally capped delivery
+  at 60 seconds of audio. Keep a 30-second post-stop grace period and refuse
+  delivery after a newer recording begins or the foreground window changes
+  on Windows; do not let a late job paste into another task. The app cannot
+  identify a different field within the same window, so this is not a full
+  focus-identity guarantee. Use one worker inference step for audio up to six minutes
+  when the model reports a compatible limit, falling back to bounded chunks
+  if the isolated worker fails. Six minutes is a UX/optimistic one-shot
+  ceiling, not a maximum recording duration or guaranteed memory allocation.
+- The history card shows a calm spinner while processing and reveals only the
+  final text, not intermediate chunk text. Progress events refresh cards
+  without replacing the entire history view. Chunk diagnostics remain visible
+  for genuinely long work, and uncertain joins still need human review.
 
 ## Implementation contract
 
@@ -73,10 +88,14 @@ or uploaded as fixtures.
 3. Route all supported native model inference through one persistent headless
    child worker per device, extending the existing executable rather than
    adding another runtime. The parent alone mutates SQLite. Start with no
-   more than 30 seconds or the smaller model limit, read bounded sample
-   windows, and shrink a failing window at most twice. This is a processing
-   window, not a recording-duration cap. Device memory readings are diagnostic
-   hints, not a hard 80% allocation guarantee.
+   more than 30 seconds or the smaller model limit for long jobs. Ordinary
+   recordings up to six minutes may first try one step in the child when the
+   reported model limit permits it; Moonshine's known 64-second engine limit
+   is respected, while ONNX engines without a reported bound rely on the
+   isolated-worker fallback. A failed attempt reverts to bounded
+   windows and shrinks at most twice. Neither limit caps recording duration.
+   Device memory readings are diagnostic hints, not a hard 80% allocation
+   guarantee.
 4. Persist chunk boundaries, outputs, and attempt progress. Prefer silence
    cuts and start with about two seconds of overlap, increasing to five when
    needed. Use word timestamps where reliable; otherwise perform Unicode-safe
