@@ -1,19 +1,31 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { readFile } from "@tauri-apps/plugin-fs";
-import { Check, Copy, FolderOpen, RotateCcw, Star, Trash2 } from "lucide-react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { open } from "@tauri-apps/plugin-dialog";
+import {
+  Check,
+  Copy,
+  FolderOpen,
+  RotateCcw,
+  Star,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { commands, type CanonicalHistoryEntry } from "@/bindings";
-import { useOsType } from "@/hooks/useOsType";
+import {
+  commands,
+  type CanonicalHistoryEntry,
+  type CanonicalSeamDetail,
+} from "@/bindings";
 import { formatDateMs, formatDateTimeMs } from "@/utils/dateFormat";
 import { AudioPlayer, AudioPlayerGroup } from "../../ui/AudioPlayer";
 import { Button } from "../../ui/Button";
 
 const PAGE_SIZE = 30;
 type Range = "all" | "today" | "week" | "days7" | "days30" | "custom";
-type Origin = "all" | "handy" | "wispr";
+type Origin = "all" | "handy" | "wispr" | "manual";
 type DateBounds = { fromMs: number | null; toMs: number | null };
 const RANGE_LABELS: Record<Exclude<Range, "custom">, string> = {
   all: "All time",
@@ -26,6 +38,7 @@ const ORIGIN_LABELS: Record<Origin, string> = {
   all: "All sources",
   handy: "Handy Flow",
   wispr: "Wispr Flow",
+  manual: "Manually imported",
 };
 
 const unwrap = <T,>(
@@ -103,11 +116,12 @@ const IconButton: React.FC<{
 
 export const HistorySettings: React.FC = () => {
   const { t, i18n } = useTranslation();
-  const osType = useOsType();
   const [entries, setEntries] = useState<CanonicalHistoryEntry[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const cursorRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [range, setRange] = useState<Range>("all");
   const [origin, setOrigin] = useState<Origin>("all");
   const [bounds, setBounds] = useState<DateBounds>({
@@ -115,6 +129,7 @@ export const HistorySettings: React.FC = () => {
     toMs: null,
   });
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
   const entriesRef = useRef<CanonicalHistoryEntry[]>([]);
   const loadingRef = useRef(false);
 
@@ -174,29 +189,77 @@ export const HistorySettings: React.FC = () => {
     };
   }, [loadPage]);
 
+  const importPaths = useCallback(
+    async (paths: string[]) => {
+      setImporting(true);
+      try {
+        for (const path of paths) {
+          try {
+            unwrap(await commands.importLocalAudio(path));
+            toast.success(t("settings.history.importQueued"));
+          } catch (error) {
+            toast.error(
+              `${t("settings.history.importError")}: ${String(error)}`,
+            );
+          }
+        }
+      } finally {
+        setImporting(false);
+        loadPage(true);
+      }
+    },
+    [loadPage, t],
+  );
+
+  useEffect(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type === "leave") setDragging(false);
+      if (event.payload.type === "leave") return;
+      const rect = dropZoneRef.current?.getBoundingClientRect();
+      const x = event.payload.position.x / window.devicePixelRatio;
+      const y = event.payload.position.y / window.devicePixelRatio;
+      const inside =
+        !!rect &&
+        x >= rect.left &&
+        x <= rect.right &&
+        y >= rect.top &&
+        y <= rect.bottom;
+      if (event.payload.type === "enter" || event.payload.type === "over")
+        setDragging(inside);
+      if (event.payload.type === "drop") {
+        setDragging(false);
+        if (inside) void importPaths(event.payload.paths);
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [importPaths]);
+
+  const pickAudio = async () => {
+    const selected = await open({
+      multiple: true,
+      directory: false,
+      filters: [{ name: "Audio", extensions: ["wav", "mp3"] }],
+    });
+    if (selected)
+      await importPaths(typeof selected === "string" ? [selected] : selected);
+  };
+
   const chooseRange = (next: Range) => {
     setRange(next);
     if (next !== "custom") setBounds(rangeBounds(next));
   };
 
-  const getAudioUrl = useCallback(
-    async (captureId: string) => {
-      try {
-        const path = unwrap(await commands.canonicalAudioFilePath(captureId));
-        if (osType === "linux") {
-          const fileData = await readFile(path);
-          return URL.createObjectURL(
-            new Blob([fileData], { type: "audio/wav" }),
-          );
-        }
-        return convertFileSrc(path, "asset");
-      } catch (error) {
-        console.error("Failed to load canonical audio:", error);
-        return null;
-      }
-    },
-    [osType],
-  );
+  const getAudioUrl = useCallback(async (captureId: string) => {
+    try {
+      const path = unwrap(await commands.canonicalAudioFilePath(captureId));
+      return convertFileSrc(path, "asset");
+    } catch (error) {
+      console.error("Failed to load canonical audio:", error);
+      return null;
+    }
+  }, []);
 
   const openRecordingsFolder = async () => {
     try {
@@ -217,21 +280,42 @@ export const HistorySettings: React.FC = () => {
   }, []);
 
   return (
-    <div className="max-w-3xl w-full mx-auto space-y-6">
+    <div
+      ref={dropZoneRef}
+      className={`max-w-3xl w-full mx-auto space-y-6 ${dragging ? "ring-2 ring-logo-primary rounded-lg" : ""}`}
+    >
       <div className="px-4 flex items-center justify-between">
         <h2 className="text-xs font-medium text-mid-gray uppercase tracking-wide">
           {t("settings.history.title")}
         </h2>
-        <Button
-          onClick={openRecordingsFolder}
-          variant="secondary"
-          size="sm"
-          className="flex items-center gap-2"
-        >
-          <FolderOpen className="w-4 h-4" />
-          <span>{t("settings.history.openFolder")}</span>
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={pickAudio}
+            disabled={importing}
+            variant="secondary"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            <span>{t("settings.history.importAudio")}</span>
+          </Button>
+          <Button
+            onClick={openRecordingsFolder}
+            variant="secondary"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <FolderOpen className="w-4 h-4" />
+            <span>{t("settings.history.openFolder")}</span>
+          </Button>
+        </div>
       </div>
+
+      <p className="px-4 text-xs text-text/50" role="status">
+        {dragging
+          ? t("settings.history.dropAudio")
+          : t("settings.history.dragAudio")}
+      </p>
 
       <div className="px-4 flex flex-wrap gap-2 items-center">
         {(
@@ -271,6 +355,11 @@ export const HistorySettings: React.FC = () => {
           <option value="wispr">
             {t("settings.history.filters.origins.wispr", {
               defaultValue: ORIGIN_LABELS.wispr,
+            })}
+          </option>
+          <option value="manual">
+            {t("settings.history.filters.origins.manual", {
+              defaultValue: ORIGIN_LABELS.manual,
             })}
           </option>
         </select>
@@ -352,10 +441,29 @@ const CanonicalHistoryCard: React.FC<{
   const { t, i18n } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [seams, setSeams] = useState<CanonicalSeamDetail[]>([]);
   const audioCorrupt = entry.integrity_state === "audio_corrupt";
   const pending = entry.integrity_state === "pending_audio";
   const recovered = entry.integrity_state === "recovered_orphan";
   const processing = ["pending", "running"].includes(entry.attempt_status);
+  const progress =
+    entry.audio_duration_ms && entry.audio_duration_ms > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (entry.completed_samples * 100) / (entry.audio_duration_ms * 16),
+          ),
+        )
+      : 0;
+  useEffect(() => {
+    if (entry.review_seams === 0) return;
+    commands
+      .canonicalSeamDetails(entry.capture_id)
+      .then((result) => setSeams(unwrap(result)))
+      .catch((error) =>
+        console.error("Could not load transcription seams:", error),
+      );
+  }, [entry.capture_id, entry.review_seams]);
   const copy = async () => {
     await navigator.clipboard.writeText(entry.text);
     setCopied(true);
@@ -398,15 +506,19 @@ const CanonicalHistoryCard: React.FC<{
             {formatDateTimeMs(entry.created_at_ms, i18n.language)}
           </p>
           <span
-            className={`text-xs px-1.5 py-0.5 rounded ${entry.origin === "wispr" ? "bg-violet-500/15 text-violet-400" : "bg-mid-gray/15 text-text/60"}`}
+            className={`text-xs px-1.5 py-0.5 rounded ${entry.origin === "wispr" ? "bg-violet-500/15 text-violet-400" : entry.origin === "manual" ? "bg-blue-500/15 text-blue-400" : "bg-mid-gray/15 text-text/60"}`}
           >
             {entry.origin === "wispr"
               ? t("settings.history.filters.origins.wispr", {
                   defaultValue: ORIGIN_LABELS.wispr,
                 })
-              : t("settings.history.filters.origins.handy", {
-                  defaultValue: ORIGIN_LABELS.handy,
-                })}
+              : entry.origin === "manual"
+                ? t("settings.history.filters.origins.manual", {
+                    defaultValue: ORIGIN_LABELS.manual,
+                  })
+                : t("settings.history.filters.origins.handy", {
+                    defaultValue: ORIGIN_LABELS.handy,
+                  })}
           </span>
         </div>
         <div className="flex items-center">
@@ -431,7 +543,13 @@ const CanonicalHistoryCard: React.FC<{
           </IconButton>
           <IconButton
             onClick={retry}
-            disabled={!entry.audio_file_name || audioCorrupt || pending || processing || retrying}
+            disabled={
+              !entry.audio_file_name ||
+              audioCorrupt ||
+              pending ||
+              processing ||
+              retrying
+            }
             title={t("settings.history.retranscribe")}
           >
             <RotateCcw
@@ -455,25 +573,68 @@ const CanonicalHistoryCard: React.FC<{
       {entry.source_app && (
         <p className="text-xs text-text/50">{entry.source_app}</p>
       )}
-      {!entry.text && (
+      {entry.origin === "manual" && (
+        <p className="text-xs text-text/60 break-all">{entry.title}</p>
+      )}
+      {entry.attempt_status === "pending" && (
+        <p className="text-xs text-amber-400" role="status">
+          {t("settings.history.transcriptionPending")}
+        </p>
+      )}
+      {entry.attempt_status === "running" && (
+        <p className="text-xs text-amber-400" role="status">
+          {entry.audio_duration_ms && entry.audio_duration_ms > 0
+            ? t("settings.history.progress", {
+                progress,
+                chunk: entry.completed_chunks + 1,
+              })
+            : t("settings.history.transcribing")}
+        </p>
+      )}
+      {!entry.text && !processing && (
         <p className="text-xs text-amber-400" role="status">
           {audioCorrupt
             ? t("settings.history.audioCorrupt")
             : pending
               ? t("settings.history.pendingAudio")
-              : processing
-                ? t("settings.history.transcriptionPending")
               : recovered
                 ? t("settings.history.recoveredAudio")
                 : t("settings.history.transcriptionFailed")}
         </p>
       )}
-      {!entry.text && entry.attempt_status === "failed" && entry.attempt_error && (
-        <p className="text-xs text-text/60 select-text break-words">{entry.attempt_error}</p>
+      {entry.text && entry.attempt_status === "failed" && (
+        <p className="text-xs text-amber-400" role="status">
+          {t("settings.history.transcriptionFailed")}
+        </p>
+      )}
+      {entry.attempt_status === "failed" && entry.attempt_error && (
+        <p className="text-xs text-text/60 select-text break-words">
+          {entry.attempt_error}
+        </p>
       )}
       <p className="italic text-sm text-text/90 select-text cursor-text whitespace-pre-wrap break-words">
         {entry.text}
       </p>
+      {seams.length > 0 && (
+        <details className="text-xs text-amber-400">
+          <summary>
+            {t("settings.history.reviewSeams", { count: seams.length })}
+          </summary>
+          {seams.map((seam) => (
+            <p key={seam.position_ms} className="mt-2 select-text">
+              {Math.floor(seam.position_ms / 60000)}:
+              {`${Math.floor((seam.position_ms % 60000) / 1000)}`.padStart(
+                2,
+                "0",
+              )}
+              {" · "}
+              <u>{seam.left}</u>
+              {" / "}
+              <u>{seam.right}</u>
+            </p>
+          ))}
+        </details>
+      )}
       {entry.audio_file_name && !audioCorrupt && !pending && (
         <AudioPlayer
           onLoadRequest={() => getAudioUrl(entry.capture_id)}

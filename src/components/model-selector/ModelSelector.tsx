@@ -84,6 +84,11 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
             setModelError(null);
             setPendingModelId(null);
             break;
+          case "selection_changed":
+            setModelStatus("unloaded");
+            setModelError(null);
+            setPendingModelId(null);
+            break;
           case "loading_failed":
             setModelStatus("error");
             setModelError(error || "Failed to load model");

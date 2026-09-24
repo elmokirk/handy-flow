@@ -153,6 +153,20 @@ function App() {
     };
   }, [t]);
 
+  useEffect(() => {
+    const unlisten = listen<string>("background-transcription-ready", () => {
+      toast.success(t("settings.history.backgroundReady"), {
+        action: {
+          label: t("settings.history.openHistory"),
+          onClick: () => setCurrentSection("history"),
+        },
+      });
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [t]);
+
   // Listen for model loading failures and show a toast
   useEffect(() => {
     const unlisten = listen<ModelStateEvent>("model-state-changed", (event) => {
