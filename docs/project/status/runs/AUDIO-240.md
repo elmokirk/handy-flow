@@ -109,4 +109,10 @@ last_commit: "bf339bc"
   before publishing; the owner will exercise the actual update button.
 - The 0.9.13 GitHub quality run `36023511312` passed (Rust, Clippy, frontend,
   Playwright). The Windows release build is pending.
+- Two independent reviews against installed baseline `a16698b` found and
+  rechecked release-path fixes: NSIS-only audit, commit-pinned tag/build,
+  manifest URL/signature equality, and public Rust API documentation.
+  No concrete code/release-path finding remains in that diff. New review
+  labels outside German and English currently use English fallback text;
+  installed in-app update and real audio quality remain owner validation.
   macOS/Linux release-path testing has not yet been established.
