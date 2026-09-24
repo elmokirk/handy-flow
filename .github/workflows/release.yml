@@ -82,12 +82,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          assets="$(gh release view "v${RELEASE_VERSION}" --json assets --jq '.assets[].name')"
+          assets="$(gh release view "v${RELEASE_VERSION}" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
           installer="$(echo "$assets" | grep -E 'x64-setup\.exe$' | head -n 1)"
           echo "$assets" | grep -Fxq "${installer}.sig"
           echo "$assets" | grep -Fxq 'latest.json'
           mkdir -p "$RUNNER_TEMP/handy-release-check"
-          gh release download "v${RELEASE_VERSION}" --pattern latest.json --pattern "${installer}.sig" --dir "$RUNNER_TEMP/handy-release-check"
+          gh release download "v${RELEASE_VERSION}" -R "$GITHUB_REPOSITORY" --pattern latest.json --pattern "${installer}.sig" --dir "$RUNNER_TEMP/handy-release-check"
           jq -e --arg version "$RELEASE_VERSION" \
             '.version == $version and
              (.platforms["windows-x86_64"].signature | length > 50)' \
