@@ -41,9 +41,12 @@ or uploaded as fixtures.
   chunk boundary. A late long result appears in history with notification and
   copy, never auto-pastes into a different focused app.
 - Completed intermediate chunk payloads are removed after the merged raw and
-  normalized transcript and compact seam diagnostics are committed. Failed
-  or interrupted attempts retain progress for retry. Pending and failed
-  captures are exempt from automatic retention.
+  normalized transcript and compact seam diagnostics are committed. An
+  interrupted pending attempt resumes its saved chunks after restart. An
+  explicitly retried failed attempt starts afresh, because language, model
+  prompts or translation settings may have changed; its old chunks remain
+  available for diagnosis. Pending and failed captures are exempt from
+  automatic retention.
 - The release gate is one successful real 15-minute dictation on the owner's
   Windows model/device. Test 30- and 60-minute files as best-effort cases;
   failure must retain the original, history card and actionable error.
@@ -51,6 +54,10 @@ or uploaded as fixtures.
   source bytes, label the capture `Manually imported`, and use import time
   unless a trustworthy recording timestamp is available. No mobile release,
   upstream merge, MCP, or general backend update is included.
+- Owner confirmation on 2026-09-24: temporarily suspend in-process live text
+  preview for streaming-capable models. Recording remains live and durable;
+  transcription after stop runs only in the isolated worker. Restore live
+  preview only through a separately reviewed worker protocol later.
 
 ## Implementation contract
 
@@ -98,7 +105,8 @@ or uploaded as fixtures.
 - Unit/integration: 30-second flush, crash between flushes, every DB/file
   kill point, corrupt/empty WAV, idempotent recovery, retry, retention,
   Unicode seam matching, repeated German words, and uncertain joins.
-- End-to-end: capture card at start; processing badges and n/total progress;
+- End-to-end: capture card at start; processing badges, chunk number and
+  percentage progress (no unstable predicted total when windows shrink);
   child crash leaves app open; restart resumes committed work; short dictation
   overtakes the remainder of a 20-minute job; original audio remains playable.
 - Local-only benchmark: hash the private 9:40 file before/after three runs on
@@ -114,8 +122,8 @@ or uploaded as fixtures.
   unnecessary one-use abstractions, duplicated shared behavior, or unreadable
   error flow. Re-review fixes; line count never trumps clarity or safety.
 - Verified SQLite backup before schema migration; Rust/frontend tests,
-  formatting/lint, Tauri production build, version bump above published
-  0.9.10, and a real in-app updater test from the installed version.
+  formatting/lint, Tauri production build, version bump above the 0.9.10
+  source baseline, and a real in-app updater test from the installed version.
 
 ## Scope and traceability
 
