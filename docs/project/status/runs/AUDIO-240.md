@@ -8,7 +8,7 @@ project: "custom-handy"
 ticket_id: "AUDIO-240"
 run_status: "IN_PROGRESS"
 branch: "phase/06-long-audio-remediation"
-last_commit: "b5da9a4"
+last_commit: "bf339bc"
 ---
 
 # RUN_STATE — AUDIO-240
@@ -25,9 +25,13 @@ last_commit: "b5da9a4"
   History shows pending/running/failed states, progress and uncertain seams.
 - Explicit failed retries start a new attempt from zero because inference
   settings may have changed; interrupted pending attempts resume checkpoints.
-- Source and package versions are 0.9.11. The branch and plan are pushed to
-  GitHub. A local unsigned NSIS installer is built with the public updater
-  frontend flag; CI signing secrets exist for a later published release.
+- The installed 0.9.11 candidate exposed a foreground-UX regression. The
+  0.9.12 hotfix restores one final paste for timely dictations up to six
+  minutes, tries one isolated inference step when the engine permits it,
+  falls back to bounded work, and updates history progress in-place. A
+  Windows foreground-window check prevents pasting into another app; it
+  cannot distinguish fields within the same window. Source/package versions
+  are 0.9.12; CI signing secrets remain reserved for a later public release.
 
 ## Verified locally
 
@@ -61,11 +65,38 @@ last_commit: "b5da9a4"
   a newer-version download.
 - Separate requirement/safety and simplicity reviews found no remaining
   concrete code blocker in their targeted paths.
+- Hotfix baseline `a16698b`: a red/green regression proved the 60-second
+  delivery guard; the installed SQLite audit showed delivery for 27.72s but
+  none for successful 83.22s, 115.71s, 174.75s and 347.64s dictations.
+  The 0.9.12 Rust suite passed 224 tests; frontend build/lint and the
+  23-language translation check passed. Two separate final reviews found no
+  remaining concrete code finding in the hotfix diff.
+- Read-only one-shot probes on the owner's Parakeet Q8/Vulkan model completed
+  83s, 116s and 5:48 WAVs in the child worker. The 5:48 warm inference took
+  5.266 seconds; source SHA was checked before/after. Its output differs
+  materially from the previous chunked text, so audio/text quality must be
+  judged by a human; speed and exit status alone do not prove accuracy.
+- The 0.9.12 local NSIS build passed with the public updater frontend flag
+  and updater artifacts disabled only for this unsigned candidate. The
+  temporary override was removed after the build. The installer is
+  `src-tauri/target/release/bundle/nsis/Handy Flow_0.9.12_x64-setup.exe`
+  (21,699,897 bytes, SHA-256
+  `997272525EA6AD8C01519E800D0D9E6DA53C812339FE5872DDF05617B69499C7`);
+  the binary reports file/product version 0.9.12. Format check and Windows
+  clippy ratchet passed (18 distinct warnings, ceiling 22).
 
 ## Release blockers still open
 
 - A **real 15-minute Windows microphone dictation** must succeed, with one
   original WAV, one history card and a usable transcript.
+- The owner has not yet reviewed the one-shot transcript quality or decided
+  whether accepted seam corrections also become the Knowledge-Base export
+  text. The current seam detail is inspectable but not editable/acknowledgeable.
+- The 0.9.12 candidate must be installed and its focused-field paste,
+  spinner/no-flicker behavior, and >200-card progress/filter case exercised.
+- The owner must confirm no active recording before 0.9.11 is closed for
+  candidate installation. If 0.9.12 is installed locally, a later signed
+  in-app update must use a higher version (at least 0.9.13).
 - Installed-app E2E must exercise WAV/MP3 import, worker kill/restart,
   short-job preemption, playback, retry, and progress in the actual UI.
 - The public signed release and in-app updater test from an older installed
