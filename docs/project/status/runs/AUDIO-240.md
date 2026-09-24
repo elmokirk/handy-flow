@@ -31,7 +31,11 @@ last_commit: "bf339bc"
   falls back to bounded work, and updates history progress in-place. A
   Windows foreground-window check prevents pasting into another app; it
   cannot distinguish fields within the same window. Source/package versions
-  are 0.9.12; CI signing secrets remain reserved for a later public release.
+  were 0.9.12; CI signing secrets remain reserved for a later public release.
+- The 0.9.13 source candidate adds seam-fragment review and append-only user
+  confirmation. History, tray copy and the version-2 knowledge export prefer
+  the latest confirmed text; raw attempt text and source audio remain intact.
+  Search indexes each confirmation in the same SQLite transaction.
 
 ## Verified locally
 
@@ -89,17 +93,19 @@ last_commit: "bf339bc"
 
 - A **real 15-minute Windows microphone dictation** must succeed, with one
   original WAV, one history card and a usable transcript.
-- The owner has not yet reviewed the one-shot transcript quality or decided
-  whether accepted seam corrections also become the Knowledge-Base export
-  text. The current seam detail is inspectable but not editable/acknowledgeable.
-- The 0.9.12 candidate must be installed and its focused-field paste,
+- The owner has not yet reviewed the one-shot transcript quality. The seam
+  editor and preferred Knowledge-Base text are coded but need installed UI
+  verification and a human seam-quality review.
+- A candidate must be installed and its focused-field paste,
   spinner/no-flicker behavior, and >200-card progress/filter case exercised.
-- The owner must confirm no active recording before 0.9.11 is closed for
-  candidate installation. If 0.9.12 is installed locally, a later signed
-  in-app update must use a higher version (at least 0.9.13).
+- The owner chose the public in-app updater instead of local installation and
+  rejected a public test release before real microphone/human quality gates.
+  The updater cannot deliver an unpublished candidate, so a safe local
+  installed-app test path still needs agreement; do not close the running app.
 - Installed-app E2E must exercise WAV/MP3 import, worker kill/restart,
   short-job preemption, playback, retry, and progress in the actual UI.
 - The public signed release and in-app updater test from an older installed
   version are pending; do not publish until the real 15-minute gate passes.
-- Linux GitHub quality run is in progress.
+- The prior 0.9.12 Linux GitHub quality run `36017428307` passed. CI for the
+  0.9.13 source candidate remains to be run.
   macOS/Linux release-path testing has not yet been established.

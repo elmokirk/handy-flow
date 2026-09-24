@@ -104,6 +104,10 @@ or uploaded as fixtures.
    Store uncertain seams and both short raw alternatives so the UI can
    underline and inspect them. Normalize/post-process only after one merged
    engine-raw transcript exists.
+   The owner may inspect both seam fragments and confirm or correct the full
+   transcript. Each confirmation appends a provenance-linked `manual_edit`
+   representation; history, copy actions and knowledge export prefer the
+   latest confirmed version while canonical raw text and audio stay intact.
 5. Separate recording and inference states. Queue short dictations before
    remaining long windows once the current window finishes; after three
    short jobs, give a waiting long job one window. Keep one heavy inference
@@ -143,6 +147,10 @@ or uploaded as fixtures.
 - Verified SQLite backup before schema migration; Rust/frontend tests,
   formatting/lint, Tauri production build, version bump above the 0.9.10
   source baseline, and a real in-app updater test from the installed version.
+- No signed public test release may bypass the real 15-minute microphone and
+  human transcript-quality gates. The updater only offers a newer signed
+  public release; CI success alone does not make this candidate installable
+  through the update button.
 
 ## Scope and traceability
 
