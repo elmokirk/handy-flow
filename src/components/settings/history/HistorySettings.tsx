@@ -505,23 +505,14 @@ const CanonicalHistoryCard: React.FC<{
   const [draft, setDraft] = useState(entry.text);
   const [savingReview, setSavingReview] = useState(false);
   const [editingReview, setEditingReview] = useState(false);
-  const reviewLabels = i18n.language.startsWith("de")
-    ? {
-        reviewed: "Text bestätigt",
-        left: "Ende davor",
-        right: "Anfang danach",
-        edit: "Gesamttext prüfen oder korrigieren",
-        save: "Fassung bestätigen",
-        error: "Fassung konnte nicht gespeichert werden",
-      }
-    : {
-        reviewed: "Text reviewed",
-        left: "Previous ending",
-        right: "Next beginning",
-        edit: "Review or correct full text",
-        save: "Confirm text",
-        error: "Could not save reviewed text",
-      };
+  const reviewLabels = {
+    reviewed: t("settings.history.reviewedText"),
+    left: t("settings.history.seamBefore"),
+    right: t("settings.history.seamAfter"),
+    edit: t("settings.history.editReviewedText"),
+    save: t("settings.history.confirmText"),
+    error: t("settings.history.confirmTextError"),
+  };
   const audioCorrupt = entry.integrity_state === "audio_corrupt";
   const pending = entry.integrity_state === "pending_audio";
   const recovered = entry.integrity_state === "recovered_orphan";
