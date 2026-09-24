@@ -34,6 +34,7 @@ jobs:
               name: `v${{ steps.get-version.outputs.version }}`,
               draft: true,
               prerelease: false,
+              body: 'Windows x64 update for the long-audio and history hotfix. Real 15-minute microphone and listening validation is scheduled after installation by the owner; report any regression before wider rollout.',
               generate_release_notes: true
             })
             return data.id
@@ -46,27 +47,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-26" # for Arm based macs (M1 and above). Uses macOS 26 for Apple Intelligence SDK.
-            args: "--target aarch64-apple-darwin"
-            target: "aarch64-apple-darwin"
-          - platform: "macos-latest" # for Intel based macs.
-            args: "--target x86_64-apple-darwin"
-            target: "x86_64-apple-darwin"
-          - platform: "ubuntu-22.04" # Build .deb on 22.04
-            args: "--bundles deb"
-            target: "x86_64-unknown-linux-gnu"
-          - platform: "ubuntu-24.04" # Build AppImage and RPM on 24.04
-            args: "--bundles appimage,rpm"
-            target: "x86_64-unknown-linux-gnu"
-          - platform: "ubuntu-24.04-arm" # Build for ARM64 Linux
-            args: "--bundles appimage,deb,rpm"
-            target: "aarch64-unknown-linux-gnu"
+          # AUDIO-240: publish only the NSIS format installed on the owner's
+          # Windows x64 machine; other platform releases need their own gates.
           - platform: "windows-latest"
-            args: ""
+            args: "--bundles nsis"
             target: "x86_64-pc-windows-msvc"
-          - platform: "windows-11-arm" # for ARM64 Windows runner
-            args: "--target aarch64-pc-windows-msvc"
-            target: "aarch64-pc-windows-msvc"
 
     uses: ./.github/workflows/build.yml
     with:
@@ -85,16 +70,31 @@ jobs:
   finalize-release:
     permissions:
       contents: write
-    needs: publish-tauri
+    needs: [create-release, publish-tauri]
     runs-on: ubuntu-latest
     steps:
+      - name: Verify signed Windows updater assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.create-release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$(gh release view "v${RELEASE_VERSION}" --json assets --jq '.assets[].name')"
+          echo "$assets" | grep -Eq 'x64-setup\.exe$'
+          echo "$assets" | grep -Eq 'x64-setup\.exe\.sig$'
+          echo "$assets" | grep -Fxq 'latest.json'
+          mkdir -p "$RUNNER_TEMP/handy-release-check"
+          gh release download "v${RELEASE_VERSION}" --pattern latest.json --dir "$RUNNER_TEMP/handy-release-check"
+          jq -e --arg version "$RELEASE_VERSION" \
+            '.version == $version and
+             (.platforms["windows-x86_64"].url | contains("x64-setup.exe")) and
+             (.platforms["windows-x86_64"].signature | length > 50)' \
+            "$RUNNER_TEMP/handy-release-check/latest.json"
       - name: Publish the draft release
         # The updater flow depends on this: a draft release's latest.json is
         # not publicly downloadable, so every installed app reports "no
-        # update" until the draft is published. Skipped macOS signing jobs
-        # (missing Apple certificate secrets) must not block publishing —
-        # the platform matrix with fail-fast:false already reported them,
-        # and Windows/Linux artifacts are what the updater serves.
+        # update" until the signed Windows bundle is verified and published.
         uses: actions/github-script@v9
         with:
           script: |
