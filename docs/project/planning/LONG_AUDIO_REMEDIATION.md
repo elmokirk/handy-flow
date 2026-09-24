@@ -147,10 +147,10 @@ or uploaded as fixtures.
 - Verified SQLite backup before schema migration; Rust/frontend tests,
   formatting/lint, Tauri production build, version bump above the 0.9.10
   source baseline, and a real in-app updater test from the installed version.
-- No signed public test release may bypass the real 15-minute microphone and
-  human transcript-quality gates. The updater only offers a newer signed
-  public release; CI success alone does not make this candidate installable
-  through the update button.
+- Superseded by the owner's 2026-09-24 release decision: publish a signed
+  Windows x64 0.9.13 update after CI and updater-signature checks, then run
+  the real 15-minute microphone and human transcript-quality tests on the
+  installed app. These tests remain explicitly unverified at publication.
 
 ## Scope and traceability
 

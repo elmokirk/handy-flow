@@ -98,14 +98,15 @@ last_commit: "bf339bc"
   verification and a human seam-quality review.
 - A candidate must be installed and its focused-field paste,
   spinner/no-flicker behavior, and >200-card progress/filter case exercised.
-- The owner chose the public in-app updater instead of local installation and
-  rejected a public test release before real microphone/human quality gates.
-  The updater cannot deliver an unpublished candidate, so a safe local
-  installed-app test path still needs agreement; do not close the running app.
+- The owner superseded the prior public-release hold: publish a signed 0.9.13
+  Windows x64 NSIS update via the in-app updater, then perform real microphone,
+  listening and installed-UI validation. These results remain unproven and
+  must not be represented as passed.
 - Installed-app E2E must exercise WAV/MP3 import, worker kill/restart,
   short-job preemption, playback, retry, and progress in the actual UI.
-- The public signed release and in-app updater test from an older installed
-  version are pending; do not publish until the real 15-minute gate passes.
-- The prior 0.9.12 Linux GitHub quality run `36017428307` passed. CI for the
-  0.9.13 source candidate remains to be run.
+- The public signed release and in-app updater test from installed 0.9.11 are
+  pending. Release workflow must verify the 0.9.13 NSIS signature and manifest
+  before publishing; the owner will exercise the actual update button.
+- The 0.9.13 GitHub quality run `36023511312` passed (Rust, Clippy, frontend,
+  Playwright). The Windows release build is pending.
   macOS/Linux release-path testing has not yet been established.
