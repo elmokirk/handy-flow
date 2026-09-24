@@ -610,11 +610,6 @@ pub fn show_streaming_overlay(app_handle: &AppHandle) {
     show_overlay_state(app_handle, "streaming");
 }
 
-/// Shows the transcribing overlay window
-pub fn show_transcribing_overlay(app_handle: &AppHandle) {
-    show_overlay_state(app_handle, "transcribing");
-}
-
 /// Shows the processing overlay window
 #[allow(dead_code)] // AUDIO-240: the history card now shows background progress.
 pub fn show_processing_overlay(app_handle: &AppHandle) {

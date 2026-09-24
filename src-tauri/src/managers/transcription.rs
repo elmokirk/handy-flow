@@ -891,10 +891,14 @@ impl TranscriptionManager {
         let engine = self.lock_engine();
         match engine.as_ref()? {
             LoadedEngine::TranscribeCpp(session) => {
-                let ms = session.model().capabilities().max_audio_ms;
-                (ms > 0).then_some(ms as u64 * 16)
+                let ms = session.limits().ok()?.effective_max_audio_ms;
+                Some(if ms > 0 { ms as u64 * 16 } else { u64::MAX })
             }
-            _ => None,
+            // The installed Moonshine batch engine rejects inputs over 64s.
+            LoadedEngine::Moonshine(_) => Some(64 * 16_000),
+            // Other ONNX engines expose no duration limit; the queue tries at
+            // most six minutes in the isolated child and falls back on error.
+            _ => Some(u64::MAX),
         }
     }
 

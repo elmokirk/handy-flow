@@ -27,6 +27,11 @@ const PAGE_SIZE = 30;
 type Range = "all" | "today" | "week" | "days7" | "days30" | "custom";
 type Origin = "all" | "handy" | "wispr" | "manual";
 type DateBounds = { fromMs: number | null; toMs: number | null };
+type HistoryProgress = {
+  capture_id: string;
+  completed_samples: number;
+  completed_chunks: number;
+};
 const RANGE_LABELS: Record<Exclude<Range, "custom">, string> = {
   all: "All time",
   today: "Today",
@@ -132,39 +137,66 @@ export const HistorySettings: React.FC = () => {
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const entriesRef = useRef<CanonicalHistoryEntry[]>([]);
   const loadingRef = useRef(false);
-
-  useEffect(() => {
-    entriesRef.current = entries;
-  }, [entries]);
+  const queuedRefreshRef = useRef<boolean | null>(null);
+  const loadPageRef = useRef<(reset: boolean, silent?: boolean) => void>(
+    () => {},
+  );
 
   const activeBounds = range === "custom" ? bounds : rangeBounds(range);
+  const filterKey = `${activeBounds.fromMs}:${activeBounds.toMs}:${origin}`;
+  const filterKeyRef = useRef(filterKey);
+  filterKeyRef.current = filterKey;
   const loadPage = useCallback(
-    async (reset: boolean) => {
-      if (loadingRef.current) return;
+    async (reset: boolean, silent = false) => {
+      if (loadingRef.current) {
+        if (reset)
+          queuedRefreshRef.current =
+            queuedRefreshRef.current === false ? false : silent;
+        return;
+      }
       loadingRef.current = true;
-      if (reset) setLoading(true);
+      if (reset && !silent) setLoading(true);
       try {
-        const page = unwrap(
-          await commands.canonicalHistoryPage(
-            { from_ms: activeBounds.fromMs, to_ms: activeBounds.toMs, origin },
-            PAGE_SIZE,
-            reset ? null : cursorRef.current,
-          ),
-        );
-        setEntries((previous) =>
-          reset ? page.entries : [...previous, ...page.entries],
-        );
-        cursorRef.current = page.next_cursor;
-        setCursor(page.next_cursor);
+        const wanted =
+          reset && silent
+            ? Math.max(PAGE_SIZE, entriesRef.current.length)
+            : PAGE_SIZE;
+        const loaded: CanonicalHistoryEntry[] = [];
+        let nextCursor = reset ? null : cursorRef.current;
+        do {
+          const page = unwrap(
+            await commands.canonicalHistoryPage(
+              {
+                from_ms: activeBounds.fromMs,
+                to_ms: activeBounds.toMs,
+                origin,
+              },
+              Math.min(200, wanted - loaded.length),
+              nextCursor,
+            ),
+          );
+          loaded.push(...page.entries);
+          nextCursor = page.next_cursor;
+        } while (reset && silent && nextCursor && loaded.length < wanted);
+        if (filterKeyRef.current !== filterKey) return;
+        const nextEntries = reset ? loaded : [...entriesRef.current, ...loaded];
+        entriesRef.current = nextEntries;
+        setEntries(nextEntries);
+        cursorRef.current = nextCursor;
+        setCursor(nextCursor);
       } catch (error) {
         console.error("Failed to load canonical history:", error);
       } finally {
         setLoading(false);
         loadingRef.current = false;
+        const queuedRefresh = queuedRefreshRef.current;
+        queuedRefreshRef.current = null;
+        if (queuedRefresh !== null) loadPageRef.current(true, queuedRefresh);
       }
     },
-    [activeBounds.fromMs, activeBounds.toMs, origin],
+    [activeBounds.fromMs, activeBounds.toMs, filterKey, origin],
   );
+  loadPageRef.current = loadPage;
 
   useEffect(() => {
     loadPage(true);
@@ -183,11 +215,39 @@ export const HistorySettings: React.FC = () => {
   }, [cursor, loadPage, loading]);
 
   useEffect(() => {
-    const unlisten = listen("canonical-history-changed", () => loadPage(true));
+    const unlisten = listen("canonical-history-changed", () =>
+      loadPage(true, true),
+    );
     return () => {
       unlisten.then((fn) => fn());
     };
   }, [loadPage]);
+
+  useEffect(() => {
+    const unlisten = listen<HistoryProgress>(
+      "canonical-history-progress",
+      ({ payload }) => {
+        const index = entriesRef.current.findIndex(
+          (entry) => entry.capture_id === payload.capture_id,
+        );
+        if (index < 0) return;
+        const entry = entriesRef.current[index];
+        if (!["pending", "running"].includes(entry.attempt_status)) return;
+        const next = [...entriesRef.current];
+        next[index] = {
+          ...entry,
+          attempt_status: "running",
+          completed_samples: payload.completed_samples,
+          completed_chunks: payload.completed_chunks,
+        };
+        entriesRef.current = next;
+        setEntries(next);
+      },
+    );
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   const importPaths = useCallback(
     async (paths: string[]) => {
@@ -205,7 +265,7 @@ export const HistorySettings: React.FC = () => {
         }
       } finally {
         setImporting(false);
-        loadPage(true);
+        loadPage(true, true);
       }
     },
     [loadPage, t],
@@ -419,7 +479,7 @@ export const HistorySettings: React.FC = () => {
                       key={entry.capture_id}
                       entry={entry}
                       getAudioUrl={getAudioUrl}
-                      onChanged={() => loadPage(true)}
+                      onChanged={(hard) => loadPage(true, !hard)}
                     />
                   ))}
                 </div>
@@ -436,7 +496,7 @@ export const HistorySettings: React.FC = () => {
 const CanonicalHistoryCard: React.FC<{
   entry: CanonicalHistoryEntry;
   getAudioUrl: (captureId: string) => Promise<string | null>;
-  onChanged: () => void;
+  onChanged: (hard?: boolean) => void;
 }> = ({ entry, getAudioUrl, onChanged }) => {
   const { t, i18n } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -446,6 +506,7 @@ const CanonicalHistoryCard: React.FC<{
   const pending = entry.integrity_state === "pending_audio";
   const recovered = entry.integrity_state === "recovered_orphan";
   const processing = ["pending", "running"].includes(entry.attempt_status);
+  const showChunkProgress = (entry.audio_duration_ms ?? 0) > 6 * 60_000;
   const progress =
     entry.audio_duration_ms && entry.audio_duration_ms > 0
       ? Math.min(
@@ -480,7 +541,7 @@ const CanonicalHistoryCard: React.FC<{
   const trash = async () => {
     try {
       unwrap(await commands.trashCanonicalHistoryEntry(entry.capture_id));
-      onChanged();
+      onChanged(true);
     } catch (error) {
       console.error("Failed to trash canonical history entry:", error);
       toast.error(t("settings.history.deleteError"));
@@ -577,13 +638,21 @@ const CanonicalHistoryCard: React.FC<{
         <p className="text-xs text-text/60 break-all">{entry.title}</p>
       )}
       {entry.attempt_status === "pending" && (
-        <p className="text-xs text-amber-400" role="status">
+        <p
+          className="text-xs text-amber-400 flex items-center gap-1.5"
+          role="status"
+        >
+          <RotateCcw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
           {t("settings.history.transcriptionPending")}
         </p>
       )}
       {entry.attempt_status === "running" && (
-        <p className="text-xs text-amber-400" role="status">
-          {entry.audio_duration_ms && entry.audio_duration_ms > 0
+        <p
+          className="text-xs text-amber-400 flex items-center gap-1.5"
+          role="status"
+        >
+          <RotateCcw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+          {showChunkProgress && entry.completed_chunks > 0
             ? t("settings.history.progress", {
                 progress,
                 chunk: entry.completed_chunks + 1,

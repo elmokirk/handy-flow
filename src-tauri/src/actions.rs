@@ -7,13 +7,14 @@ use crate::delivery::{deliver_with_audit, DeliverySource, SqliteDeliveryAudit};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::model::ModelManager;
-use crate::managers::transcription::StreamWorkKind;
 use crate::managers::transcription::TranscriptionManager;
 use crate::managers::transcription::TranscriptionOutput;
-use crate::settings::{get_settings, AppSettings, OverlayStyle, APPLE_INTELLIGENCE_PROVIDER_ID};
+use crate::settings::{
+    get_settings, AppSettings, DeliveryTarget, OverlayStyle, APPLE_INTELLIGENCE_PROVIDER_ID,
+};
 use crate::shortcut;
 use crate::tray::{set_tray_state, TrayIconState};
-use crate::utils::{self, show_recording_overlay, show_transcribing_overlay};
+use crate::utils::{self, show_recording_overlay};
 use crate::TranscriptionCoordinator;
 use ferrous_opencc::{config::BuiltinConfig, OpenCC};
 use log::{debug, error, warn};
@@ -34,6 +35,31 @@ struct ActiveDictation {
     capture_id: String,
     file_name: String,
     wav_path: std::path::PathBuf,
+    target_window: Option<isize>,
+}
+
+#[cfg(target_os = "windows")]
+fn foreground_target() -> Option<isize> {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    let window = unsafe { GetForegroundWindow() }.0 as isize;
+    (window != 0).then_some(window)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn foreground_target() -> Option<isize> {
+    None
+}
+
+fn same_foreground_target(expected: Option<isize>) -> bool {
+    #[cfg(target_os = "windows")]
+    return expected.is_some() && expected == foreground_target();
+    #[cfg(not(target_os = "windows"))]
+    return expected.is_none();
+}
+
+fn delivery_target_is_ready(app: &AppHandle, expected_window: Option<isize>) -> bool {
+    get_settings(app).delivery_target != DeliveryTarget::FocusedApp
+        || same_foreground_target(expected_window)
 }
 
 static ACTIVE_DICTATION: Lazy<Mutex<Option<ActiveDictation>>> = Lazy::new(|| Mutex::new(None));
@@ -208,10 +234,6 @@ where
             return Some(result);
         }
     }
-}
-
-fn should_use_streaming_overlay(style: OverlayStyle, is_streaming: bool) -> bool {
-    style == OverlayStyle::Live && is_streaming
 }
 
 async fn post_process_transcription(settings: &AppSettings, transcription: &str) -> Option<String> {
@@ -575,6 +597,21 @@ fn capture_is_active(history: &HistoryManager, capture_id: &str) -> bool {
         .is_some_and(|capture| capture.deleted_at_ms.is_none())
 }
 
+fn should_auto_paste(
+    duration_samples: u64,
+    elapsed_since_stop: Duration,
+    same_dictation: bool,
+    recording_now: bool,
+    same_window: bool,
+) -> bool {
+    // This is a foreground-delivery UX window, not a transcription limit.
+    duration_samples <= 6 * 60 * crate::long_audio::SAMPLE_RATE as u64
+        && elapsed_since_stop <= Duration::from_secs(30)
+        && same_dictation
+        && !recording_now
+        && same_window
+}
+
 pub(crate) async fn deliver_background_live(
     app: &AppHandle,
     capture_id: &str,
@@ -627,10 +664,13 @@ pub(crate) async fn deliver_background_live(
     let _ = hm.cleanup_canonical_entries();
     let _ = app.emit("canonical-history-changed", ());
 
-    let timely = meta.duration_samples <= 60 * crate::long_audio::SAMPLE_RATE as u64
-        && meta.stopped_at.elapsed() <= Duration::from_secs(30)
-        && meta.generation == LIVE_DELIVERY_GENERATION.load(Ordering::Acquire)
-        && !app.state::<Arc<AudioRecordingManager>>().is_recording();
+    let timely = should_auto_paste(
+        meta.duration_samples,
+        meta.stopped_at.elapsed(),
+        meta.generation == LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
+        app.state::<Arc<AudioRecordingManager>>().is_recording(),
+        delivery_target_is_ready(app, meta.target_window),
+    );
     if !timely || processed.final_text.is_empty() {
         let _ = app.emit("background-transcription-ready", capture_id);
         return;
@@ -644,6 +684,7 @@ pub(crate) async fn deliver_background_live(
             || app_clone
                 .state::<Arc<AudioRecordingManager>>()
                 .is_recording()
+            || !delivery_target_is_ready(&app_clone, meta.target_window)
             || !capture_is_active(
                 &app_clone.state::<Arc<HistoryManager>>(),
                 source.capture_id.as_deref().unwrap_or_default(),
@@ -758,6 +799,7 @@ impl ShortcutAction for TranscribeAction {
                 capture_id: capture.id,
                 wav_path: hm.recordings_dir().join(&file_name),
                 file_name,
+                target_window: foreground_target(),
             })
         })();
         let _ = app.emit("canonical-history-changed", ());
@@ -899,20 +941,8 @@ impl ShortcutAction for TranscribeAction {
         let tm = Arc::clone(&app.state::<Arc<TranscriptionManager>>());
         let hm = Arc::clone(&app.state::<Arc<HistoryManager>>());
 
-        set_tray_state(app, TrayIconState::Transcribing);
-        // Stop should give immediate visual feedback. Live streaming can keep
-        // the larger panel, but it still switches from listening to a working
-        // spinner while the stream finalizes. Non-streaming paths use the
-        // compact transcribing pill (None no-ops in show_*).
-        let style = get_settings(app).overlay_style;
-        // Capture this before finalizing the stream so every later working state
-        // targets the same overlay that was shown for this transcription.
-        let use_streaming_overlay = should_use_streaming_overlay(style, tm.is_streaming());
-        if use_streaming_overlay {
-            tm.emit_stream_working(StreamWorkKind::Transcribing);
-        } else {
-            show_transcribing_overlay(app);
-        }
+        // Keep the recording indicator until the recorder finishes its short
+        // stop buffer; the queued worker then reports progress on the card.
 
         // Unmute before playing audio feedback so the stop sound is audible
         rm.remove_mute();
@@ -1056,6 +1086,7 @@ impl ShortcutAction for TranscribeAction {
                                     generation: LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
                                     stopped_at: Instant::now(),
                                     duration_samples,
+                                    target_window: capture.target_window,
                                 },
                             );
                     } else {
@@ -1162,10 +1193,8 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
 #[cfg(test)]
 mod tests {
     use super::{
-        complete_unless_cancelled, is_blank_transcription, should_use_streaming_overlay,
-        strip_think_block,
+        complete_unless_cancelled, is_blank_transcription, should_auto_paste, strip_think_block,
     };
-    use crate::settings::OverlayStyle;
     use std::future;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
@@ -1240,10 +1269,55 @@ mod tests {
     }
 
     #[test]
-    fn live_overlay_uses_streaming_states_only_for_streaming_models() {
-        assert!(should_use_streaming_overlay(OverlayStyle::Live, true));
-        assert!(!should_use_streaming_overlay(OverlayStyle::Live, false));
-        assert!(!should_use_streaming_overlay(OverlayStyle::Minimal, true));
-        assert!(!should_use_streaming_overlay(OverlayStyle::None, true));
+    fn completed_two_minute_dictation_still_pastes_into_current_field() {
+        assert!(should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(8),
+            true,
+            false,
+            true
+        ));
+        assert!(should_auto_paste(
+            347 * 16_000,
+            Duration::from_secs(8),
+            true,
+            false,
+            true
+        ));
+        assert!(!should_auto_paste(
+            361 * 16_000,
+            Duration::from_secs(8),
+            true,
+            false,
+            true
+        ));
+        assert!(!should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(31),
+            true,
+            false,
+            true
+        ));
+        assert!(!should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(8),
+            false,
+            false,
+            true
+        ));
+        assert!(!should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(8),
+            true,
+            true,
+            true
+        ));
+        assert!(!should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(8),
+            true,
+            false,
+            false
+        ));
     }
 }

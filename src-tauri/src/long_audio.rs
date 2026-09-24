@@ -23,6 +23,15 @@ use crate::TranscriptionOutput;
 pub const SAMPLE_RATE: u32 = 16_000;
 pub const INITIAL_WINDOW_SAMPLES: u64 = 30 * SAMPLE_RATE as u64;
 pub const OVERLAP_SAMPLES: u64 = 2 * SAMPLE_RATE as u64;
+// ponytail: six-minute one-shot ceiling preserves foreground dictation UX;
+// the isolated child falls back to small windows if a device cannot run it.
+const SINGLE_PASS_MAX_SAMPLES: u64 = 6 * 60 * SAMPLE_RATE as u64;
+
+fn bounded_window(model_limit: u64, overlap: u64) -> u64 {
+    INITIAL_WINDOW_SAMPLES
+        .min(model_limit)
+        .saturating_sub(2 * overlap)
+}
 
 pub fn inspect_wav(path: &Path) -> Result<u64, String> {
     let reader = hound::WavReader::open(path).map_err(|e| e.to_string())?;
@@ -43,12 +52,17 @@ pub fn inspect_wav(path: &Path) -> Result<u64, String> {
 
 /// Returns a bounded allocation even when `path` is hours long.
 pub fn read_window(path: &Path, start: u64, end: u64) -> Result<Vec<f32>, String> {
+    read_window_limited(path, start, end, INITIAL_WINDOW_SAMPLES)
+}
+
+fn read_window_limited(
+    path: &Path,
+    start: u64,
+    end: u64,
+    max_samples: u64,
+) -> Result<Vec<f32>, String> {
     let total = inspect_wav(path)?;
-    if start >= end
-        || end > total
-        || start > u32::MAX as u64
-        || end - start > INITIAL_WINDOW_SAMPLES
-    {
+    if start >= end || end > total || start > u32::MAX as u64 || end - start > max_samples {
         return Err("Invalid or oversized audio window".into());
     }
     let mut reader = hound::WavReader::open(path).map_err(|e| e.to_string())?;
@@ -209,8 +223,7 @@ pub fn transcribe_headless_file(
         let model_limit = manager
             .model_max_audio_samples()
             .unwrap_or(INITIAL_WINDOW_SAMPLES);
-        let mut window =
-            INITIAL_WINDOW_SAMPLES.min(model_limit.saturating_sub(2 * OVERLAP_SAMPLES));
+        let mut window = bounded_window(model_limit, OVERLAP_SAMPLES);
         if window < 5 * SAMPLE_RATE as u64 {
             return Err("Model audio window is too small for safe overlap".into());
         }
@@ -305,7 +318,13 @@ pub fn run_worker(app: &AppHandle) -> i32 {
                                     .map_err(|e| e.to_string())
                             }
                         })
-                        .and_then(|_| read_window(&path, start, end))
+                        .and_then(|_| {
+                            let max_samples = tm
+                                .model_max_audio_samples()
+                                .unwrap_or(INITIAL_WINDOW_SAMPLES)
+                                .min(SINGLE_PASS_MAX_SAMPLES);
+                            read_window_limited(&path, start, end, max_samples)
+                        })
                         .and_then(|samples| {
                             tm.transcribe_engine_raw(samples).map_err(|e| e.to_string())
                         });
@@ -512,6 +531,7 @@ pub struct LiveJob {
     pub generation: u64,
     pub stopped_at: Instant,
     pub duration_samples: u64,
+    pub target_window: Option<isize>,
 }
 
 fn choose_job<'a>(jobs: &'a [IncompleteJob], short_streak: &mut u8) -> &'a IncompleteJob {
@@ -540,6 +560,12 @@ fn next_window(previous: Option<&ChunkRecord>) -> u64 {
         .map(|chunk| chunk.window_samples.max(5 * SAMPLE_RATE as i64) as u64)
         .unwrap_or(INITIAL_WINDOW_SAMPLES)
         .min(INITIAL_WINDOW_SAMPLES)
+}
+
+fn should_try_one_shot(total: u64, model_limit: Option<u64>, has_chunks: bool) -> bool {
+    !has_chunks
+        && total <= SINGLE_PASS_MAX_SAMPLES
+        && model_limit.is_some_and(|limit| total <= limit)
 }
 
 impl TranscriptionQueue {
@@ -697,6 +723,16 @@ fn process_one_chunk(
         return Ok(());
     }
     transcriptions::mark_running(db, &job.attempt_id).map_err(|e| e.to_string())?;
+    if chunks.is_empty() {
+        let _ = app.emit(
+            "canonical-history-progress",
+            serde_json::json!({
+                "capture_id": job.capture_id,
+                "completed_samples": start,
+                "completed_chunks": 0,
+            }),
+        );
+    }
     let mut window = next_window(chunks.last());
     let overlap = if chunks.last().is_some_and(|chunk| chunk.seam_uncertain) {
         5 * SAMPLE_RATE as u64
@@ -707,18 +743,31 @@ fn process_one_chunk(
         .find_map(|attempt| {
             let result = (|| {
                 let client = ensure_worker(worker, loaded_model, &model_id)?;
-                let max_input = client
-                    .max_audio_samples
-                    .unwrap_or(INITIAL_WINDOW_SAMPLES)
-                    .min(INITIAL_WINDOW_SAMPLES);
-                window = window.min(max_input.saturating_sub(2 * overlap));
-                if window < 5 * SAMPLE_RATE as u64 {
+                let one_shot = attempt == 0
+                    && should_try_one_shot(total, client.max_audio_samples, !chunks.is_empty());
+                window = if one_shot {
+                    total
+                } else {
+                    window.min(bounded_window(
+                        client.max_audio_samples.unwrap_or(INITIAL_WINDOW_SAMPLES),
+                        overlap,
+                    ))
+                };
+                if !one_shot && window < 5 * SAMPLE_RATE as u64 {
                     return Err("Model audio window is too small for safe overlap".into());
                 }
                 let planned_end = (start + window).min(total);
                 let end = silence_cut(&wav, start, planned_end, total)?;
-                let read_start = start.saturating_sub(overlap);
-                let read_end = (end + overlap).min(total);
+                let read_start = if one_shot {
+                    0
+                } else {
+                    start.saturating_sub(overlap)
+                };
+                let read_end = if one_shot {
+                    total
+                } else {
+                    (end + overlap).min(total)
+                };
                 client
                     .transcribe(&wav, read_start, read_end)
                     .map(|output| (end, output))
@@ -729,7 +778,9 @@ fn process_one_chunk(
                     log::warn!("Worker window failed; retrying smaller section: {error}");
                     *worker = None;
                     *loaded_model = None;
-                    window = (window / 2).max(SAMPLE_RATE as u64 * 5);
+                    window = (window / 2)
+                        .min(INITIAL_WINDOW_SAMPLES - 2 * OVERLAP_SAMPLES)
+                        .max(SAMPLE_RATE as u64 * 5);
                     None
                 }
                 Err(error) => Some(Err(error)),
@@ -772,7 +823,14 @@ fn process_one_chunk(
         },
     )
     .map_err(|e| e.to_string())?;
-    let _ = app.emit("canonical-history-changed", ());
+    let _ = app.emit(
+        "canonical-history-progress",
+        serde_json::json!({
+            "capture_id": job.capture_id,
+            "completed_samples": end,
+            "completed_chunks": chunks.len() + 1,
+        }),
+    );
     if end == total {
         let chunks =
             transcriptions::chunks_for_attempt(db, &job.attempt_id).map_err(|e| e.to_string())?;
@@ -862,6 +920,28 @@ fn finish_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_shot_requires_a_known_model_limit_and_no_checkpoint() {
+        assert_eq!(
+            bounded_window(u64::MAX, OVERLAP_SAMPLES),
+            26 * SAMPLE_RATE as u64
+        );
+        let short = 115 * SAMPLE_RATE as u64;
+        assert!(should_try_one_shot(short, Some(u64::MAX), false));
+        assert!(!should_try_one_shot(
+            short,
+            Some(30 * SAMPLE_RATE as u64),
+            false
+        ));
+        assert!(!should_try_one_shot(short, None, false));
+        assert!(!should_try_one_shot(short, Some(u64::MAX), true));
+        assert!(!should_try_one_shot(
+            361 * SAMPLE_RATE as u64,
+            Some(u64::MAX),
+            false
+        ));
+    }
 
     #[test]
     fn joins_only_unambiguous_three_word_chain() {
