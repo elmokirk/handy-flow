@@ -1071,7 +1071,6 @@ impl ShortcutAction for TranscribeAction {
                     }
                     utils::hide_recording_overlay(&ah);
                     set_tray_state(&ah, TrayIconState::Idle);
-                    return;
                 }
             } else {
                 debug!("No samples retrieved from recording stop");

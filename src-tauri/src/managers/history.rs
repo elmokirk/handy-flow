@@ -258,6 +258,7 @@ impl HistoryManager {
 
     /// Save a new history entry to the database.
     /// The WAV file should already have been written to the recordings directory.
+    #[allow(dead_code)] // Legacy history writer; canonical captures replaced it.
     pub fn save_entry(
         &self,
         file_name: String,
@@ -322,6 +323,7 @@ impl HistoryManager {
     }
 
     /// Update an existing history entry with new transcription results (used by retry).
+    #[allow(dead_code)] // Legacy history writer; canonical attempts replaced it.
     pub fn update_transcription(
         &self,
         id: i64,
@@ -369,6 +371,7 @@ impl HistoryManager {
         Ok(entry)
     }
 
+    #[allow(dead_code)] // Used only by the dormant legacy writer.
     pub fn cleanup_old_entries(&self) -> Result<()> {
         let retention_period = crate::settings::get_recording_retention_period(&self.app_handle);
 
@@ -451,6 +454,7 @@ impl HistoryManager {
         Ok(())
     }
 
+    #[allow(dead_code)] // Used only by dormant legacy retention.
     fn delete_entries_and_files(&self, entries: &[(i64, String)]) -> Result<usize> {
         if entries.is_empty() {
             return Ok(0);
@@ -481,6 +485,7 @@ impl HistoryManager {
         Ok(deleted_count)
     }
 
+    #[allow(dead_code)] // Used only by dormant legacy retention.
     fn cleanup_by_count(&self, limit: usize) -> Result<()> {
         let conn = self.get_connection()?;
 
@@ -510,6 +515,7 @@ impl HistoryManager {
         Ok(())
     }
 
+    #[allow(dead_code)] // Used only by dormant legacy retention.
     fn cleanup_by_time(
         &self,
         retention_period: crate::settings::RecordingRetentionPeriod,
@@ -631,11 +637,13 @@ impl HistoryManager {
     }
 
     /// Get the latest entry with non-empty transcription text.
+    #[allow(dead_code)] // Retained for legacy-history tests and compatibility.
     pub fn get_latest_completed_entry(&self) -> Result<Option<HistoryEntry>> {
         let conn = self.get_connection()?;
         Self::get_latest_completed_entry_with_conn(&conn)
     }
 
+    #[allow(dead_code)] // Used only by the legacy-history helper above.
     fn get_latest_completed_entry_with_conn(conn: &Connection) -> Result<Option<HistoryEntry>> {
         let mut stmt = conn.prepare(
             "SELECT

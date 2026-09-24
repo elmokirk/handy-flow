@@ -296,7 +296,7 @@ pub async fn retry_canonical_history_entry(
 
 fn queue_retry(app: &AppHandle, capture_id: String) -> Result<(), String> {
     use crate::storage::repositories::transcriptions as attempts;
-    let dir = crate::portable::app_data_dir(&app).map_err(|e| e.to_string())?;
+    let dir = crate::portable::app_data_dir(app).map_err(|e| e.to_string())?;
     let db = crate::storage::database::AppDatabase::open(dir.join("history.db"))
         .map_err(|e| e.to_string())?;
     let capture = crate::storage::repositories::captures::get_capture(&db, &capture_id)
@@ -335,7 +335,7 @@ fn queue_retry(app: &AppHandle, capture_id: String) -> Result<(), String> {
             capture_id,
             engine_raw: None,
             normalized_stt: None,
-            model_id: Some(crate::settings::get_settings(&app).selected_model),
+            model_id: Some(crate::settings::get_settings(app).selected_model),
             language: None,
             normalizer_version: crate::NORMALIZER_VERSION.to_string(),
             dictionary_snapshot_sha256: None,

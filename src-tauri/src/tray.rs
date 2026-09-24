@@ -20,6 +20,7 @@
 //! a hidden tray relies on tray-icon recreating it from the last applied
 //! icon/menu/tooltip, so those must only ever be set through the applier.
 
+#[cfg(test)]
 use crate::managers::history::HistoryEntry;
 use crate::managers::model::ModelManager;
 use crate::managers::transcription::TranscriptionManager;
@@ -586,6 +587,7 @@ fn build_menu(app: &AppHandle, inputs: &MenuInputs) -> tauri::Result<(Menu<tauri
     Ok((menu, tooltip))
 }
 
+#[cfg(test)]
 fn last_transcript_text(entry: &HistoryEntry) -> &str {
     entry
         .post_processed_text

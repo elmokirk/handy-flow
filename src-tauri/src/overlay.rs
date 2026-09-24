@@ -605,6 +605,7 @@ pub fn show_recording_overlay(app_handle: &AppHandle) {
 }
 
 /// Shows the larger streaming overlay that displays live transcription text
+#[allow(dead_code)] // AUDIO-240: preview is paused until worker isolation.
 pub fn show_streaming_overlay(app_handle: &AppHandle) {
     show_overlay_state(app_handle, "streaming");
 }
@@ -615,6 +616,7 @@ pub fn show_transcribing_overlay(app_handle: &AppHandle) {
 }
 
 /// Shows the processing overlay window
+#[allow(dead_code)] // AUDIO-240: the history card now shows background progress.
 pub fn show_processing_overlay(app_handle: &AppHandle) {
     show_overlay_state(app_handle, "processing");
 }

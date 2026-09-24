@@ -792,6 +792,9 @@ fn process_one_chunk(
     Ok(())
 }
 
+// The two call sites share one explicit completion path; grouping borrowed
+// app, database and worker state into a one-use type would obscure ownership.
+#[allow(clippy::too_many_arguments)]
 fn finish_job(
     app: &AppHandle,
     db: &crate::storage::database::AppDatabase,

@@ -83,7 +83,7 @@ fn orphan_wavs_are_adopted_and_staging_is_reconciled_without_deletion() {
         .unwrap()
         .as_millis() as i64;
     assert!(
-        adopted.created_at_ms <= file_end_ms - 1,
+        adopted.created_at_ms < file_end_ms,
         "recovery uses estimated start, not today"
     );
     assert!(adopted.created_at_ms >= file_end_ms - 1_000);
