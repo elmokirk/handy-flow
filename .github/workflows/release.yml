@@ -35,7 +35,7 @@ jobs:
               target_commitish: context.sha,
               draft: true,
               prerelease: false,
-              body: 'Windows x64 update for the long-audio and history hotfix. Real 15-minute microphone and listening validation is scheduled after installation by the owner; report any regression before wider rollout.',
+              body: 'Windows x64 update adding native AAC/M4A, FLAC and OGG import for phone recordings (AUDIO-250) on top of the 0.9.13 long-audio line. The owner validates the imported recordings and the 15-minute microphone checks after installing; report any regression before wider rollout.',
               generate_release_notes: true
             })
             return data.id
