@@ -471,8 +471,8 @@
     "history": {
       "title": "Verlauf",
       "openFolder": "Aufnahmeordner öffnen",
-      "importAudio": "WAV oder MP3 importieren",
-      "dragAudio": "WAV- oder MP3-Dateien können auch hier abgelegt werden.",
+      "importAudio": "Audio importieren",
+      "dragAudio": "Audiodateien können auch hier abgelegt werden – WAV, MP3, M4A, AAC, FLAC oder OGG.",
       "dropAudio": "Audio zum Importieren ablegen",
       "importQueued": "Audio importiert; Transkription eingereiht",
       "backgroundReady": "Transkription im Verlauf fertig",

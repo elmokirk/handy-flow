@@ -300,7 +300,24 @@ export const HistorySettings: React.FC = () => {
     const selected = await open({
       multiple: true,
       directory: false,
-      filters: [{ name: "Audio", extensions: ["wav", "mp3"] }],
+      filters: [
+        {
+          name: "Audio",
+          extensions: [
+            "wav",
+            "mp3",
+            "m4a",
+            "mp4",
+            "m4b",
+            "m4r",
+            "aac",
+            "flac",
+            "ogg",
+            "oga",
+            "mov",
+          ],
+        },
+      ],
     });
     if (selected)
       await importPaths(typeof selected === "string" ? [selected] : selected);

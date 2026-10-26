@@ -647,10 +647,28 @@ fn run_headless_transcription(app: &AppHandle, args: &CliArgs) -> i32 {
         }
     }
 
-    let Some(wav) = args.transcribe_file.clone() else {
+    let Some(source) = args.transcribe_file.clone() else {
         return 0;
     };
 
+    // The headless CLI accepts every import format and converts through the
+    // same bounded pipeline the app uses. The work-WAV id is the source hash,
+    // so a different input never reuses a stale cached conversion.
+    let cache_id = match crate::storage::audio_files::hash_file(&source) {
+        Ok(hash) => hash.chars().take(12).collect::<String>(),
+        Err(error) => {
+            eprintln!("error: cannot read {}: {}", source.display(), error);
+            return 2;
+        }
+    };
+    let work_dir = std::env::temp_dir().join("handy-cli-transcribe");
+    let wav = match long_audio::prepare_working_wav(&source, &work_dir, &cache_id) {
+        Ok(wav) => wav,
+        Err(error) => {
+            eprintln!("error: cannot use {}: {}", source.display(), error);
+            return 2;
+        }
+    };
     let total_samples = match long_audio::inspect_wav(&wav) {
         Ok(total) => total,
         Err(error) => {

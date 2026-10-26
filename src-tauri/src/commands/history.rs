@@ -390,8 +390,8 @@ fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String
         .and_then(|e| e.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if extension != "wav" && extension != "mp3" {
-        return Err("Only WAV and MP3 files are supported".into());
+    if !crate::long_audio::SUPPORTED_IMPORT_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(crate::long_audio::unsupported_import_error(&extension));
     }
     let title = source
         .file_name()

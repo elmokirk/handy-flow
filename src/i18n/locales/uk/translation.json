@@ -469,8 +469,8 @@
       }
     },
     "history": {
-      "importAudio": "Import WAV or MP3",
-      "dragAudio": "You can also drop WAV or MP3 files here.",
+      "importAudio": "Import audio",
+      "dragAudio": "You can also drop audio files here — WAV, MP3, M4A, AAC, FLAC or OGG.",
       "dropAudio": "Drop audio to import",
       "importQueued": "Audio imported; transcription queued",
       "backgroundReady": "Transcription ready in History",

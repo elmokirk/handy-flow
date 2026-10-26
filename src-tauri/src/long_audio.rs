@@ -24,6 +24,14 @@ use crate::TranscriptionOutput;
 pub const SAMPLE_RATE: u32 = 16_000;
 pub const INITIAL_WINDOW_SAMPLES: u64 = 30 * SAMPLE_RATE as u64;
 pub const OVERLAP_SAMPLES: u64 = 2 * SAMPLE_RATE as u64;
+/// Audio file extensions accepted by the import pipeline. Recognition and
+/// validation are content-based (rodio/Symphonia probes the media, not the
+/// name), so the extension list only decides which files we even accept.
+/// AAC (M4A/MP4/ADTS), Vorbis-in-OGG and FLAC are decoded natively; Opus and
+/// AMR recordings have no native decoder yet and are rejected here.
+pub const SUPPORTED_IMPORT_EXTENSIONS: &[&str] = &[
+    "wav", "mp3", "m4a", "mp4", "m4b", "m4r", "aac", "flac", "ogg", "oga", "mov",
+];
 // ponytail: six-minute one-shot ceiling preserves foreground dictation UX;
 // the isolated child falls back to small windows if a device cannot run it.
 const SINGLE_PASS_MAX_SAMPLES: u64 = 6 * 60 * SAMPLE_RATE as u64;
@@ -125,8 +133,17 @@ fn silence_cut(path: &Path, start: u64, end: u64, total: u64) -> Result<u64, Str
     Ok(quiet.map_or(end, |(index, _)| probe_start + ((index + 1) * frame) as u64))
 }
 
-/// Decode WAV/MP3 into one seekable work WAV using the already-linked rodio
-/// decoder. Source bytes are never changed; no full-audio Vec is created.
+/// Error text shared by every import entry point, so failed drops always name
+/// the formats that would have worked.
+pub fn unsupported_import_error(extension: &str) -> String {
+    format!(
+        "Unsupported audio file type '.{extension}'. Supported: WAV, MP3, M4A/MP4 (AAC), AAC, FLAC, OGG. Opus and AMR recordings are not supported yet."
+    )
+}
+
+/// Decode any natively supported audio format into one seekable work WAV
+/// using the already-linked rodio (Symphonia) decoder. Source bytes are never
+/// changed; no full-audio Vec is created.
 pub fn prepare_working_wav(
     source: &Path,
     work_dir: &Path,
@@ -137,8 +154,8 @@ pub fn prepare_working_wav(
         .and_then(|e| e.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if extension != "wav" && extension != "mp3" {
-        return Err("Only WAV and MP3 files are supported".into());
+    if !SUPPORTED_IMPORT_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(unsupported_import_error(&extension));
     }
     if extension == "wav" && inspect_wav(source).is_ok() {
         return Ok(source.to_path_buf());
@@ -1176,6 +1193,55 @@ mod tests {
         assert_ne!(source, working);
         assert!((15_900..=16_100).contains(&inspect_wav(&working).unwrap()));
         assert_eq!(std::fs::read(&source).unwrap(), before);
+    }
+
+    #[test]
+    fn rejects_unsupported_extension_before_decoding() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notes.txt");
+        std::fs::write(&path, b"definitely not audio").unwrap();
+        let error = prepare_working_wav(&path, &dir.path().join("work"), "capture").unwrap_err();
+        assert!(error.contains("Unsupported audio file type"), "{error}");
+        assert!(error.contains("Opus"), "{error}");
+    }
+
+    #[test]
+    fn converts_stereo_float_wav_via_the_content_probe() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.wav");
+        let mut writer = hound::WavWriter::create(
+            &source,
+            hound::WavSpec {
+                channels: 2,
+                sample_rate: 44_100,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        for i in 0..44_100 {
+            let value = (i as f32 / 20_000.0).clamp(-1.0, 1.0);
+            writer.write_sample(value).unwrap();
+            writer.write_sample(value).unwrap();
+        }
+        writer.finalize().unwrap();
+        let before = std::fs::read(&source).unwrap();
+        let working = prepare_working_wav(&source, &dir.path().join("work"), "capture").unwrap();
+        assert_ne!(source, working);
+        assert!((15_800..=16_200).contains(&inspect_wav(&working).unwrap()));
+        assert_eq!(std::fs::read(&source).unwrap(), before);
+    }
+
+    #[test]
+    #[ignore = "verify a real local recording; run with HANDY_TEST_AAC=<file> cargo test -- --ignored"]
+    fn decodes_real_recording_when_provided() {
+        let source = std::path::PathBuf::from(std::env::var("HANDY_TEST_AAC").unwrap_or_default());
+        assert!(source.is_file(), "sample {} not found", source.display());
+        let dir = tempfile::tempdir().unwrap();
+        let working =
+            prepare_working_wav(&source, &dir.path().join("work"), "real-recording").unwrap();
+        let samples = inspect_wav(&working).unwrap();
+        assert!(samples > 0, "decoded recording is empty");
     }
 
     #[test]
