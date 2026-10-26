@@ -2231,6 +2231,21 @@
       "max_agent_cycles": 3,
       "task_packet_required": false
     },
+    "AUDIO-250": {
+      "ticket_id": "AUDIO-250",
+      "phase": "6",
+      "title": "Extended native audio import formats (AAC/M4A/FLAC/OGG)",
+      "owner": "Integrator",
+      "dependencies": ["AUDIO-240"],
+      "gate": "G6",
+      "status": "IN_REVIEW",
+      "allowed_paths": ["repo/**", "planning/**", "status/**"],
+      "forbidden_paths": ["C:/Users/Kirk/AppData/Roaming/Wispr Flow/**"],
+      "qa_profile": ["unit", "integration", "windows-native"],
+      "architecture_refs": ["orchestration/ARCHITECTURE_FREEZE.md"],
+      "max_agent_cycles": 3,
+      "task_packet_required": false
+    },
     "IMP-002": {
       "ticket_id": "IMP-002",
       "phase": "6",
@@ -2251,6 +2266,36 @@
       ],
       "architecture_refs": [
         "orchestration/ARCHITECTURE_FREEZE.md"
+      ],
+      "max_agent_cycles": 3,
+      "task_packet_required": false
+    },
+    "HIST-240": {
+      "ticket_id": "HIST-240",
+      "phase": "6",
+      "title": "Release remediation: canonical history and Wispr chronology",
+      "owner": "Integrator",
+      "dependencies": [
+        "IMP-001",
+        "IMP-002",
+        "PAD-306"
+      ],
+      "gate": "G6",
+      "status": "DONE",
+      "allowed_paths": [
+        "repo/**"
+      ],
+      "forbidden_paths": [
+        "C:/Users/Kirk/AppData/Roaming/Wispr Flow/**"
+      ],
+      "qa_profile": [
+        "unit",
+        "integration",
+        "windows-native"
+      ],
+      "architecture_refs": [
+        "orchestration/ARCHITECTURE_FREEZE.md",
+        "orchestration/AGENT_SAFETY_POLICY.md"
       ],
       "max_agent_cycles": 3,
       "task_packet_required": false

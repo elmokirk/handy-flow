@@ -41,6 +41,7 @@ baseline_id: "handy-main-2026-08-24-af48dd68"
 - wispr-like idle bubble (owner request, 2026-08-31): click-to-record floating button when idle; complements the recording overlay; requires tray/overlay coexistence and an E2 UI ADR before implementation.
 - richer import/export.
 - Pulled into AUDIO-240 (owner, 2026-09-24): local WAV/MP3 picker and drag-and-drop import into the same capture/transcription pipeline.
+- Extended native import formats (owner, 2026-10-26, AUDIO-250): AAC/M4A (MP4 container), ADTS `.aac`, FLAC and OGG-Vorbis import without an external converter; Opus and AMR are rejected with a named-formats error until a native decoder exists.
 
 ## P2 — Rich Text
 
