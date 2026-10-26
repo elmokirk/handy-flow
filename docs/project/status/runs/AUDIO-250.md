@@ -42,8 +42,11 @@ runs; rerun as `cargo test -j 4` from `src-tauri`. Poisoned check-mode
 artifacts after failed clippy runs were cleared from `target/debug/deps`
 before rerunning.
 
-Release: the version is bumped to 0.9.14 and the signed public updater
-workflow is dispatched from this branch. The owner updates the installed
+Release: the version was bumped to 0.9.14 and the signed public updater
+workflow ran green (run 40389324028, dispatched from this branch). The
+draft was published as public Latest `v0.9.14`; assets
+`Handy.Flow_0.9.14_x64-setup.exe` (20.5 MB) + `.sig` + `latest.json` are
+present and the public updater endpoint returns 0.9.14 with both platform
+aliases pointing at the signed installer. The owner updates the installed
 0.9.13 app and validates with real phone recordings. Remaining work for
-DONE: green release/signature/manifest checks and the owner validation.
-This run stays IN_REVIEW until both are recorded.
+DONE: the owner validation. This run stays IN_REVIEW until it succeeds.
