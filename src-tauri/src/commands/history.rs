@@ -381,6 +381,7 @@ fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String
     use crate::storage::repositories::{captures, transcriptions};
 
     let source = std::fs::canonicalize(&source_path).map_err(|e| e.to_string())?;
+    log::debug!("audio import: accepted source={}", source.display());
     let metadata = std::fs::metadata(&source).map_err(|e| e.to_string())?;
     if !metadata.is_file() || metadata.len() == 0 {
         return Err("Choose a non-empty audio file".into());
@@ -429,7 +430,13 @@ fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String
         std::fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
         let original_hash =
             crate::storage::audio_files::hash_file(&source).map_err(|e| e.to_string())?;
-        std::fs::copy(&source, &staging).map_err(|e| e.to_string())?;
+        log::debug!(
+            "audio import: hashed source ({original_hash}): {}",
+            source.display()
+        );
+        crate::long_audio::retry_transient_fs("audio import staging copy", || {
+            std::fs::copy(&source, &staging)
+        })?;
         std::fs::File::open(&staging)
             .and_then(|file| file.sync_all())
             .map_err(|e| e.to_string())?;
@@ -438,7 +445,14 @@ fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String
         if original_hash != copied_hash {
             return Err("Audio source changed during import; copied file was not accepted".into());
         }
-        std::fs::rename(&staging, &target).map_err(|e| e.to_string())?;
+        crate::long_audio::retry_transient_fs("audio import rename", || {
+            std::fs::rename(&staging, &target)
+        })?;
+        log::info!(
+            "audio import: capture {} staged as {}",
+            capture.id,
+            target.display()
+        );
         captures::attach_audio(
             &db,
             &capture.id,
@@ -473,6 +487,7 @@ fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String
         Ok(())
     })();
     if let Err(error) = prepared {
+        log::error!("audio import failed for capture {}: {error}", capture.id);
         let _ = std::fs::remove_file(&staging);
         let _ = std::fs::remove_file(staging_dir.join(format!("{}.part", capture.id)));
         if !target.is_file() || (decode_started && !audio_decoded) {
@@ -503,6 +518,10 @@ fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String
     }
     app.state::<crate::long_audio::TranscriptionQueue>().wake();
     let _ = app.emit("canonical-history-changed", ());
+    log::info!(
+        "audio import: capture {} queued for transcription",
+        capture.id
+    );
     Ok(capture.id)
 }
 

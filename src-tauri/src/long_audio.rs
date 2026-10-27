@@ -141,6 +141,60 @@ pub fn unsupported_import_error(extension: &str) -> String {
     )
 }
 
+/// Windows reports transient locks during updater/antivirus/file-viewer
+/// activity as os error 5 (access denied) or 32 (sharing violation). A failed
+/// import in exactly such a window is how a working import looks broken, so
+/// the file operations absorb short locking windows before giving up.
+const TRANSIENT_LOCK_RETRIES: u32 = 3;
+const TRANSIENT_LOCK_BACKOFF_MS: [u64; 3] = [50, 150, 250];
+
+fn is_transient_lock(error: &std::io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(5) | Some(32))
+}
+
+/// Run `operation` with a short backoff across transient Windows share locks;
+/// non-transient errors propagate immediately, exhausted retries return the
+/// last bare io error so the UI text stays unchanged.
+pub(crate) fn retry_transient_fs<T>(
+    description: &str,
+    mut operation: impl FnMut() -> Result<T, std::io::Error>,
+) -> Result<T, String> {
+    let mut last_error = None;
+    for attempt in 0..=TRANSIENT_LOCK_RETRIES {
+        match operation() {
+            Ok(value) => {
+                if attempt > 0 {
+                    log::debug!(
+                        "{description}: succeeded on retry {attempt} after a transient lock"
+                    );
+                }
+                return Ok(value);
+            }
+            Err(error) if is_transient_lock(&error) => {
+                let detail = if attempt < TRANSIENT_LOCK_RETRIES {
+                    format!(
+                        "retrying in {} ms",
+                        TRANSIENT_LOCK_BACKOFF_MS[attempt as usize]
+                    )
+                } else {
+                    "giving up".to_string()
+                };
+                log::warn!("{description}: transient fs lock ({error}); {detail}");
+                if attempt < TRANSIENT_LOCK_RETRIES {
+                    std::thread::sleep(Duration::from_millis(
+                        TRANSIENT_LOCK_BACKOFF_MS[attempt as usize],
+                    ));
+                }
+                last_error = Some(error);
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Err(last_error
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| "unknown filesystem error".into()))
+}
+
 /// Decode any natively supported audio format into one seekable work WAV
 /// using the already-linked rodio (Symphonia) decoder. Source bytes are never
 /// changed; no full-audio Vec is created.
@@ -193,7 +247,9 @@ pub fn prepare_working_wav(
     if work_path.exists() {
         std::fs::remove_file(&work_path).map_err(|e| e.to_string())?;
     }
-    std::fs::rename(staging, &work_path).map_err(|e| e.to_string())?;
+    retry_transient_fs("prepare working WAV rename", || {
+        std::fs::rename(&staging, &work_path)
+    })?;
     Ok(work_path)
 }
 
@@ -1242,6 +1298,43 @@ mod tests {
             prepare_working_wav(&source, &dir.path().join("work"), "real-recording").unwrap();
         let samples = inspect_wav(&working).unwrap();
         assert!(samples > 0, "decoded recording is empty");
+    }
+
+    #[test]
+    fn retries_transient_locks_and_then_succeeds() {
+        let mut calls = 0;
+        let result: Result<u32, String> = retry_transient_fs("test op", || {
+            calls += 1;
+            if calls < 3 {
+                Err(std::io::Error::from_raw_os_error(5))
+            } else {
+                Ok(calls)
+            }
+        });
+        assert_eq!(result.unwrap(), 3);
+        assert_eq!(calls, 3);
+    }
+
+    #[test]
+    fn propagates_non_transient_errors_immediately() {
+        let mut calls = 0;
+        let result: Result<(), String> = retry_transient_fs("test op", || {
+            calls += 1;
+            Err(std::io::Error::from_raw_os_error(2))
+        });
+        assert!(result.unwrap_err().contains("os error 2"));
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn exhausts_retries_on_persistent_lock() {
+        let mut calls = 0;
+        let result: Result<(), String> = retry_transient_fs("test op", || {
+            calls += 1;
+            Err(std::io::Error::from_raw_os_error(32))
+        });
+        assert!(result.unwrap_err().contains("os error 32"));
+        assert_eq!(calls, 4);
     }
 
     #[test]
