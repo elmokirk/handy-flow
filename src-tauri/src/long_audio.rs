@@ -195,6 +195,40 @@ pub(crate) fn retry_transient_fs<T>(
         .unwrap_or_else(|| "unknown filesystem error".into()))
 }
 
+/// Copy `source` to `staging`, flush it, verify the copy by hash, then rename
+/// it onto `target`: the durable temp → flush → validate → atomic-rename step
+/// every import shares. Returns the verified copy hash for capture metadata.
+///
+/// The flush needs a write handle: `FlushFileBuffers` on a read-only handle
+/// fails with access denied on Windows, which deterministically broke every
+/// GUI import while the headless CLI path (no staging flush) kept working.
+pub(crate) fn stage_import_copy(
+    source: &Path,
+    staging: &Path,
+    target: &Path,
+) -> Result<String, String> {
+    let original_hash =
+        crate::storage::audio_files::hash_file(source).map_err(|e| e.to_string())?;
+    log::debug!(
+        "audio import: hashed source ({original_hash}): {}",
+        source.display()
+    );
+    retry_transient_fs("audio import staging copy", || {
+        std::fs::copy(source, staging)
+    })?;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(staging)
+        .and_then(|file| file.sync_all())
+        .map_err(|e| e.to_string())?;
+    let copied_hash = crate::storage::audio_files::hash_file(staging).map_err(|e| e.to_string())?;
+    if original_hash != copied_hash {
+        return Err("Audio source changed during import; copied file was not accepted".into());
+    }
+    retry_transient_fs("audio import rename", || std::fs::rename(staging, target))?;
+    Ok(copied_hash)
+}
+
 /// Decode any natively supported audio format into one seekable work WAV
 /// using the already-linked rodio (Symphonia) decoder. Source bytes are never
 /// changed; no full-audio Vec is created.
@@ -1335,6 +1369,29 @@ mod tests {
         });
         assert!(result.unwrap_err().contains("os error 32"));
         assert_eq!(calls, 4);
+    }
+
+    // Regression guard for the staging flush: FlushFileBuffers fails with
+    // access denied on a read-only handle, which broke every GUI import
+    // until the flush moved to a write handle.
+    #[test]
+    fn stage_import_copy_flushes_verifies_and_renames_the_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.bin");
+        std::fs::write(&source, vec![42u8; 64 * 1024]).unwrap();
+        let staging_dir = dir.path().join(".processing");
+        let staging = staging_dir.join("capture.import.part");
+        let target = dir.path().join("recordings").join("manual-capture.bin");
+        std::fs::create_dir_all(&staging_dir).unwrap();
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        let copied_hash = stage_import_copy(&source, &staging, &target).unwrap();
+        assert!(target.is_file());
+        assert!(!staging.exists());
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            std::fs::read(&source).unwrap()
+        );
+        assert_eq!(copied_hash.len(), 64);
     }
 
     #[test]

@@ -428,26 +428,7 @@ fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String
     let mut audio_decoded = false;
     let prepared = (|| -> Result<(), String> {
         std::fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
-        let original_hash =
-            crate::storage::audio_files::hash_file(&source).map_err(|e| e.to_string())?;
-        log::debug!(
-            "audio import: hashed source ({original_hash}): {}",
-            source.display()
-        );
-        crate::long_audio::retry_transient_fs("audio import staging copy", || {
-            std::fs::copy(&source, &staging)
-        })?;
-        std::fs::File::open(&staging)
-            .and_then(|file| file.sync_all())
-            .map_err(|e| e.to_string())?;
-        let copied_hash =
-            crate::storage::audio_files::hash_file(&staging).map_err(|e| e.to_string())?;
-        if original_hash != copied_hash {
-            return Err("Audio source changed during import; copied file was not accepted".into());
-        }
-        crate::long_audio::retry_transient_fs("audio import rename", || {
-            std::fs::rename(&staging, &target)
-        })?;
+        let copied_hash = crate::long_audio::stage_import_copy(&source, &staging, &target)?;
         log::info!(
             "audio import: capture {} staged as {}",
             capture.id,
