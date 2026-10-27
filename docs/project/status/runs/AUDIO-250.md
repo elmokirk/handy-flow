@@ -64,3 +64,24 @@ sample decodes via the env-gated test, clippy ratchet 18 < 22. Shipped as
 signed Latest `v0.9.15` (run 40524746881 from this branch; updater
 endpoint verified at 0.9.15). Still IN_REVIEW: the owner validates the
 actual in-app import of the WhatsApp AAC recording.
+
+Root cause (2026-10-27, corrected post-mortem, supersedes the earlier
+transient-lock read): the 0.9.15 import log proved the failure point by
+elimination — source hash ok, no copy/rename retry warnings, a bare
+os error 5 between them — leaving exactly one unlogged call: the staging
+flush opened the copied file read-only and called `sync_all`.
+`FlushFileBuffers` requires write access on Windows (verified directly
+via Win32 on the owner machine: GENERIC_READ handle → ERROR_ACCESS_DENIED
+5, GENERIC_WRITE → 0), so every GUI import failed deterministically for
+every format since AUDIO-240 shipped. The headless CLI path never flushes
+a staging copy, which is why every CLI, decode and format test stayed
+green while drag-and-drop and picker imports failed. The fix in commit
+`71d2b7a` extracts `long_audio::stage_import_copy` (hash → copy with
+transient-lock retry → flush through an OpenOptions write handle →
+verify hash → atomic rename) and adds a regression test over exactly
+this GUI-only staging sequence — the previous blind spot of the test
+pyramid. Verified: `cargo test -j 4` (235 lib tests + integration),
+stage-import regression green, the owner's renamed AAC sample decodes,
+ratchet 18 < 22. Shipped as signed Latest `v0.9.16` (run 40540344321;
+updater endpoint verified at 0.9.16). Still IN_REVIEW until the owner
+validates a real in-app import of the AAC recording.

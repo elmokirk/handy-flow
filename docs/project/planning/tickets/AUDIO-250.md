@@ -65,9 +65,10 @@ import without any external converter. Recordings needing absent decoders
 
 ## Completion
 
-Release shipped via the public signed updater as 0.9.14, then hardened
-against the transient post-update lock window seen during owner
-validation (retry with backoff + import logging) and released as 0.9.15
-(updater endpoint verified). The owner validates with real phone
-recordings in the installed app. The ticket flips to DONE after the owner
-validation succeeds.
+Release shipped via the public signed updater as 0.9.14, hardened with
+import logging in 0.9.15, and fixed deterministically in 0.9.16 after the
+logging proved the real root cause: the staging flush used a read-only
+handle and `FlushFileBuffers` needs write access on Windows, breaking
+every GUI import since the feature shipped (updater endpoint verified).
+The owner validates with real phone recordings in the installed app. The
+ticket flips to DONE after the owner validation succeeds.
