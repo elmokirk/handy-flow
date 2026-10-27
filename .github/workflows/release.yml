@@ -35,7 +35,7 @@ jobs:
               target_commitish: context.sha,
               draft: true,
               prerelease: false,
-              body: 'Windows x64 update adding native AAC/M4A, FLAC and OGG import for phone recordings (AUDIO-250) on top of the 0.9.13 long-audio line. The owner validates the imported recordings and the 15-minute microphone checks after installing; report any regression before wider rollout.',
+              body: 'Windows x64 hardening for the phone-recording import: transient filesystem locks right after an update window (os error 5) no longer fail AAC/M4A/FLAC/OGG imports, and imports are now logged into handy.log for diagnosis. The owner validates the imported recordings after installing; report any regression before wider rollout.',
               generate_release_notes: true
             })
             return data.id
