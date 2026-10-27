@@ -35,7 +35,7 @@ jobs:
               target_commitish: context.sha,
               draft: true,
               prerelease: false,
-              body: 'Windows x64 hardening for the phone-recording import: transient filesystem locks right after an update window (os error 5) no longer fail AAC/M4A/FLAC/OGG imports, and imports are now logged into handy.log for diagnosis. The owner validates the imported recordings after installing; report any regression before wider rollout.',
+              body: 'Windows x64 fix for the AAC/M4A/FLAC/OGG import: the staged copy is now flushed through a write handle, fixing the deterministic "Zugriff verweigert (os error 5)" that broke every drag-and-drop and picker import since the feature shipped. The owner validates the imported recordings after installing; report any regression before wider rollout.',
               generate_release_notes: true
             })
             return data.id
