@@ -47,6 +47,20 @@ workflow ran green (run 40389324028, dispatched from this branch). The
 draft was published as public Latest `v0.9.14`; assets
 `Handy.Flow_0.9.14_x64-setup.exe` (20.5 MB) + `.sig` + `latest.json` are
 present and the public updater endpoint returns 0.9.14 with both platform
-aliases pointing at the signed installer. The owner updates the installed
-0.9.13 app and validates with real phone recordings. Remaining work for
-DONE: the owner validation. This run stays IN_REVIEW until it succeeds.
+aliases pointing at the signed installer.
+
+Hardening (owner request, 2026-10-27): the 0.9.14 device validation hit
+"Zugriff verweigert (os error 5)" on two imports directly after the
+updater restart. Post-mortem: the source stayed readable (bare io error
+rules out hash_file) while staging copy/rename caught a transient Windows
+lock window; afterwards every operation plus a full headless
+`--transcribe-file` run of the installed binary transcribed the same
+WhatsApp AAC sample end to end (213.7 s audio, 24 s, Parakeet Q8/Vulkan).
+Commit `bc31315` absorbs os error 5/32 on copy/rename (3 attempts,
+50/150/250 ms backoff; bare io error preserved for the UI), logs import
+phases and retries to handy.log, and adds retry/exhaustion tests.
+`cargo test -j 4` passes (234 lib tests + integration), the owner AAC
+sample decodes via the env-gated test, clippy ratchet 18 < 22. Shipped as
+signed Latest `v0.9.15` (run 40524746881 from this branch; updater
+endpoint verified at 0.9.15). Still IN_REVIEW: the owner validates the
+actual in-app import of the WhatsApp AAC recording.

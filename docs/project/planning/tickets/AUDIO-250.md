@@ -65,7 +65,9 @@ import without any external converter. Recordings needing absent decoders
 
 ## Completion
 
-Release shipped via the public signed updater as 0.9.14, dispatched from
-this branch (run 40389324028; updater endpoint verified). The owner
-validates with real phone recordings in the installed app. The ticket
-flips to DONE after the owner validation succeeds.
+Release shipped via the public signed updater as 0.9.14, then hardened
+against the transient post-update lock window seen during owner
+validation (retry with backoff + import logging) and released as 0.9.15
+(updater endpoint verified). The owner validates with real phone
+recordings in the installed app. The ticket flips to DONE after the owner
+validation succeeds.
