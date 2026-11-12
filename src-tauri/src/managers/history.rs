@@ -1147,6 +1147,16 @@ mod tests {
             assert!(restore_capture(&db, id).unwrap());
         }
         assert_eq!(count_trashed(&db).unwrap(), 0);
+        HistoryManager::cleanup_canonical_with_policy(&db, RecordingRetentionPeriod::Never, 5)
+            .unwrap();
+        assert_eq!(count_trashed(&db).unwrap(), 0);
+        HistoryManager::cleanup_canonical_with_policy(
+            &db,
+            RecordingRetentionPeriod::PreserveLimit,
+            5,
+        )
+        .unwrap();
+        assert_eq!(count_trashed(&db).unwrap(), 3);
     }
 
     #[test]

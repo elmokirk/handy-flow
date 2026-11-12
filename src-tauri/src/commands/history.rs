@@ -206,13 +206,24 @@ fn mark_missing_audio(
                 match std::fs::metadata(recordings.join(name)) {
                     Ok(_) => false,
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
-                    Err(e) => return Err(e.to_string()),
+                    Err(e) => {
+                        log::warn!(
+                            "Could not inspect audio for capture {}: {}",
+                            entry.capture_id,
+                            e
+                        );
+                        continue;
+                    }
                 }
             }
             _ => true,
         };
         if missing {
-            let changed = db.conn().execute("UPDATE captures SET integrity_state = 'audio_missing' WHERE id = ?1 AND integrity_state = 'audio_valid'", [&entry.capture_id]).map_err(|e| e.to_string())?;
+            let changed = crate::storage::repositories::captures::mark_missing_audio_if_valid(
+                db,
+                &entry.capture_id,
+            )
+            .map_err(|e| e.to_string())?;
             if changed == 1 {
                 entry.integrity_state = "audio_missing".into();
             }
@@ -289,14 +300,7 @@ pub fn toggle_canonical_history_saved(app: AppHandle, capture_id: String) -> Res
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or_default();
-    let changed = db
-        .conn()
-        .execute(
-            "UPDATE captures SET saved = CASE saved WHEN 1 THEN 0 ELSE 1 END,\
-             updated_at_ms = ?2\
-             WHERE id = ?1 AND deleted_at_ms IS NULL",
-            rusqlite::params![capture_id, now_ms],
-        )
+    let changed = crate::storage::repositories::captures::toggle_saved(&db, &capture_id, now_ms)
         .map_err(|e| e.to_string())?;
     if changed != 1 {
         return Err("history entry not found".to_string());
@@ -357,6 +361,7 @@ pub struct TrashEntry {
     pub deleted_at_ms: Option<i64>,
     pub audio_file_name: Option<String>,
     pub integrity_state: String,
+    pub snippet: String,
 }
 
 #[derive(Clone, Debug, serde::Serialize, specta::Type)]
@@ -374,15 +379,38 @@ pub fn list_trash_page(app: AppHandle, limit: i64, offset: i64) -> Result<TrashP
     let entries = crate::storage::repositories::captures::list_trashed_page(&db, limit, offset)
         .map_err(|e| e.to_string())?
         .into_iter()
-        .map(|c| TrashEntry {
-            capture_id: c.id,
-            title: c.title,
-            created_at_ms: c.created_at_ms,
-            deleted_at_ms: c.deleted_at_ms,
-            audio_file_name: c.audio_file_name,
-            integrity_state: c.integrity_state,
+        .map(|c| {
+            let attempt =
+                crate::storage::repositories::transcriptions::canonical_attempt(&db, &c.id)?;
+            let text = if let Some(attempt) = attempt {
+                let reps =
+                    crate::storage::repositories::representations::representations_for_attempt(
+                        &db,
+                        &attempt.id,
+                    )?;
+                reps.iter()
+                    .rev()
+                    .find(|r| r.kind == "manual_edit" && r.status == "success")
+                    .map(|r| r.text.clone())
+                    .or(attempt.normalized_stt)
+                    .or_else(|| reps.first().map(|r| r.text.clone()))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            let snippet = text.chars().take(80).collect();
+            Ok(TrashEntry {
+                capture_id: c.id,
+                title: c.title,
+                created_at_ms: c.created_at_ms,
+                deleted_at_ms: c.deleted_at_ms,
+                audio_file_name: c.audio_file_name,
+                integrity_state: c.integrity_state,
+                snippet,
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, rusqlite::Error>>()
+        .map_err(|e| e.to_string())?;
     let total =
         crate::storage::repositories::captures::count_trashed(&db).map_err(|e| e.to_string())?;
     Ok(TrashPage { entries, total })
@@ -770,7 +798,7 @@ mod canonical_history_tests {
     #[test]
     fn stor260_missing_audio_stays_visible_and_is_marked() {
         let db = seeded_db();
-        db.conn().execute("UPDATE captures SET integrity_state = 'audio_valid', audio_file_name = 'missing.wav' WHERE id = 'handy-new'", []).unwrap();
+        db.conn().execute("UPDATE\n captures SET integrity_state = 'audio_valid', audio_file_name = 'missing.wav' WHERE id = 'handy-new'", []).unwrap();
         let filter = CanonicalHistoryFilter {
             from_ms: None,
             to_ms: None,

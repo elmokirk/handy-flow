@@ -132,6 +132,19 @@ pub fn set_recording_started_at(
     Ok(())
 }
 
+/// Toggle the saved state of an active capture.
+pub fn toggle_saved(db: &AppDatabase, id: &str, now_ms: i64) -> Result<usize, rusqlite::Error> {
+    db.conn().execute("UPDATE captures SET saved = CASE saved WHEN 1 THEN 0 ELSE 1 END, updated_at_ms = ?2 WHERE id = ?1 AND deleted_at_ms IS NULL", params![id, now_ms])
+}
+
+/// Mark missing audio only if the capture has not changed in the meantime.
+pub fn mark_missing_audio_if_valid(db: &AppDatabase, id: &str) -> Result<usize, rusqlite::Error> {
+    db.conn().execute(
+        "UPDATE captures SET integrity_state = 'audio_missing' WHERE id = ?1 AND integrity_state = 'audio_valid'",
+        [id],
+    )
+}
+
 /// Explicitly record the integrity verdict after lifecycle events.
 pub fn set_integrity_state(
     db: &AppDatabase,
@@ -311,6 +324,7 @@ pub fn purge_trashed_with_audio(
     capture_id: &str,
     recording_dir: &std::path::Path,
 ) -> anyhow::Result<()> {
+    // Keep the DB mutex through file deletion to serialize against restore; this can delay other operations.
     let mut conn = db.conn();
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let (name, deleted): (Option<String>, Option<i64>) = tx.query_row(
@@ -321,7 +335,7 @@ pub fn purge_trashed_with_audio(
     if deleted.is_none() {
         anyhow::bail!("capture is not in trash");
     }
-    if let Some(name) = name {
+    if let Some(name) = name.filter(|name| !name.is_empty()) {
         if std::path::Path::new(&name)
             .file_name()
             .and_then(|n| n.to_str())

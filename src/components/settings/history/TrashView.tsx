@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "@/hooks/useSettings";
 import { useTrash } from "@/hooks/useTrash";
@@ -26,6 +26,9 @@ export const TrashView: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         settings?.recording_retention_period === "preserve_limit" && (
           <p role="status">{t("settings.history.trash.retentionHint")}</p>
         )}
+      {trash.alreadyRestored && (
+        <p role="status">{t("settings.history.trash.alreadyRestored")}</p>
+      )}
       {trash.error && (
         <div role="alert" className="text-red-500 whitespace-pre-wrap">
           {t("settings.history.trash.error")}: {trash.error}{" "}
@@ -76,9 +79,12 @@ export const TrashView: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               />
               <div className="flex-1 min-w-0">
                 <p className="truncate">{entry.title}</p>
+                {entry.snippet && <p className="truncate">{entry.snippet}</p>}
                 <p className="text-xs">
-                  {formatDateTimeMs(entry.created_at_ms, i18n.language)} ·{" "}
-                  {t("settings.history.trash.badge")}
+                  {formatDateTimeMs(entry.created_at_ms, i18n.language)}
+                  {entry.integrity_state === "audio_missing" && (
+                    <> · {t("settings.history.trash.audioMissing")}</>
+                  )}
                 </p>
               </div>
               <Button

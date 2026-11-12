@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { commands, type TrashPage } from "@/bindings";
 
 const PAGE_SIZE = 20;
@@ -9,6 +9,7 @@ export function useTrash() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [alreadyRestored, setAlreadyRestored] = useState(false);
   const [restored, setRestored] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,6 +43,7 @@ export function useTrash() {
     );
   const act = async (action: "restore" | "purge", ids: string[]) => {
     setBusy(true);
+    setAlreadyRestored(false);
     const failures: string[] = [];
     const succeeded: string[] = [];
     for (const id of ids) {
@@ -52,7 +54,7 @@ export function useTrash() {
             : await commands.purgeTrashedEntry(id);
         if (result.status === "error") throw new Error(result.error);
         if (action === "restore" && result.data === false)
-          throw new Error("Entry was not restored");
+          setAlreadyRestored(true);
         succeeded.push(id);
       } catch (err) {
         failures.push(`${id}: ${String(err)}`);
@@ -72,6 +74,7 @@ export function useTrash() {
     loading,
     busy,
     restored,
+    alreadyRestored,
     changePage,
     toggle,
     act,

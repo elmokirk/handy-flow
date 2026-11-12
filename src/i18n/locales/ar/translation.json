@@ -482,6 +482,7 @@
         "title": "Trash",
         "back": "Back to history",
         "total": "Trash entries: {{count}}",
+        "alreadyRestored": "This entry was already restored or removed.",
         "retentionHint": "With the current retention limit, older unsaved entries may return to the trash during the next cleanup.",
         "error": "Trash operation failed",
         "retry": "Retry",

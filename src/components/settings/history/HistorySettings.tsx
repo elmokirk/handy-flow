@@ -11,6 +11,7 @@ import {
   Star,
   Trash2,
   Upload,
+  VolumeX,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -836,7 +837,7 @@ const CanonicalHistoryCard: React.FC<{
             aria-label={t("settings.history.trash.play")}
             className="text-sm opacity-50"
           >
-            ?
+            <VolumeX width={16} />
           </button>
         </span>
       )}
