@@ -500,7 +500,32 @@
       "pendingAudio": "Aufnahme läuft oder wartet auf Transkription",
       "transcriptionPending": "Transkription wartet oder läuft",
       "recoveredAudio": "Wiederhergestellt – noch nicht transkribiert (Aufnahmezeit geschätzt)",
-      "audioCorrupt": "Audio ist leer oder beschädigt – Originaldatei erhalten"
+      "audioCorrupt": "Audio ist leer oder beschädigt – Originaldatei erhalten",
+      "trash": {
+        "title": "Papierkorb",
+        "back": "Zur?ck zum Verlauf",
+        "total": "Eintr?ge im Papierkorb: {{count}}",
+        "retentionHint": "Bei der aktuellen Aufbewahrungsgrenze k?nnen ?ltere ungespeicherte Eintr?ge bei der n?chsten Bereinigung erneut im Papierkorb landen.",
+        "error": "Papierkorb-Aktion fehlgeschlagen",
+        "retry": "Erneut versuchen",
+        "restoreSelected": "Ausgew?hlte wiederherstellen",
+        "purgeSelected": "Ausgew?hlte endg?ltig l?schen",
+        "empty": "Der Papierkorb ist leer.",
+        "select": "{{title}} ausw?hlen",
+        "badge": "Im Papierkorb",
+        "restore": "Wiederherstellen",
+        "purge": "Endg?ltig l?schen",
+        "previous": "Zur?ck",
+        "page": "Seite {{page}}",
+        "next": "Weiter",
+        "confirmPurge": "{{count}} ausgew?hlte Eintr?ge endg?ltig l?schen? Dies kann nicht r?ckg?ngig gemacht werden.",
+        "confirmRestore": "{{count}} ausgew?hlte Eintr?ge wiederherstellen?",
+        "cancel": "Abbrechen",
+        "confirm": "Best?tigen",
+        "audioMissing": "Audiodatei fehlt",
+        "audioMissingExplanation": "Die Audiodatei fehlt. Wiedergabe und erneute Transkription sind nicht verf?gbar.",
+        "play": "Audio abspielen"
+      }
     },
     "debug": {
       "title": "Debug",

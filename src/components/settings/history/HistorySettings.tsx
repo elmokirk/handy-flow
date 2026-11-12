@@ -22,6 +22,7 @@ import {
 import { formatDateMs, formatDateTimeMs } from "@/utils/dateFormat";
 import { AudioPlayer, AudioPlayerGroup } from "../../ui/AudioPlayer";
 import { Button } from "../../ui/Button";
+import { TrashView } from "./TrashView";
 
 const PAGE_SIZE = 30;
 type Range = "all" | "today" | "week" | "days7" | "days30" | "custom";
@@ -121,6 +122,7 @@ const IconButton: React.FC<{
 
 export const HistorySettings: React.FC = () => {
   const { t, i18n } = useTranslation();
+  const [showTrash, setShowTrash] = useState(false);
   const [entries, setEntries] = useState<CanonicalHistoryEntry[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const cursorRef = useRef<string | null>(null);
@@ -356,6 +358,16 @@ export const HistorySettings: React.FC = () => {
     return all;
   }, []);
 
+  if (showTrash)
+    return (
+      <TrashView
+        onClose={() => {
+          setShowTrash(false);
+          loadPage(true);
+        }}
+      />
+    );
+
   return (
     <div
       ref={dropZoneRef}
@@ -366,6 +378,13 @@ export const HistorySettings: React.FC = () => {
           {t("settings.history.title")}
         </h2>
         <div className="flex gap-2">
+          <Button
+            onClick={() => setShowTrash(true)}
+            variant="secondary"
+            size="sm"
+          >
+            {t("settings.history.trash.title")}
+          </Button>
           <Button
             onClick={pickAudio}
             disabled={importing}
@@ -530,6 +549,7 @@ const CanonicalHistoryCard: React.FC<{
     save: t("settings.history.confirmText"),
     error: t("settings.history.confirmTextError"),
   };
+  const audioMissing = entry.integrity_state === "audio_missing";
   const audioCorrupt = entry.integrity_state === "audio_corrupt";
   const pending = entry.integrity_state === "pending_audio";
   const recovered = entry.integrity_state === "recovered_orphan";
@@ -651,26 +671,39 @@ const CanonicalHistoryCard: React.FC<{
           >
             <Star width={16} fill={entry.saved ? "currentColor" : "none"} />
           </IconButton>
-          <IconButton
-            onClick={retry}
-            disabled={
-              !entry.audio_file_name ||
-              audioCorrupt ||
-              pending ||
-              processing ||
-              retrying
+          <span
+            title={
+              audioMissing
+                ? t("settings.history.trash.audioMissingExplanation")
+                : undefined
             }
-            title={t("settings.history.retranscribe")}
           >
-            <RotateCcw
-              width={16}
-              style={
+            <IconButton
+              onClick={retry}
+              disabled={
+                !entry.audio_file_name ||
+                audioCorrupt ||
+                audioMissing ||
+                pending ||
+                processing ||
                 retrying
-                  ? { animation: "spin 1s linear infinite reverse" }
-                  : undefined
               }
-            />
-          </IconButton>
+              title={t(
+                audioMissing
+                  ? "settings.history.trash.audioMissingExplanation"
+                  : "settings.history.retranscribe",
+              )}
+            >
+              <RotateCcw
+                width={16}
+                style={
+                  retrying
+                    ? { animation: "spin 1s linear infinite reverse" }
+                    : undefined
+                }
+              />
+            </IconButton>
+          </span>
           <IconButton
             onClick={trash}
             disabled={retrying}
@@ -680,6 +713,14 @@ const CanonicalHistoryCard: React.FC<{
           </IconButton>
         </div>
       </div>
+      {audioMissing && (
+        <span
+          className="text-xs text-amber-400"
+          title={t("settings.history.trash.audioMissingExplanation")}
+        >
+          {t("settings.history.trash.audioMissing")}
+        </span>
+      )}
       {entry.source_app && (
         <p className="text-xs text-text/50">{entry.source_app}</p>
       )}
@@ -788,7 +829,18 @@ const CanonicalHistoryCard: React.FC<{
           )}
         </details>
       )}
-      {entry.audio_file_name && !audioCorrupt && !pending && (
+      {audioMissing && (
+        <span title={t("settings.history.trash.audioMissingExplanation")}>
+          <button
+            disabled
+            aria-label={t("settings.history.trash.play")}
+            className="text-sm opacity-50"
+          >
+            ?
+          </button>
+        </span>
+      )}
+      {entry.audio_file_name && !audioCorrupt && !audioMissing && !pending && (
         <AudioPlayer
           onLoadRequest={() => getAudioUrl(entry.capture_id)}
           className="w-full"

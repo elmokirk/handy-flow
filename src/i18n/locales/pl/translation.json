@@ -500,7 +500,32 @@
       "retranscribe": "Transkrybuj ponownie",
       "retranscribeError": "Nie udało się ponownie transkrybować. Spróbuj ponownie.",
       "transcribing": "Transkrybuję...",
-      "transcriptionFailed": "Transkrypcja nie powiodła się. Możesz transkrybować ponownie za pomocą ikony ponowienia."
+      "transcriptionFailed": "Transkrypcja nie powiodła się. Możesz transkrybować ponownie za pomocą ikony ponowienia.",
+      "trash": {
+        "title": "Trash",
+        "back": "Back to history",
+        "total": "Trash entries: {{count}}",
+        "retentionHint": "With the current retention limit, older unsaved entries may return to the trash during the next cleanup.",
+        "error": "Trash operation failed",
+        "retry": "Retry",
+        "restoreSelected": "Restore selected",
+        "purgeSelected": "Permanently delete selected",
+        "empty": "The trash is empty.",
+        "select": "Select {{title}}",
+        "badge": "In trash",
+        "restore": "Restore",
+        "purge": "Permanently delete",
+        "previous": "Previous",
+        "page": "Page {{page}}",
+        "next": "Next",
+        "confirmPurge": "Permanently delete {{count}} selected entries? This cannot be undone.",
+        "confirmRestore": "Restore {{count}} selected entries?",
+        "cancel": "Cancel",
+        "confirm": "Confirm",
+        "audioMissing": "Audio file missing",
+        "audioMissingExplanation": "The audio file is missing, so playback and retranscription are unavailable.",
+        "play": "Play audio"
+      }
     },
     "debug": {
       "title": "Debugowanie",
