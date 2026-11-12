@@ -21,6 +21,8 @@ use handy_app_lib::storage::migrations::open_and_migrate;
 use handy_app_lib::storage::repositories::notes::{
     append_version, create_note, trash_note, NewNote, SOURCE_DICTATION, SOURCE_MANUAL_EDIT,
 };
+use handy_app_lib::storage::repositories::representations::confirm_transcript;
+use handy_app_lib::storage::repositories::search::search;
 
 fn fresh(tag: &str) -> AppDatabase {
     let dir = std::env::temp_dir().join(format!("handy-kb401-{tag}-{}", std::process::id()));
@@ -69,6 +71,24 @@ fn canonical_raw_is_normalized_stt() {
         "engine_raw must not leak"
     );
     assert_ne!(item.raw, "The API is down.", "derived text is not the raw");
+}
+
+#[test]
+fn confirmed_text_is_preferred_but_raw_and_audio_stay_unchanged() {
+    let db = fresh("reviewed");
+    let capture_id = seed_dictation(&db);
+    let before = transcription_item(&db, &capture_id).unwrap();
+    confirm_transcript(&db, &capture_id, "Corrected first version").unwrap();
+    confirm_transcript(&db, &capture_id, "Corrected final version").unwrap();
+    let after = transcription_item(&db, &capture_id).unwrap();
+    assert_eq!(after.raw, before.raw);
+    assert_eq!(after.preferred_text, "Corrected final version");
+    assert!(after.preferred_representation_id.is_some());
+    assert_eq!(after.audio.unwrap().sha256, before.audio.unwrap().sha256);
+    assert_eq!(after.representations.len(), 3);
+    let hits = search(&db, "final", Some("representation"), 10, 0).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].capture_id.as_deref(), Some(capture_id.as_str()));
 }
 
 /// 02 — representations travel with the item.

@@ -138,7 +138,7 @@ pub fn representations_for_attempt(
 ) -> Result<Vec<RepresentationRecord>, rusqlite::Error> {
     let conn = db.conn();
     let mut stmt = conn.prepare(&format!(
-        "SELECT {REP_COLUMNS} FROM representations WHERE attempt_id = ?1 ORDER BY created_at_ms ASC"
+        "SELECT {REP_COLUMNS} FROM representations WHERE attempt_id = ?1 ORDER BY created_at_ms ASC, id ASC"
     ))?;
     let rows = stmt.query_map([attempt_id], row_to_record)?;
     rows.collect()
@@ -155,4 +155,38 @@ pub fn get_representation(
         row_to_record,
     )
     .optional()
+}
+
+/// Save a user-confirmed transcript without changing the canonical attempt.
+/// The latest edit is its parent, so successive corrections remain traceable.
+pub fn confirm_transcript(
+    db: &AppDatabase,
+    capture_id: &str,
+    text: &str,
+) -> Result<(), rusqlite::Error> {
+    let mut conn = db.conn();
+    let tx = conn.transaction()?;
+    let id = ids::new_id();
+    let changed = tx.execute(
+        "INSERT INTO representations (
+            id, attempt_id, parent_representation_id, kind, text,
+            content_hash_sha256, processor, processor_version, status, created_at_ms
+         ) SELECT ?2, a.id,
+           (SELECT id FROM representations WHERE attempt_id = a.id AND kind = 'manual_edit'
+            ORDER BY created_at_ms DESC, id DESC LIMIT 1),
+           'manual_edit', ?3, ?4, 'history_review', '1', 'success', ?5
+         FROM transcription_attempts a JOIN captures c ON c.id = a.capture_id
+         WHERE c.id = ?1 AND c.deleted_at_ms IS NULL AND a.is_canonical = 1
+           AND a.status = 'success'",
+        params![capture_id, id, text, content_hash(text), now_ms()],
+    )?;
+    if changed == 0 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    tx.execute(
+        "INSERT INTO search_fts(body, ref_type, ref_id) VALUES (?1, 'representation', ?2)",
+        params![text, id],
+    )?;
+    tx.commit()?;
+    Ok(())
 }

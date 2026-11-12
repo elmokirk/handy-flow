@@ -82,7 +82,7 @@ WAL, foreign keys ON, bounded busy timeout, short transactions, repositories own
 FTS5 is derived and **repository-managed**, not trigger-designed by feature agents. Canonical repository write transactions update the corresponding FTS document in the same transaction; an explicit rebuild command truncates/repopulates FTS from canonical tables. Index `normalized_stt`, representations and active notes. A full rebuild is a recovery requirement.
 
 ## Audio lifecycle
-`temp → close/flush → validate → hash/size → atomic rename → DB metadata → transcription`. Recovery never silently deletes unknown valid audio.
+For live dictation, ADR-025 supersedes this sequence: create a capture and one final WAV at recording start, checkpoint/sync that same file every 30 seconds, then finalize/validate/hash/attach audio and queue transcription. Import and other non-live paths may still use `temp → close/flush → validate → hash/size → atomic rename → DB metadata`. Recovery never silently deletes unknown valid audio.
 
 ## Privacy metadata
 `source_app` may be recorded. `source_window` is opt-in and disabled by default.

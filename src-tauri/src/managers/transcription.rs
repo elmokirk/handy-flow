@@ -39,7 +39,10 @@ use transcribe_rs::{
     SpeechModel, TranscribeOptions,
 };
 
+// AUDIO-240 pauses in-process live preview until a worker protocol replaces it.
+#[allow(dead_code)]
 const STREAM_PERF_LOG_INTERVAL: Duration = Duration::from_secs(5);
+#[allow(dead_code)]
 const STREAM_FINALIZE_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Version of the deterministic normalization pipeline that produced a
@@ -53,7 +56,7 @@ pub const NORMALIZER_VERSION: &str = "1";
 /// `delivered_text` carries the post-normalization DERIVED layer
 /// (Dictionary snapshot already applied in normalized_stt; Snippets
 /// applied as last deterministic step before delivery).
-#[derive(Clone, Debug, Serialize, Type)]
+#[derive(Clone, Debug, serde::Deserialize, Serialize, Type)]
 pub struct TranscriptionOutput {
     pub engine_raw: String,
     pub normalized_stt: String,
@@ -178,6 +181,7 @@ pub struct StreamPhaseEvent {
 /// Commands sent to the streaming worker thread. Audio frames and the finalize
 /// request travel the same channel so FIFO ordering guarantees every fed frame
 /// is processed before finalize runs.
+#[allow(dead_code)]
 enum StreamCmd {
     Feed(Vec<f32>),
     /// Flush the stream and reply with the final text, or `None` if no stream
@@ -186,6 +190,7 @@ enum StreamCmd {
     Cancel,
 }
 
+#[allow(dead_code)]
 struct FinalizedStreamText {
     text: String,
     output_language: OutputLanguageEvidence,
@@ -207,6 +212,7 @@ pub struct StreamRouter {
     open: Arc<AtomicBool>,
 }
 
+#[allow(dead_code)]
 impl StreamRouter {
     fn new() -> Self {
         Self {
@@ -272,6 +278,7 @@ enum LoadedEngine {
 
 /// RAII guard that clears the `is_loading` flag and notifies waiters on drop.
 /// Ensures the loading flag is always reset, even on early returns or panics.
+#[allow(dead_code)]
 pub struct LoadingGuard {
     is_loading: Arc<Mutex<bool>>,
     loading_condvar: Arc<Condvar>,
@@ -297,6 +304,7 @@ impl Drop for LoadingGuard {
 /// normal return, early return, or a panic in an engine call that unwinds the
 /// detached worker thread. Tokens prevent an older worker from clearing a newer
 /// worker's state if a start/finalize race ever slips through.
+#[allow(dead_code)]
 struct StreamWorkerGuard {
     worker_id: u64,
     active_stream_worker: Arc<AtomicU64>,
@@ -348,10 +356,12 @@ pub struct TranscriptionManager {
     /// of the mutex, stream active = UI should show a live session.
     ///
     /// Monotonic id source for stream workers; zero means "no worker".
+    #[allow(dead_code)]
     next_stream_worker_id: Arc<AtomicU64>,
     /// Nonzero while a stream worker exists, even if it has not leased the engine
     /// yet. This prevents a second worker from starting after finalize/cancel
     /// closes the router but before the first worker has fully exited.
+    #[allow(dead_code)]
     active_stream_worker: Arc<AtomicU64>,
     /// Nonzero while the streaming worker has taken the engine out of `engine`.
     /// `is_model_loaded()` consults this so the model still reports "loaded"
@@ -392,6 +402,13 @@ impl TranscriptionManager {
                     // Check shutdown signal again after sleep
                     if shutdown_signal.load(Ordering::Relaxed) {
                         break;
+                    }
+
+                    if app_handle_cloned
+                        .try_state::<crate::CliArgs>()
+                        .is_some_and(|args| args.transcription_worker)
+                    {
+                        continue;
                     }
 
                     let settings = get_settings(&app_handle_cloned);
@@ -478,6 +495,7 @@ impl TranscriptionManager {
     /// one as starting. Returns a [`LoadingGuard`] whose [`Drop`] impl will
     /// clear the flag and wake waiters. Returns `None` if a load is already in
     /// progress.
+    #[allow(dead_code)]
     pub fn try_start_loading(&self) -> Option<LoadingGuard> {
         let mut is_loading = self.is_loading.lock().unwrap();
         if *is_loading {
@@ -537,6 +555,13 @@ impl TranscriptionManager {
 
     /// Unloads the model immediately if the setting is enabled and the model is loaded
     pub fn maybe_unload_immediately(&self, context: &str) {
+        if self
+            .app_handle
+            .try_state::<crate::CliArgs>()
+            .is_some_and(|args| args.transcription_worker)
+        {
+            return;
+        }
         let settings = get_settings(&self.app_handle);
         if settings.model_unload_timeout == ModelUnloadTimeout::Immediately
             && self.is_model_loaded()
@@ -548,6 +573,7 @@ impl TranscriptionManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn load_model(&self, model_id: &str) -> Result<()> {
         self.load_model_with_device(model_id, None)
     }
@@ -811,6 +837,7 @@ impl TranscriptionManager {
     }
 
     /// Kicks off the model loading in a background thread if it's not already loaded
+    #[allow(dead_code)]
     pub fn initiate_model_load(&self) {
         let mut is_loading = self.is_loading.lock().unwrap();
         if *is_loading {
@@ -860,6 +887,21 @@ impl TranscriptionManager {
         }
     }
 
+    pub fn model_max_audio_samples(&self) -> Option<u64> {
+        let engine = self.lock_engine();
+        match engine.as_ref()? {
+            LoadedEngine::TranscribeCpp(session) => {
+                let ms = session.limits().ok()?.effective_max_audio_ms;
+                Some(if ms > 0 { ms as u64 * 16 } else { u64::MAX })
+            }
+            // The installed Moonshine batch engine rejects inputs over 64s.
+            LoadedEngine::Moonshine(_) => Some(64 * 16_000),
+            // Other ONNX engines expose no duration limit; the queue tries at
+            // most six minutes in the isolated child and falls back on error.
+            _ => Some(u64::MAX),
+        }
+    }
+
     /// Whether a live streaming run is currently in flight.
     pub fn is_streaming(&self) -> bool {
         self.stream_active.load(Ordering::Acquire)
@@ -881,6 +923,7 @@ impl TranscriptionManager {
     /// model can't stream, the worker idles until finalize/cancel and reports
     /// `None` so the caller falls back to batch transcription. Frames sent
     /// before the stream begins queue on the channel and are not lost.
+    #[allow(dead_code)]
     pub fn start_stream(&self) {
         if self.router.is_open() || self.active_stream_worker.load(Ordering::Acquire) != 0 {
             warn!("start_stream called while a stream worker is already active");
@@ -902,6 +945,7 @@ impl TranscriptionManager {
         thread::spawn(move || manager.run_stream_worker(rx, worker_id));
     }
 
+    #[allow(dead_code)]
     fn run_stream_worker(&self, rx: mpsc::Receiver<StreamCmd>, worker_id: u64) {
         let _worker = StreamWorkerGuard {
             worker_id,
@@ -1187,6 +1231,7 @@ impl TranscriptionManager {
     /// PAD-306 removed the delivered-text-only wrapper `finalize_stream`: the
     /// live path needs `engine_raw` for the canonical attempt, so dropping it
     /// at the seam left the caller unable to record provenance.
+    #[allow(dead_code)]
     pub fn finalize_stream_detailed(&self) -> Result<Option<TranscriptionOutput>> {
         let Some(tx) = self.router.take() else {
             return Ok(None);
@@ -1249,6 +1294,7 @@ impl TranscriptionManager {
         .emit(&self.app_handle);
     }
 
+    #[allow(dead_code)]
     fn emit_stream_text(&self, committed: &str, tentative: &str) {
         let _ = StreamTextEvent {
             committed: committed.to_string(),
@@ -1271,7 +1317,7 @@ impl TranscriptionManager {
     /// later pipeline stage. `normalized_stt` is the durable "raw"
     /// knowledge text per planning/04.
     pub fn transcribe_detailed(&self, audio: Vec<f32>) -> Result<TranscriptionOutput> {
-        let output = self.transcribe_inner(audio)?;
+        let output = self.transcribe_inner(audio, false)?;
         Ok(output.unwrap_or_else(|| TranscriptionOutput {
             engine_raw: String::new(),
             normalized_stt: String::new(),
@@ -1282,7 +1328,60 @@ impl TranscriptionManager {
         }))
     }
 
-    fn transcribe_inner(&self, audio: Vec<f32>) -> Result<Option<TranscriptionOutput>> {
+    /// Bounded worker chunks keep the engine text untouched until all
+    /// overlaps are merged; text normalization runs once on the final result.
+    pub fn transcribe_engine_raw(&self, audio: Vec<f32>) -> Result<TranscriptionOutput> {
+        self.transcribe_inner(audio, true)?
+            .ok_or_else(|| anyhow::anyhow!("Empty audio window"))
+    }
+
+    /// Apply the existing deterministic text pipeline once to the merged
+    /// engine output, rather than once per overlapping audio window.
+    pub fn normalize_merged_raw(
+        &self,
+        raw: String,
+        language: Option<String>,
+    ) -> TranscriptionOutput {
+        let (is_whisper, languages) = match self.lock_engine().as_ref() {
+            Some(LoadedEngine::TranscribeCpp(session)) => {
+                let model = session.model();
+                (model.arch() == "whisper", model.capabilities().languages)
+            }
+            _ => (
+                false,
+                self.get_current_model()
+                    .and_then(|id| self.model_manager.get_model_info(&id))
+                    .map(|model| model.supported_languages)
+                    .unwrap_or_default(),
+            ),
+        };
+        let evidence = language
+            .clone()
+            .map(OutputLanguageEvidence::ModelDetected)
+            .unwrap_or(OutputLanguageEvidence::Unknown);
+        let normalized = post_process_transcription_text(
+            raw.clone(),
+            &get_settings(&self.app_handle),
+            is_whisper,
+            &evidence,
+            &languages,
+        );
+        let delivered = apply_derived_layers(&self.app_handle, &normalized);
+        TranscriptionOutput {
+            engine_raw: raw,
+            normalized_stt: normalized,
+            delivered_text: delivered,
+            model_id: self.get_current_model(),
+            language,
+            normalizer_version: NORMALIZER_VERSION.into(),
+        }
+    }
+
+    fn transcribe_inner(
+        &self,
+        audio: Vec<f32>,
+        raw_only: bool,
+    ) -> Result<Option<TranscriptionOutput>> {
         #[cfg(debug_assertions)]
         if std::env::var("HANDY_FORCE_TRANSCRIPTION_FAILURE").is_ok() {
             return Err(anyhow::anyhow!(
@@ -1606,6 +1705,17 @@ impl TranscriptionManager {
         // correction/cleanup so it can be persisted immutably.
         let engine_raw = result;
 
+        if raw_only {
+            return Ok(Some(TranscriptionOutput {
+                normalized_stt: String::new(),
+                delivered_text: String::new(),
+                engine_raw,
+                model_id: self.get_current_model(),
+                language: output_language_code(&output_language),
+                normalizer_version: NORMALIZER_VERSION.to_string(),
+            }));
+        }
+
         let filtered_result = post_process_transcription_text(
             engine_raw.clone(),
             &settings,
@@ -1653,6 +1763,7 @@ impl TranscriptionManager {
     }
 }
 
+#[allow(dead_code)]
 struct StreamPerf {
     feed_count: u64,
     emit_count: u64,
@@ -1665,6 +1776,7 @@ struct StreamPerf {
     latest_buffered_ms: i64,
 }
 
+#[allow(dead_code)]
 impl StreamPerf {
     fn new() -> Self {
         Self {
@@ -1984,6 +2096,7 @@ fn cpp_translation_task(
 /// finalizes or cancels. Used when streaming can't actually run (model not
 /// loaded / not streaming-capable) so the finalize handshake still completes
 /// and the caller falls back to batch transcription.
+#[allow(dead_code)]
 fn drain_until_finalize(rx: mpsc::Receiver<StreamCmd>) {
     while let Ok(cmd) = rx.recv() {
         match cmd {

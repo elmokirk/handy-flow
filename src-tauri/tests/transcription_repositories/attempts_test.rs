@@ -6,8 +6,9 @@ use handy_app_lib::storage::migrations::open_and_migrate;
 use handy_app_lib::storage::repositories::{
     representations::{insert_representation, representations_for_attempt},
     transcriptions::{
-        attempts_for_capture, canonical_attempt, complete_attempt, insert_attempt, mark_canonical,
-        NewAttempt,
+        attempts_for_capture, canonical_attempt, chunks_for_attempt, complete_and_promote,
+        complete_attempt, incomplete_jobs, insert_attempt, insert_chunk, mark_canonical,
+        ChunkRecord, NewAttempt,
     },
 };
 
@@ -28,6 +29,65 @@ fn seeded_db(tag: &str) -> (AppDatabase, std::path::PathBuf) {
         )
         .unwrap();
     (db, path)
+}
+
+#[test]
+fn interrupted_chunks_resume_and_completed_payloads_are_pruned() {
+    let (db, path) = seeded_db("chunk-resume");
+    let capture_id: String = db
+        .conn()
+        .query_row("SELECT id FROM captures LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+    db.conn().execute(
+        "UPDATE captures SET integrity_state = 'audio_valid', audio_file_name = 'saved.wav', audio_duration_ms = 60000 WHERE id = ?1",
+        [&capture_id],
+    ).unwrap();
+    let pending = insert_attempt(&db, &attempt(&capture_id, None)).unwrap();
+    for (index, uncertain) in [(0, false), (1, true)] {
+        insert_chunk(
+            &db,
+            &pending.id,
+            &ChunkRecord {
+                chunk_index: index,
+                start_sample: index * 480_000,
+                end_sample: (index + 1) * 480_000,
+                window_samples: 480_000,
+                payload_json: "checkpoint text".into(),
+                seam_uncertain: uncertain,
+                seam_left: uncertain.then(|| "vorher".into()),
+                seam_right: uncertain.then(|| "nachher".into()),
+            },
+        )
+        .unwrap();
+    }
+    drop(db);
+
+    let reopened = AppDatabase::open(path).unwrap();
+    assert_eq!(incomplete_jobs(&reopened).unwrap().len(), 1);
+    assert_eq!(chunks_for_attempt(&reopened, &pending.id).unwrap().len(), 2);
+    complete_and_promote(
+        &reopened,
+        &capture_id,
+        &pending.id,
+        "raw",
+        "merged",
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(incomplete_jobs(&reopened).unwrap().is_empty());
+    assert_eq!(
+        canonical_attempt(&reopened, &capture_id)
+            .unwrap()
+            .unwrap()
+            .normalized_stt
+            .as_deref(),
+        Some("merged")
+    );
+    let retained = chunks_for_attempt(&reopened, &pending.id).unwrap();
+    assert_eq!(retained.len(), 1);
+    assert!(retained[0].payload_json.is_empty());
+    assert_eq!(retained[0].seam_left.as_deref(), Some("vorher"));
 }
 
 fn attempt(capture_id: &str, text: Option<&str>) -> NewAttempt {

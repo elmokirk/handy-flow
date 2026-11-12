@@ -43,7 +43,9 @@ fn fixture_wispr_db(dir: &std::path::Path) -> std::path::PathBuf {
         INSERT INTO Dictionary(phrase, replacement, isDeleted, modifiedAt) VALUES
          ('btw', 'by the way', 0, '2026-08-01'),
          ('Kirk Kleinau', NULL, 0, '2026-08-01');
-        INSERT INTO Polish VALUES ('h-1', 'test', 'verbessert: Test mit Umlauten', 'mach besser', 'wispr-v9', '2026-08-27');
+        INSERT INTO Polish VALUES
+         ('h-1', 'test', 'verbessert: Test mit Umlauten', 'mach besser', 'wispr-v9', '2026-08-27'),
+         ('h-1', 'test', 'zweite Polish-Version', 'noch besser', 'wispr-v10', '2026-08-28');
         ",
     )
     .unwrap();
@@ -67,7 +69,8 @@ fn fixture_01_dry_run_reports_counts_without_writes() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let wispr = fixture_wispr_db(&dir);
-    let report = dry_run(&wispr).unwrap();
+    let (db, _) = fresh_target("dry-run");
+    let report = dry_run(&wispr, &db).unwrap();
     assert_eq!(report.history_imported, 2);
     assert_eq!(report.dictionary_imported, 2);
     // Nothing was imported anywhere (dry run has no target).
@@ -113,6 +116,18 @@ fn fixture_02_import_maps_canonically_and_is_idempotent() {
             .len(),
         2
     );
+    let polish_count: i64 = db
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM representations WHERE processor = 'wispr_polish'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        polish_count, 2,
+        "re-import must preserve but not duplicate Polish rows"
+    );
 }
 
 #[test]
@@ -141,4 +156,42 @@ fn fixture_03_umlauts_roundtrip() {
             .any(|t| t.contains("größer") || t.contains("umlaut")),
         "German umlauts must round-trip: {texts:?}"
     );
+}
+
+#[test]
+fn fixture_04_source_timestamp_is_preserved_and_dry_run_is_delta_aware() {
+    let dir = std::env::temp_dir().join(format!("handy-imp-time-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let wispr = fixture_wispr_db(&dir);
+    let (db, recordings) = fresh_target("timestamp");
+
+    let source = rusqlite::Connection::open(&wispr).unwrap();
+    let source_timestamp: String = source
+        .query_row(
+            "SELECT timestamp FROM History WHERE transcriptEntityId = 'h-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let expected = chrono::DateTime::parse_from_str(&source_timestamp, "%Y-%m-%d %H:%M:%S%.f %:z")
+        .unwrap()
+        .timestamp_millis();
+    run_import(&wispr, &db, Some(&recordings)).unwrap();
+    let actual: i64 = db
+        .conn()
+        .query_row(
+            "SELECT created_at_ms FROM captures WHERE import_ref = 'wispr:h-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        actual, expected,
+        "source instant must not become import time"
+    );
+
+    let dry = dry_run(&wispr, &db).unwrap();
+    assert_eq!(dry.history_imported, 0);
+    assert_eq!(dry.history_skipped, 2);
 }

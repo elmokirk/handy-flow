@@ -28,6 +28,25 @@ export const formatDateTime = (timestamp: string, locale: string): string => {
   }
 };
 
+/** Format a canonical Unix timestamp already expressed in milliseconds. */
+export const formatDateTimeMs = (timestampMs: number, locale: string): string =>
+  new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestampMs));
+
+/** Local calendar label for grouping canonical history cards. */
+export const formatDateMs = (timestampMs: number, locale: string): string =>
+  new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(new Date(timestampMs));
+
 /**
  * Format a date string or timestamp to a localized date string (no time)
  * @param timestamp - Unix timestamp in seconds (as string)

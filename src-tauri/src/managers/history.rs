@@ -95,6 +95,18 @@ impl HistoryManager {
 
         // Initialize database and run migrations synchronously
         manager.init_database()?;
+        match manager.canonical_db() {
+            Ok(db) => {
+                if let Err(error) =
+                    crate::storage::recovery::reconcile_startup(&db, &manager.recordings_dir)
+                {
+                    log::error!("Audio recovery failed at startup: {error}");
+                }
+            }
+            Err(error) => {
+                log::error!("Could not open canonical database for audio recovery: {error}")
+            }
+        }
 
         Ok(manager)
     }
@@ -246,6 +258,7 @@ impl HistoryManager {
 
     /// Save a new history entry to the database.
     /// The WAV file should already have been written to the recordings directory.
+    #[allow(dead_code)] // Legacy history writer; canonical captures replaced it.
     pub fn save_entry(
         &self,
         file_name: String,
@@ -310,6 +323,7 @@ impl HistoryManager {
     }
 
     /// Update an existing history entry with new transcription results (used by retry).
+    #[allow(dead_code)] // Legacy history writer; canonical attempts replaced it.
     pub fn update_transcription(
         &self,
         id: i64,
@@ -357,6 +371,7 @@ impl HistoryManager {
         Ok(entry)
     }
 
+    #[allow(dead_code)] // Used only by the dormant legacy writer.
     pub fn cleanup_old_entries(&self) -> Result<()> {
         let retention_period = crate::settings::get_recording_retention_period(&self.app_handle);
 
@@ -377,6 +392,69 @@ impl HistoryManager {
         }
     }
 
+    /// Apply retention to the canonical, user-created history only. Imported
+    /// captures carry an import_ref and are deliberately retained until the
+    /// user explicitly removes them.
+    pub fn cleanup_canonical_entries(&self) -> Result<()> {
+        use crate::settings::RecordingRetentionPeriod;
+
+        let period = crate::settings::get_recording_retention_period(&self.app_handle);
+        if period == RecordingRetentionPeriod::Never {
+            return Ok(());
+        }
+        let db = self.canonical_db()?;
+        let conn = db.conn();
+        let ids: Vec<String> = match period {
+            RecordingRetentionPeriod::PreserveLimit => {
+                let limit = crate::settings::get_history_limit(&self.app_handle) as i64;
+                let mut stmt = conn.prepare(
+                    "SELECT id FROM captures
+                     WHERE deleted_at_ms IS NULL AND saved = 0 AND import_ref IS NULL
+                       AND integrity_state = 'audio_valid'
+                       AND EXISTS (SELECT 1 FROM transcription_attempts a
+                                   WHERE a.capture_id = captures.id
+                                     AND a.is_canonical = 1 AND a.status = 'success')
+                     ORDER BY created_at_ms DESC, id DESC LIMIT -1 OFFSET ?1",
+                )?;
+                let rows = stmt
+                    .query_map([limit], |row| row.get(0))?
+                    .collect::<std::result::Result<_, _>>()?;
+                rows
+            }
+            RecordingRetentionPeriod::Days3
+            | RecordingRetentionPeriod::Weeks2
+            | RecordingRetentionPeriod::Months3 => {
+                let days = match period {
+                    RecordingRetentionPeriod::Days3 => 3,
+                    RecordingRetentionPeriod::Weeks2 => 14,
+                    RecordingRetentionPeriod::Months3 => 90,
+                    _ => unreachable!(),
+                };
+                let cutoff = Utc::now().timestamp_millis() - days * 24 * 60 * 60 * 1000;
+                let mut stmt = conn.prepare(
+                    "SELECT id FROM captures
+                     WHERE deleted_at_ms IS NULL AND saved = 0 AND import_ref IS NULL
+                       AND integrity_state = 'audio_valid'
+                       AND EXISTS (SELECT 1 FROM transcription_attempts a
+                                   WHERE a.capture_id = captures.id
+                                     AND a.is_canonical = 1 AND a.status = 'success')
+                       AND created_at_ms < ?1",
+                )?;
+                let rows = stmt
+                    .query_map([cutoff], |row| row.get(0))?
+                    .collect::<std::result::Result<_, _>>()?;
+                rows
+            }
+            RecordingRetentionPeriod::Never => unreachable!(),
+        };
+        drop(conn);
+        for id in ids {
+            crate::storage::repositories::captures::trash_capture(&db, &id)?;
+        }
+        Ok(())
+    }
+
+    #[allow(dead_code)] // Used only by dormant legacy retention.
     fn delete_entries_and_files(&self, entries: &[(i64, String)]) -> Result<usize> {
         if entries.is_empty() {
             return Ok(0);
@@ -407,6 +485,7 @@ impl HistoryManager {
         Ok(deleted_count)
     }
 
+    #[allow(dead_code)] // Used only by dormant legacy retention.
     fn cleanup_by_count(&self, limit: usize) -> Result<()> {
         let conn = self.get_connection()?;
 
@@ -436,6 +515,7 @@ impl HistoryManager {
         Ok(())
     }
 
+    #[allow(dead_code)] // Used only by dormant legacy retention.
     fn cleanup_by_time(
         &self,
         retention_period: crate::settings::RecordingRetentionPeriod,
@@ -557,11 +637,13 @@ impl HistoryManager {
     }
 
     /// Get the latest entry with non-empty transcription text.
+    #[allow(dead_code)] // Retained for legacy-history tests and compatibility.
     pub fn get_latest_completed_entry(&self) -> Result<Option<HistoryEntry>> {
         let conn = self.get_connection()?;
         Self::get_latest_completed_entry_with_conn(&conn)
     }
 
+    #[allow(dead_code)] // Used only by the legacy-history helper above.
     fn get_latest_completed_entry_with_conn(conn: &Connection) -> Result<Option<HistoryEntry>> {
         let mut stmt = conn.prepare(
             "SELECT

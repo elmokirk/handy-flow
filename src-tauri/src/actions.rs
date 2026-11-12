@@ -2,32 +2,109 @@
 use crate::apple_intelligence;
 use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, SoundType};
 use crate::audio_toolkit::{is_microphone_access_denied, is_no_input_device_error, VadPolicy};
-use crate::delivery::pipeline::{record_dictation, record_failed_dictation, DictationInput};
+use crate::delivery::pipeline::complete_failed_prepared_dictation;
 use crate::delivery::{deliver_with_audit, DeliverySource, SqliteDeliveryAudit};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::model::ModelManager;
-use crate::managers::transcription::StreamWorkKind;
 use crate::managers::transcription::TranscriptionManager;
 use crate::managers::transcription::TranscriptionOutput;
-use crate::settings::{get_settings, AppSettings, OverlayStyle, APPLE_INTELLIGENCE_PROVIDER_ID};
+use crate::settings::{
+    get_settings, AppSettings, DeliveryTarget, OverlayStyle, APPLE_INTELLIGENCE_PROVIDER_ID,
+};
 use crate::shortcut;
 use crate::tray::{set_tray_state, TrayIconState};
-use crate::utils::{
-    self, show_processing_overlay, show_recording_overlay, show_transcribing_overlay,
-};
+use crate::utils::{self, show_recording_overlay};
 use crate::TranscriptionCoordinator;
 use ferrous_opencc::{config::BuiltinConfig, OpenCC};
 use log::{debug, error, warn};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+#[cfg(test)]
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 
+#[cfg(test)]
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
+struct ActiveDictation {
+    capture_id: String,
+    file_name: String,
+    wav_path: std::path::PathBuf,
+    target_window: Option<isize>,
+}
+
+#[cfg(target_os = "windows")]
+fn foreground_target() -> Option<isize> {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    let window = unsafe { GetForegroundWindow() }.0 as isize;
+    (window != 0).then_some(window)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn foreground_target() -> Option<isize> {
+    None
+}
+
+fn same_foreground_target(expected: Option<isize>) -> bool {
+    #[cfg(target_os = "windows")]
+    return expected.is_some() && expected == foreground_target();
+    #[cfg(not(target_os = "windows"))]
+    return expected.is_none();
+}
+
+fn delivery_target_is_ready(app: &AppHandle, expected_window: Option<isize>) -> bool {
+    get_settings(app).delivery_target != DeliveryTarget::FocusedApp
+        || same_foreground_target(expected_window)
+}
+
+static ACTIVE_DICTATION: Lazy<Mutex<Option<ActiveDictation>>> = Lazy::new(|| Mutex::new(None));
+static LIVE_DELIVERY_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn record_cancelled_capture(app: &AppHandle) {
+    let Some(capture) = ACTIVE_DICTATION.lock().unwrap().take() else {
+        return;
+    };
+    let hm = app.state::<Arc<HistoryManager>>();
+    if !wav_may_contain_audio(&capture.wav_path) {
+        if let Ok(db) = hm.canonical_db() {
+            if let Err(error) = crate::long_audio::discard_silent_live_capture(
+                &db,
+                &capture.capture_id,
+                &capture.wav_path,
+            ) {
+                error!("Could not discard cancelled empty recording: {error}");
+            }
+        }
+        let _ = app.emit("canonical-history-changed", ());
+        return;
+    }
+    let valid = hound::WavReader::open(&capture.wav_path)
+        .map(|reader| reader.duration() > 0)
+        .unwrap_or(false);
+    record_canonical_failure(
+        &hm,
+        Some(&capture.capture_id),
+        None,
+        valid.then_some(capture.file_name.as_str()),
+        &capture.wav_path,
+        "Recording cancelled by user",
+    );
+    if !valid {
+        if let Ok(db) = hm.canonical_db() {
+            let _ = crate::storage::repositories::captures::set_integrity_state(
+                &db,
+                &capture.capture_id,
+                crate::storage::models::IntegrityState::AudioCorrupt,
+            );
+        }
+    }
+    let _ = app.emit("canonical-history-changed", ());
+}
 
 #[derive(Clone, serde::Serialize)]
 struct RecordingErrorEvent {
@@ -56,51 +133,21 @@ fn audio_facts(
     (Some(name.to_string()), sha, size)
 }
 
-/// PAD-306: write capture + canonical attempt (+ post-process representation)
-/// for a finished dictation and hand back the source the audit must name.
-///
-/// Returns `None` on any storage problem: an unaudited delivery is bad, a
-/// dropped transcript is worse.
-fn record_canonical_dictation(
-    hm: &Arc<HistoryManager>,
-    file_name: Option<&str>,
-    wav_path: &std::path::Path,
-    output: &TranscriptionOutput,
-    processed: &ProcessedTranscription,
-) -> Option<DeliverySource> {
-    let db = hm
-        .canonical_db()
-        .map_err(|e| error!("Canonical database unavailable, delivery not audited: {e}"))
-        .ok()?;
-    let (audio_file_name, audio_sha256, audio_size_bytes) = audio_facts(file_name, wav_path);
-    // Same title convention as the legacy history row — one naming scheme,
-    // not two.
-    let title = hm.format_timestamp_title(chrono::Utc::now().timestamp());
-
-    record_dictation(
-        &db,
-        &DictationInput {
-            title: &title,
-            audio_file_name: audio_file_name.as_deref(),
-            audio_sha256: audio_sha256.as_deref(),
-            audio_size_bytes,
-            engine_raw: &output.engine_raw,
-            normalized_stt: &output.normalized_stt,
-            model_id: output.model_id.as_deref(),
-            language: output.language.as_deref(),
-            normalizer_version: &output.normalizer_version,
-            post_processed_text: processed.post_processed_text.as_deref(),
-            post_process_prompt: processed.post_process_prompt.as_deref(),
-        },
-    )
-    .map_err(|e| error!("Failed to record canonical dictation: {e}"))
-    .ok()
+fn wav_may_contain_audio(path: &std::path::Path) -> bool {
+    match hound::WavReader::open(path) {
+        Ok(reader) => reader.duration() > 0,
+        // An interrupted WAV with payload bytes is still potentially
+        // recoverable; only our empty 44-byte header may be discarded.
+        Err(_) => path.metadata().is_ok_and(|metadata| metadata.len() > 44),
+    }
 }
 
 /// PAD-306: record a dictation whose transcription failed, so the failure is
 /// diagnosable in the canonical tables instead of legacy-history-only.
 fn record_canonical_failure(
     hm: &Arc<HistoryManager>,
+    capture_id: Option<&str>,
+    attempt_id: Option<&str>,
     file_name: Option<&str>,
     wav_path: &std::path::Path,
     error_message: &str,
@@ -112,15 +159,19 @@ fn record_canonical_failure(
     let (audio_file_name, audio_sha256, audio_size_bytes) = audio_facts(file_name, wav_path);
     let title = hm.format_timestamp_title(chrono::Utc::now().timestamp());
 
-    if let Err(e) = record_failed_dictation(
+    if let Err(e) = complete_failed_prepared_dictation(
         &db,
         &title,
         audio_file_name.as_deref(),
         audio_sha256.as_deref(),
         audio_size_bytes,
         error_message,
+        capture_id,
+        attempt_id,
     ) {
         error!("Failed to record failed dictation: {e}");
+    } else if let Err(e) = hm.cleanup_canonical_entries() {
+        warn!("Failed to apply canonical history retention: {e}");
     }
 }
 
@@ -186,6 +237,7 @@ fn is_blank_transcription(transcription: &str) -> bool {
     transcription.trim().is_empty()
 }
 
+#[cfg(test)]
 async fn complete_unless_cancelled<F, C>(operation: F, is_cancelled: C) -> Option<F::Output>
 where
     F: Future,
@@ -204,10 +256,6 @@ where
             return Some(result);
         }
     }
-}
-
-fn should_use_streaming_overlay(style: OverlayStyle, is_streaming: bool) -> bool {
-    style == OverlayStyle::Live && is_streaming
 }
 
 async fn post_process_transcription(settings: &AppSettings, transcription: &str) -> Option<String> {
@@ -557,6 +605,136 @@ pub(crate) async fn process_transcription_output(
     }
 }
 
+/// The queue has already committed the immutable attempt. Only a still-timely
+/// short dictation may paste; long and delayed results stay in history.
+fn capture_is_active(history: &HistoryManager, capture_id: &str) -> bool {
+    history
+        .canonical_db()
+        .ok()
+        .and_then(|db| {
+            crate::storage::repositories::captures::get_capture(&db, capture_id)
+                .ok()
+                .flatten()
+        })
+        .is_some_and(|capture| capture.deleted_at_ms.is_none())
+}
+
+fn should_auto_paste(
+    duration_samples: u64,
+    elapsed_since_stop: Duration,
+    same_dictation: bool,
+    recording_now: bool,
+    same_window: bool,
+) -> bool {
+    // This is a foreground-delivery UX window, not a transcription limit.
+    duration_samples <= 6 * 60 * crate::long_audio::SAMPLE_RATE as u64
+        && elapsed_since_stop <= Duration::from_secs(30)
+        && same_dictation
+        && !recording_now
+        && same_window
+}
+
+pub(crate) async fn deliver_background_live(
+    app: &AppHandle,
+    capture_id: &str,
+    attempt_id: &str,
+    output: TranscriptionOutput,
+    meta: crate::long_audio::LiveJob,
+) {
+    use crate::storage::models::DeliverySourceKind;
+    use crate::storage::repositories::representations::{insert_representation, NewRepresentation};
+
+    let hm = app.state::<Arc<HistoryManager>>();
+    if !capture_is_active(&hm, capture_id) {
+        return;
+    }
+    let processed =
+        process_transcription_output(app, &output.delivered_text, meta.post_process).await;
+    if !capture_is_active(&hm, capture_id) {
+        return;
+    }
+    let mut source = DeliverySource {
+        capture_id: Some(capture_id.to_string()),
+        attempt_id: attempt_id.to_string(),
+        representation_id: None,
+        kind: DeliverySourceKind::NormalizedStt,
+    };
+    if let Some(text) = processed.post_processed_text.as_deref() {
+        if let Ok(db) = hm.canonical_db() {
+            match insert_representation(
+                &db,
+                &NewRepresentation {
+                    attempt_id: attempt_id.to_string(),
+                    parent_representation_id: None,
+                    kind: "post_process".into(),
+                    text: text.to_string(),
+                    processor: "post_process".into(),
+                    processor_version: crate::NORMALIZER_VERSION.into(),
+                    prompt_profile_id: None,
+                    effective_prompt_snapshot: processed.post_process_prompt.clone(),
+                    provider_snapshot: None,
+                },
+            ) {
+                Ok(rep) => {
+                    source.representation_id = Some(rep.id);
+                    source.kind = DeliverySourceKind::Representation;
+                }
+                Err(error) => error!("Could not save post-processed text: {error}"),
+            }
+        }
+    }
+    let _ = hm.cleanup_canonical_entries();
+    let _ = app.emit("canonical-history-changed", ());
+
+    let timely = should_auto_paste(
+        meta.duration_samples,
+        meta.stopped_at.elapsed(),
+        meta.generation == LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
+        app.state::<Arc<AudioRecordingManager>>().is_recording(),
+        delivery_target_is_ready(app, meta.target_window),
+    );
+    if !timely || processed.final_text.is_empty() {
+        let _ = app.emit("background-transcription-ready", capture_id);
+        return;
+    }
+
+    let app_clone = app.clone();
+    let text = processed.final_text;
+    let expected_generation = meta.generation;
+    let _ = app.run_on_main_thread(move || {
+        if expected_generation != LIVE_DELIVERY_GENERATION.load(Ordering::Acquire)
+            || app_clone
+                .state::<Arc<AudioRecordingManager>>()
+                .is_recording()
+            || !delivery_target_is_ready(&app_clone, meta.target_window)
+            || !capture_is_active(
+                &app_clone.state::<Arc<HistoryManager>>(),
+                source.capture_id.as_deref().unwrap_or_default(),
+            )
+        {
+            let _ = app_clone.emit(
+                "background-transcription-ready",
+                source.capture_id.as_deref(),
+            );
+            return;
+        }
+        let sink = crate::delivery::sink_for(&app_clone);
+        let audit = app_clone
+            .state::<Arc<HistoryManager>>()
+            .canonical_db()
+            .ok()
+            .map(SqliteDeliveryAudit::new);
+        let result = match audit {
+            Some(audit) => deliver_with_audit(sink.as_ref(), &audit, &source, &text),
+            None => sink.deliver(&text),
+        };
+        if let Err(error) = result {
+            log::error!("Could not deliver background transcript: {error}");
+            let _ = app_clone.emit("paste-error", ());
+        }
+    });
+}
+
 impl ShortcutAction for TranscribeAction {
     fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
         let start_time = Instant::now();
@@ -565,10 +743,10 @@ impl ShortcutAction for TranscribeAction {
         // Load model in the background
         let tm = app.state::<Arc<TranscriptionManager>>();
         let rm = app.state::<Arc<AudioRecordingManager>>();
+        let hm = app.state::<Arc<HistoryManager>>();
 
-        // Load ASR model and VAD model in parallel
+        // Native ASR is loaded only in the isolated worker after capture.
         let kickoff_started = Instant::now();
-        tm.initiate_model_load();
         let rm_clone = Arc::clone(&rm);
         std::thread::spawn(move || {
             if let Err(e) = rm_clone.preload_vad() {
@@ -591,9 +769,8 @@ impl ShortcutAction for TranscribeAction {
             .state::<Arc<ModelManager>>()
             .get_model_info(&settings.selected_model);
 
-        // Use the app-facing model capability as the single pre-recording source
-        // for live streaming decisions. Unknown support is represented as false
-        // until the model registry is updated by discovery or runtime load.
+        // Streaming-capable models keep their capture-tail VAD policy, but
+        // native live text preview is paused until it can run out of process.
         let model_supports_streaming = selected_model_info
             .as_ref()
             .map(|m| m.supports_streaming)
@@ -605,17 +782,12 @@ impl ShortcutAction for TranscribeAction {
         } else {
             VadPolicy::Offline
         };
-        if model_supports_streaming {
-            tm.start_stream();
-        }
+        // Live text preview is paused for AUDIO-240; feeding a native model
+        // inside the UI process would undo the crash-isolation guarantee.
         let plan_elapsed = plan_started.elapsed();
 
-        // Sizing the overlay follows the same advertised capability. A model that
-        // doesn't stream (or whose capability is not known yet) gets the compact
-        // pill instead of an oversized transparent live window.
         let overlay_started = Instant::now();
         match settings.overlay_style {
-            OverlayStyle::Live if model_supports_streaming => utils::show_streaming_overlay(app),
             OverlayStyle::Live | OverlayStyle::Minimal => show_recording_overlay(app),
             OverlayStyle::None => {} // show_overlay_state no-ops on None anyway
         }
@@ -630,10 +802,40 @@ impl ShortcutAction for TranscribeAction {
         );
         debug!("Microphone mode - always_on: {}", is_always_on);
 
+        let new_capture = (|| -> Result<ActiveDictation, String> {
+            let db = hm.canonical_db().map_err(|e| e.to_string())?;
+            let file_name = format!("handy-{}.wav", crate::storage::ids::new_id());
+            let capture = crate::storage::repositories::captures::insert_capture(
+                &db,
+                &crate::storage::repositories::captures::NewCapture {
+                    audio_file_name: Some(file_name.clone()),
+                    audio_sha256: None,
+                    audio_size_bytes: None,
+                    title: hm.format_timestamp_title(chrono::Utc::now().timestamp()),
+                    source_app: None,
+                    integrity_state: crate::storage::models::IntegrityState::PendingAudio,
+                },
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(ActiveDictation {
+                capture_id: capture.id,
+                wav_path: hm.recordings_dir().join(&file_name),
+                file_name,
+                target_window: foreground_target(),
+            })
+        })();
+        let _ = app.emit("canonical-history-changed", ());
         let mut recording_error: Option<String> = None;
         let recording_start_time = Instant::now();
-        match rm.try_start_recording(&binding_id, vad_policy) {
+        let start_result = new_capture
+            .as_ref()
+            .map_err(Clone::clone)
+            .and_then(|capture| rm.try_start_recording(&binding_id, vad_policy, &capture.wav_path));
+        match start_result {
             Ok(readiness) => {
+                LIVE_DELIVERY_GENERATION.fetch_add(1, Ordering::AcqRel);
+                let capture_id = new_capture.as_ref().unwrap().capture_id.clone();
+                *ACTIVE_DICTATION.lock().unwrap() = new_capture.ok();
                 debug!(
                     "Recording request accepted in {:?}; waiting for first microphone samples",
                     recording_start_time.elapsed()
@@ -646,6 +848,19 @@ impl ShortcutAction for TranscribeAction {
                         debug!("Microphone readiness wait ended without receiving samples");
                         return;
                     }
+                    let started_at_ms = chrono::Utc::now().timestamp_millis();
+                    if let Ok(db) = app_clone.state::<Arc<HistoryManager>>().canonical_db() {
+                        if let Err(error) =
+                            crate::storage::repositories::captures::set_recording_started_at(
+                                &db,
+                                &capture_id,
+                                started_at_ms,
+                            )
+                        {
+                            error!("Could not timestamp first microphone sample: {error}");
+                        }
+                    }
+                    let _ = app_clone.emit("canonical-history-changed", ());
 
                     // Development-only preview hook for evaluating the brief
                     // arming animation on hardware that normally starts too fast
@@ -684,6 +899,16 @@ impl ShortcutAction for TranscribeAction {
             }
             Err(e) => {
                 debug!("Failed to start recording: {}", e);
+                if let Ok(capture) = new_capture {
+                    if let Ok(db) = hm.canonical_db() {
+                        let _ = crate::storage::repositories::captures::set_integrity_state(
+                            &db,
+                            &capture.capture_id,
+                            crate::storage::models::IntegrityState::AudioMissing,
+                        );
+                    }
+                    let _ = app.emit("canonical-history-changed", ());
+                }
                 recording_error = Some(e);
             }
         }
@@ -738,20 +963,8 @@ impl ShortcutAction for TranscribeAction {
         let tm = Arc::clone(&app.state::<Arc<TranscriptionManager>>());
         let hm = Arc::clone(&app.state::<Arc<HistoryManager>>());
 
-        set_tray_state(app, TrayIconState::Transcribing);
-        // Stop should give immediate visual feedback. Live streaming can keep
-        // the larger panel, but it still switches from listening to a working
-        // spinner while the stream finalizes. Non-streaming paths use the
-        // compact transcribing pill (None no-ops in show_*).
-        let style = get_settings(app).overlay_style;
-        // Capture this before finalizing the stream so every later working state
-        // targets the same overlay that was shown for this transcription.
-        let use_streaming_overlay = should_use_streaming_overlay(style, tm.is_streaming());
-        if use_streaming_overlay {
-            tm.emit_stream_working(StreamWorkKind::Transcribing);
-        } else {
-            show_transcribing_overlay(app);
-        }
+        // Keep the recording indicator until the recorder finishes its short
+        // stop buffer; the queued worker then reports progress on the card.
 
         // Unmute before playing audio feedback so the stop sound is audible
         rm.remove_mute();
@@ -762,6 +975,7 @@ impl ShortcutAction for TranscribeAction {
         let binding_id = binding_id.to_string(); // Clone binding_id for the async task
         let post_process = self.post_process;
         let cancel_generation = rm.cancel_generation();
+        let active = ACTIVE_DICTATION.lock().unwrap().take();
 
         tauri::async_runtime::spawn(async move {
             let _guard = FinishGuard(ah.clone());
@@ -787,233 +1001,156 @@ impl ShortcutAction for TranscribeAction {
                 }
 
                 if samples.is_empty() {
-                    debug!("Recording produced no audio samples; skipping persistence");
+                    error!("Recording produced no audio samples");
+                    if let Some(capture) = &active {
+                        if wav_may_contain_audio(&capture.wav_path) {
+                            record_canonical_failure(
+                                &hm,
+                                Some(&capture.capture_id),
+                                None,
+                                Some(&capture.file_name),
+                                &capture.wav_path,
+                                "Recorder returned no samples; original WAV preserved",
+                            );
+                            if hound::WavReader::open(&capture.wav_path).is_err() {
+                                if let Ok(db) = hm.canonical_db() {
+                                    let _ =
+                                        crate::storage::repositories::captures::set_integrity_state(
+                                            &db,
+                                            &capture.capture_id,
+                                            crate::storage::models::IntegrityState::AudioCorrupt,
+                                        );
+                                }
+                            }
+                        } else if let Ok(db) = hm.canonical_db() {
+                            if let Err(error) = crate::long_audio::discard_silent_live_capture(
+                                &db,
+                                &capture.capture_id,
+                                &capture.wav_path,
+                            ) {
+                                error!("Could not discard empty recording: {error}");
+                            }
+                        }
+                        let _ = ah.emit("canonical-history-changed", ());
+                    }
                     // Tear down any streaming worker so its channel doesn't leak
                     // and block the next start_stream.
                     tm.cancel_stream();
                     utils::hide_recording_overlay(&ah);
                     set_tray_state(&ah, TrayIconState::Idle);
                 } else {
-                    // Save WAV concurrently with transcription
-                    let sample_count = samples.len();
-                    let file_name = format!("handy-{}.wav", chrono::Utc::now().timestamp());
-                    let wav_path = hm.recordings_dir().join(&file_name);
-                    let wav_path_for_verify = wav_path.clone();
-                    let samples_for_wav = samples.clone();
-                    let wav_handle = tauri::async_runtime::spawn_blocking(move || {
-                        crate::audio_toolkit::save_wav_file(&wav_path, &samples_for_wav)
-                    });
-
-                    // Transcribe concurrently with WAV save. If a live stream was
-                    // running, finalize it and use its text (all audio was already
-                    // fed to the stream); otherwise batch-transcribe the samples.
-                    let transcription_time = Instant::now();
-                    // PAD-306: the DETAILED variants are used so engine_raw and
-                    // normalized_stt survive into the canonical tables. The
-                    // delivered text is unchanged — it is one field of the same
-                    // result the plain variants used to return.
-                    let transcription_result = match tm.finalize_stream_detailed() {
-                        // A finalized stream with usable text wins. An empty result
-                        // (no active stream, produced nothing, or a finalize error
-                        // after the engine was returned) falls back to a full batch
-                        // transcription of the same audio. A finalize timeout is
-                        // surfaced instead — the worker may still hold the engine,
-                        // so a batch fallback would contend with it.
-                        Ok(Some(output)) if !output.delivered_text.trim().is_empty() => Ok(output),
-                        Ok(_) => tm.transcribe_detailed(samples),
-                        Err(err) => Err(err),
-                    };
-
-                    // Await WAV save and verify
-                    let wav_saved = match wav_handle.await {
-                        Ok(Ok(())) => {
-                            match crate::audio_toolkit::verify_wav_file(
-                                &wav_path_for_verify,
-                                sample_count,
-                            ) {
-                                Ok(()) => true,
-                                Err(e) => {
-                                    error!("WAV verification failed: {}", e);
-                                    false
-                                }
-                            }
-                        }
-                        Ok(Err(e)) => {
-                            error!("Failed to save WAV file: {}", e);
-                            false
-                        }
-                        Err(e) => {
-                            error!("WAV save task panicked: {}", e);
-                            false
-                        }
-                    };
-
-                    if rm.was_cancelled_since(cancel_generation) {
-                        debug!("Transcription operation cancelled before output handling");
+                    let Some(capture) = &active else {
+                        error!("Recording stopped without an active canonical capture");
                         utils::hide_recording_overlay(&ah);
                         set_tray_state(&ah, TrayIconState::Idle);
                         return;
-                    }
-
-                    match transcription_result {
-                        Ok(output) => {
-                            let transcription = output.delivered_text.clone();
-                            debug!(
-                                "Transcription completed in {:?}: '{}'",
-                                transcription_time.elapsed(),
-                                transcription
-                            );
-
-                            if post_process {
-                                if use_streaming_overlay {
-                                    tm.emit_stream_working(StreamWorkKind::Polishing);
-                                } else {
-                                    show_processing_overlay(&ah);
-                                }
-                            }
-                            let Some(processed) = complete_unless_cancelled(
-                                process_transcription_output(&ah, &transcription, post_process),
-                                || rm.was_cancelled_since(cancel_generation),
-                            )
-                            .await
-                            else {
-                                debug!("Transcription operation cancelled during output handling");
-                                utils::hide_recording_overlay(&ah);
-                                set_tray_state(&ah, TrayIconState::Idle);
-                                return;
-                            };
-
-                            if rm.was_cancelled_since(cancel_generation) {
-                                debug!("Transcription operation cancelled before paste");
-                                utils::hide_recording_overlay(&ah);
-                                set_tray_state(&ah, TrayIconState::Idle);
-                                return;
-                            }
-
-                            // Save to history if WAV was saved
-                            if wav_saved {
-                                if let Err(err) = hm.save_entry(
-                                    file_name.clone(),
-                                    transcription,
-                                    post_process,
-                                    processed.post_processed_text.clone(),
-                                    processed.post_process_prompt.clone(),
-                                ) {
-                                    error!("Failed to save history entry: {}", err);
-                                }
-                            }
-
-                            // PAD-306: write the canonical rows. This is what
-                            // gives the delivery below an immutable source to
-                            // name; without it delivery_events can never be
-                            // written (its FK is NOT NULL). A failure here must
-                            // not swallow the transcript, so the source is
-                            // optional and delivery proceeds unaudited.
-                            let source = record_canonical_dictation(
-                                &hm,
-                                wav_saved.then_some(file_name.as_str()),
-                                &wav_path_for_verify,
-                                &output,
-                                &processed,
-                            );
-
-                            if processed.final_text.is_empty() {
-                                utils::hide_recording_overlay(&ah);
-                                set_tray_state(&ah, TrayIconState::Idle);
+                    };
+                    let file_name = &capture.file_name;
+                    let wav_path_for_verify = &capture.wav_path;
+                    let wav_saved = hound::WavReader::open(wav_path_for_verify)
+                        .map(|reader| reader.duration() > 0)
+                        .unwrap_or(false);
+                    if !wav_saved {
+                        error!(
+                            "Original WAV missing or empty after recording stop: {}",
+                            file_name
+                        );
+                        if let Ok(db) = hm.canonical_db() {
+                            let state = if wav_path_for_verify.exists() {
+                                crate::storage::models::IntegrityState::AudioCorrupt
                             } else {
-                                let ah_clone = ah.clone();
-                                let paste_time = Instant::now();
-                                let final_text = processed.final_text;
-                                let rm_for_paste = Arc::clone(&rm);
-                                let audit = hm.canonical_db().ok().map(SqliteDeliveryAudit::new);
-                                ah.run_on_main_thread(move || {
-                                    if rm_for_paste.was_cancelled_since(cancel_generation) {
-                                        debug!("Transcription operation cancelled before paste");
-                                        utils::hide_recording_overlay(&ah_clone);
-                                        set_tray_state(&ah_clone, TrayIconState::Idle);
-                                        return;
-                                    }
-
-                                    // PAD-305: the destination is resolved from
-                                    // settings, not decided inside the paste path.
-                                    // PAD-306: with a canonical source in hand the
-                                    // delivery is audited — exactly one event per
-                                    // delivery, success or failure (DATA-107).
-                                    let sink = crate::delivery::sink_for(&ah_clone);
-                                    let outcome = match (&source, &audit) {
-                                        (Some(source), Some(audit)) => deliver_with_audit(
-                                            sink.as_ref(),
-                                            audit,
-                                            source,
-                                            &final_text,
-                                        ),
-                                        _ => sink.deliver(&final_text),
-                                    };
-                                    match outcome {
-                                        Ok(()) => debug!(
-                                            "Text delivered to {} in {:?}",
-                                            sink.destination().as_str(),
-                                            paste_time.elapsed()
-                                        ),
-                                        Err(e) => {
-                                            error!("Failed to deliver transcription: {}", e);
-                                            let _ = ah_clone.emit("paste-error", ());
-                                        }
-                                    }
-                                    utils::hide_recording_overlay(&ah_clone);
-                                    set_tray_state(&ah_clone, TrayIconState::Idle);
-                                })
-                                .unwrap_or_else(|e| {
-                                    error!("Failed to run paste on main thread: {:?}", e);
-                                    utils::hide_recording_overlay(&ah);
-                                    set_tray_state(&ah, TrayIconState::Idle);
-                                });
-                            }
-                        }
-                        Err(err) => {
-                            if rm.was_cancelled_since(cancel_generation) {
-                                debug!(
-                                    "Transcription operation cancelled after transcription error"
-                                );
-                                utils::hide_recording_overlay(&ah);
-                                set_tray_state(&ah, TrayIconState::Idle);
-                                return;
-                            }
-
-                            error!("Transcription failed: {}", err);
-                            // Surface the failure to the UI (toast). The full
-                            // message is also in handy.log via the line above.
-                            let _ = ah.emit("transcription-error", err.to_string());
-                            // Save entry with empty text so user can retry
-                            if wav_saved {
-                                if let Err(save_err) = hm.save_entry(
-                                    file_name.clone(),
-                                    String::new(),
-                                    post_process,
-                                    None,
-                                    None,
-                                ) {
-                                    error!("Failed to save failed history entry: {}", save_err);
-                                }
-                            }
-
-                            // PAD-306: a failed dictation is representable too —
-                            // a terminal attempt carrying the error, never
-                            // canonical. Without it the failure is invisible in
-                            // the canonical tables.
-                            record_canonical_failure(
-                                &hm,
-                                wav_saved.then_some(file_name.as_str()),
-                                &wav_path_for_verify,
-                                &err.to_string(),
+                                crate::storage::models::IntegrityState::AudioMissing
+                            };
+                            let _ = crate::storage::repositories::captures::set_integrity_state(
+                                &db,
+                                &capture.capture_id,
+                                state,
                             );
-                            utils::hide_recording_overlay(&ah);
-                            set_tray_state(&ah, TrayIconState::Idle);
                         }
                     }
+                    let prepared_attempt_id = if wav_saved {
+                        let facts = audio_facts(Some(file_name), wav_path_for_verify);
+                        match (hm.canonical_db(), facts.1, facts.2) {
+                            (Ok(db), Some(sha), Some(size)) => {
+                                let prepared = crate::storage::repositories::captures::attach_audio(
+                                    &db, &capture.capture_id, file_name, &sha, size,
+                                ).and_then(|_| {
+                                    let duration_ms = hound::WavReader::open(wav_path_for_verify)
+                                        .map(|reader| i64::from(reader.duration()) * 1000 / 16_000)
+                                        .unwrap_or_default();
+                                    crate::storage::repositories::captures::set_audio_duration(
+                                        &db, &capture.capture_id, duration_ms,
+                                    )?;
+                                    crate::storage::repositories::transcriptions::insert_attempt(
+                                        &db,
+                                        &crate::storage::repositories::transcriptions::NewAttempt {
+                                            capture_id: capture.capture_id.clone(),
+                                            engine_raw: None,
+                                            normalized_stt: None,
+                                            model_id: Some(get_settings(&ah).selected_model),
+                                            language: None,
+                                            normalizer_version: crate::NORMALIZER_VERSION.to_string(),
+                                            dictionary_snapshot_sha256: None,
+                                        },
+                                    )
+                                });
+                                prepared.map(|attempt| attempt.id).map_err(|e| {
+                                    error!("Could not prepare canonical transcription attempt: {e}");
+                                    e
+                                }).ok()
+                            }
+                            _ => {
+                                error!("Could not verify original WAV before inference");
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    let _ = ah.emit("canonical-history-changed", ());
+
+                    if let Some(attempt_id) = prepared_attempt_id {
+                        let duration_samples = hound::WavReader::open(wav_path_for_verify)
+                            .map(|reader| u64::from(reader.duration()))
+                            .unwrap_or_default();
+                        ah.state::<crate::long_audio::TranscriptionQueue>()
+                            .register_live(
+                                attempt_id,
+                                crate::long_audio::LiveJob {
+                                    post_process,
+                                    generation: LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
+                                    stopped_at: Instant::now(),
+                                    duration_samples,
+                                    target_window: capture.target_window,
+                                },
+                            );
+                    } else {
+                        record_canonical_failure(
+                            &hm,
+                            Some(&capture.capture_id),
+                            None,
+                            wav_saved.then_some(file_name.as_str()),
+                            wav_path_for_verify,
+                            "Could not prepare transcription; original audio remains available",
+                        );
+                        let _ = ah.emit("canonical-history-changed", ());
+                    }
+                    utils::hide_recording_overlay(&ah);
+                    set_tray_state(&ah, TrayIconState::Idle);
                 }
             } else {
                 debug!("No samples retrieved from recording stop");
+                if let Some(capture) = &active {
+                    record_canonical_failure(
+                        &hm,
+                        Some(&capture.capture_id),
+                        None,
+                        Some(&capture.file_name),
+                        &capture.wav_path,
+                        "Recording stop failed",
+                    );
+                    let _ = ah.emit("canonical-history-changed", ());
+                }
                 // Tear down any streaming worker so its channel doesn't leak.
                 tm.cancel_stream();
                 utils::hide_recording_overlay(&ah);
@@ -1091,15 +1228,52 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
 #[cfg(test)]
 mod tests {
     use super::{
-        complete_unless_cancelled, is_blank_transcription, should_use_streaming_overlay,
-        strip_think_block,
+        complete_unless_cancelled, is_blank_transcription, should_auto_paste, strip_think_block,
+        wav_may_contain_audio,
     };
-    use crate::settings::OverlayStyle;
     use std::future;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn tap_without_audio_does_not_leave_a_history_card() {
+        use crate::storage::repositories::captures::{get_capture, insert_capture, NewCapture};
+        let dir = tempfile::tempdir().unwrap();
+        let (db, _) =
+            crate::storage::migrations::open_and_migrate(dir.path().join("history.db"), "0.9.13")
+                .unwrap();
+        let capture = insert_capture(
+            &db,
+            &NewCapture {
+                audio_file_name: Some("handy-empty.wav".into()),
+                audio_sha256: None,
+                audio_size_bytes: None,
+                title: "Empty tap".into(),
+                source_app: None,
+                integrity_state: crate::storage::models::IntegrityState::PendingAudio,
+            },
+        )
+        .unwrap();
+        crate::long_audio::discard_silent_live_capture(
+            &db,
+            &capture.id,
+            &dir.path().join("handy-empty.wav"),
+        )
+        .unwrap();
+        assert!(get_capture(&db, &capture.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn interrupted_wav_with_payload_is_never_classified_as_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let wav = dir.path().join("interrupted.wav");
+        std::fs::write(&wav, vec![1_u8; 100]).unwrap();
+        assert!(wav_may_contain_audio(&wav));
+        std::fs::write(&wav, vec![0_u8; 44]).unwrap();
+        assert!(!wav_may_contain_audio(&wav));
+    }
 
     #[test]
     fn blank_transcription_is_detected() {
@@ -1169,10 +1343,55 @@ mod tests {
     }
 
     #[test]
-    fn live_overlay_uses_streaming_states_only_for_streaming_models() {
-        assert!(should_use_streaming_overlay(OverlayStyle::Live, true));
-        assert!(!should_use_streaming_overlay(OverlayStyle::Live, false));
-        assert!(!should_use_streaming_overlay(OverlayStyle::Minimal, true));
-        assert!(!should_use_streaming_overlay(OverlayStyle::None, true));
+    fn completed_two_minute_dictation_still_pastes_into_current_field() {
+        assert!(should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(8),
+            true,
+            false,
+            true
+        ));
+        assert!(should_auto_paste(
+            347 * 16_000,
+            Duration::from_secs(8),
+            true,
+            false,
+            true
+        ));
+        assert!(!should_auto_paste(
+            361 * 16_000,
+            Duration::from_secs(8),
+            true,
+            false,
+            true
+        ));
+        assert!(!should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(31),
+            true,
+            false,
+            true
+        ));
+        assert!(!should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(8),
+            false,
+            false,
+            true
+        ));
+        assert!(!should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(8),
+            true,
+            true,
+            true
+        ));
+        assert!(!should_auto_paste(
+            120 * 16_000,
+            Duration::from_secs(8),
+            true,
+            false,
+            false
+        ));
     }
 }

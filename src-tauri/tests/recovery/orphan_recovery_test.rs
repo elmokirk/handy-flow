@@ -4,7 +4,7 @@
 use handy_app_lib::storage::audio_files::{stage_new, verify_finalized};
 use handy_app_lib::storage::database::AppDatabase;
 use handy_app_lib::storage::migrations::open_and_migrate;
-use handy_app_lib::storage::recovery::reconcile_startup;
+use handy_app_lib::storage::recovery::{reconcile_history, reconcile_startup};
 use handy_app_lib::storage::usage::{automatic_retention_enabled, measure};
 
 fn workspace(tag: &str) -> (AppDatabase, std::path::PathBuf, std::path::PathBuf) {
@@ -70,6 +70,24 @@ fn orphan_wavs_are_adopted_and_staging_is_reconciled_without_deletion() {
     let orphans = list_by_integrity_state(&db, IntegrityState::RecoveredOrphan).unwrap();
     assert_eq!(orphans.len(), 2, "staged-promoted + adopted final");
 
+    let adopted = orphans
+        .iter()
+        .find(|c| c.audio_file_name.as_deref() == Some("rec-orphan.wav"))
+        .unwrap();
+    let file_end_ms = orphan_final
+        .metadata()
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    assert!(
+        adopted.created_at_ms < file_end_ms,
+        "recovery uses estimated start, not today"
+    );
+    assert!(adopted.created_at_ms >= file_end_ms - 1_000);
+
     for capture in &orphans {
         if let Some(name) = &capture.audio_file_name {
             let path = recordings.join(name);
@@ -87,6 +105,110 @@ fn orphan_wavs_are_adopted_and_staging_is_reconciled_without_deletion() {
             .unwrap()
             .len(),
         2
+    );
+}
+
+#[test]
+fn corrupt_orphan_has_a_visible_non_retryable_integrity_state() {
+    let (db, _db_path, recordings) = workspace("corrupt-orphan");
+    std::fs::write(recordings.join("broken.wav"), b"not a wav").unwrap();
+    let first = reconcile_startup(&db, &recordings).unwrap();
+    assert_eq!(first.adopted_orphan_recordings, ["broken.wav"]);
+    let corrupt = handy_app_lib::storage::repositories::captures::list_by_integrity_state(
+        &db,
+        handy_app_lib::storage::models::IntegrityState::AudioCorrupt,
+    )
+    .unwrap();
+    assert_eq!(corrupt.len(), 1);
+    assert_eq!(corrupt[0].audio_file_name.as_deref(), Some("broken.wav"));
+    assert!(reconcile_startup(&db, &recordings)
+        .unwrap()
+        .adopted_orphan_recordings
+        .is_empty());
+}
+
+#[test]
+fn history_refresh_leaves_active_capture_pending_but_restart_recovers_it() {
+    let (db, _db_path, recordings) = workspace("pending-direct-wav");
+    let name = "handy-active.wav";
+    std::fs::write(recordings.join(name), minimal_wav()).unwrap();
+    let capture = handy_app_lib::storage::repositories::captures::insert_capture(
+        &db,
+        &handy_app_lib::storage::repositories::captures::NewCapture {
+            audio_file_name: Some(name.into()),
+            audio_sha256: None,
+            audio_size_bytes: None,
+            title: "Recording".into(),
+            source_app: None,
+            integrity_state: handy_app_lib::storage::models::IntegrityState::PendingAudio,
+        },
+    )
+    .unwrap();
+    reconcile_history(&db, &recordings).unwrap();
+    assert_eq!(
+        handy_app_lib::storage::repositories::captures::get_capture(&db, &capture.id)
+            .unwrap()
+            .unwrap()
+            .integrity_state,
+        "pending_audio"
+    );
+    reconcile_startup(&db, &recordings).unwrap();
+    assert_eq!(
+        handy_app_lib::storage::repositories::captures::get_capture(&db, &capture.id)
+            .unwrap()
+            .unwrap()
+            .integrity_state,
+        "recovered_orphan"
+    );
+}
+
+#[test]
+fn startup_preserves_valid_interrupted_attempt_for_resumption() {
+    let (db, _db_path, recordings) = workspace("interrupted-attempt");
+    let capture = handy_app_lib::storage::repositories::captures::insert_capture(
+        &db,
+        &handy_app_lib::storage::repositories::captures::NewCapture {
+            audio_file_name: Some("interrupted.wav".into()),
+            audio_sha256: None,
+            audio_size_bytes: None,
+            title: "Interrupted".into(),
+            source_app: None,
+            integrity_state: handy_app_lib::storage::models::IntegrityState::AudioValid,
+        },
+    )
+    .unwrap();
+    std::fs::write(recordings.join("interrupted.wav"), minimal_wav()).unwrap();
+    let attempt = handy_app_lib::storage::repositories::transcriptions::insert_attempt(
+        &db,
+        &handy_app_lib::storage::repositories::transcriptions::NewAttempt {
+            capture_id: capture.id.clone(),
+            engine_raw: None,
+            normalized_stt: None,
+            model_id: None,
+            language: None,
+            normalizer_version: "1".into(),
+            dictionary_snapshot_sha256: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        reconcile_startup(&db, &recordings)
+            .unwrap()
+            .interrupted_attempts,
+        0
+    );
+    let attempts = handy_app_lib::storage::repositories::transcriptions::attempts_for_capture(
+        &db,
+        &capture.id,
+    )
+    .unwrap();
+    assert_eq!(attempts[0].id, attempt.id);
+    assert_eq!(attempts[0].status, "pending");
+    assert_eq!(
+        reconcile_startup(&db, &recordings)
+            .unwrap()
+            .interrupted_attempts,
+        0
     );
 }
 

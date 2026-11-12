@@ -13,15 +13,18 @@
 //! plain values in, canonical rows written, `DeliverySource` out.
 
 use handy_app_lib::delivery::pipeline::{
-    record_dictation, record_failed_dictation, DictationInput,
+    complete_prepared_dictation, record_dictation, record_dictation_for_capture,
+    record_failed_dictation, record_failed_dictation_for_capture, DictationInput,
 };
 use handy_app_lib::storage::database::AppDatabase;
 use handy_app_lib::storage::migrations::open_and_migrate;
-use handy_app_lib::storage::models::DeliverySourceKind;
-use handy_app_lib::storage::repositories::captures::get_capture;
+use handy_app_lib::storage::models::{DeliverySourceKind, IntegrityState};
+use handy_app_lib::storage::repositories::captures::{
+    get_capture, insert_capture, set_recording_started_at, NewCapture,
+};
 use handy_app_lib::storage::repositories::representations::representations_for_attempt;
 use handy_app_lib::storage::repositories::transcriptions::{
-    attempts_for_capture, canonical_attempt,
+    attempts_for_capture, canonical_attempt, insert_attempt, NewAttempt,
 };
 
 fn fresh(tag: &str) -> AppDatabase {
@@ -46,6 +49,117 @@ fn plain_input<'a>() -> DictationInput<'a> {
         post_processed_text: None,
         post_process_prompt: None,
     }
+}
+
+#[test]
+fn finishing_a_preexisting_capture_never_inserts_a_duplicate() {
+    let db = fresh("capture-first");
+    let capture = insert_capture(
+        &db,
+        &NewCapture {
+            audio_file_name: Some("handy-1.wav".into()),
+            audio_sha256: None,
+            audio_size_bytes: None,
+            title: "At recording start".into(),
+            source_app: None,
+            integrity_state: IntegrityState::PendingAudio,
+        },
+    )
+    .unwrap();
+    set_recording_started_at(&db, &capture.id, 1_790_000_000_123).unwrap();
+    let source = record_dictation_for_capture(&db, &plain_input(), Some(&capture.id)).unwrap();
+    assert_eq!(source.capture_id.as_deref(), Some(capture.id.as_str()));
+    assert_eq!(
+        get_capture(&db, &capture.id)
+            .unwrap()
+            .unwrap()
+            .created_at_ms,
+        1_790_000_000_123
+    );
+    assert_eq!(
+        get_capture(&db, &capture.id)
+            .unwrap()
+            .unwrap()
+            .integrity_state,
+        "audio_valid"
+    );
+    let count: i64 = db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM captures", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 1);
+
+    let failed = insert_capture(
+        &db,
+        &NewCapture {
+            audio_file_name: Some("handy-2.wav".into()),
+            audio_sha256: None,
+            audio_size_bytes: None,
+            title: "Another recording".into(),
+            source_app: None,
+            integrity_state: IntegrityState::PendingAudio,
+        },
+    )
+    .unwrap();
+    record_failed_dictation_for_capture(
+        &db,
+        "ignored",
+        Some("handy-2.wav"),
+        Some("sha"),
+        Some(42),
+        "model failed",
+        Some(&failed.id),
+    )
+    .unwrap();
+    let count: i64 = db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM captures", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 2);
+    assert_eq!(
+        attempts_for_capture(&db, &failed.id).unwrap()[0].status,
+        "failed"
+    );
+}
+
+#[test]
+fn pending_attempt_is_completed_with_raw_text_in_place() {
+    let db = fresh("prepared-attempt");
+    let capture = insert_capture(
+        &db,
+        &NewCapture {
+            audio_file_name: Some("handy-1.wav".into()),
+            audio_sha256: None,
+            audio_size_bytes: None,
+            title: "Recording".into(),
+            source_app: None,
+            integrity_state: IntegrityState::PendingAudio,
+        },
+    )
+    .unwrap();
+    let attempt = insert_attempt(
+        &db,
+        &NewAttempt {
+            capture_id: capture.id.clone(),
+            engine_raw: None,
+            normalized_stt: None,
+            model_id: None,
+            language: None,
+            normalizer_version: "1".into(),
+            dictionary_snapshot_sha256: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(attempt.status, "pending");
+    let source =
+        complete_prepared_dictation(&db, &plain_input(), Some(&capture.id), Some(&attempt.id))
+            .unwrap();
+    assert_eq!(source.attempt_id, attempt.id);
+    let attempts = attempts_for_capture(&db, &capture.id).unwrap();
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(attempts[0].engine_raw.as_deref(), Some("hello  world"));
+    assert_eq!(attempts[0].status, "success");
+    assert!(attempts[0].is_canonical);
 }
 
 /// 01 — the core acceptance: one capture, one successful attempt, canonical.
