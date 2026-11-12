@@ -101,6 +101,7 @@ fn apply_derived_layers(app: &AppHandle, normalized_stt: &str) -> String {
 
 /// Database-backed dictionary correction terms; empty DB falls back to
 /// the legacy settings list so nothing regresses for old setups.
+#[allow(dead_code)] // kept for custom-words integration (UP-700 follow-up)
 pub fn dictionary_terms(app: &AppHandle) -> Option<Vec<String>> {
     let dir = crate::portable::app_data_dir(app).ok()?;
     let db = AppDatabase::open(dir.join("history.db")).ok()?;
@@ -903,6 +904,7 @@ impl TranscriptionManager {
     }
 
     /// Whether a live streaming run is currently in flight.
+    #[allow(dead_code)] // Retained as part of the worker API.
     pub fn is_streaming(&self) -> bool {
         self.stream_active.load(Ordering::Acquire)
     }
@@ -1286,6 +1288,7 @@ impl TranscriptionManager {
     }
 
     /// Emit a working-phase event to the streaming overlay (spinner + label).
+    #[allow(dead_code)] // Retained as part of the worker API.
     pub fn emit_stream_working(&self, kind: StreamWorkKind) {
         let _ = StreamPhaseEvent {
             phase: StreamPhase::Working,
@@ -1303,6 +1306,7 @@ impl TranscriptionManager {
         .emit(&self.app_handle);
     }
 
+    #[allow(dead_code)] // Retained as part of the worker API.
     pub fn transcribe(&self, audio: Vec<f32>) -> Result<String> {
         // Delivered text = after the derived deterministic layers
         // (snippets). History keeps normalized_stt via detailed().
@@ -1316,6 +1320,7 @@ impl TranscriptionManager {
     /// removal or normalization run; it must never be overwritten by a
     /// later pipeline stage. `normalized_stt` is the durable "raw"
     /// knowledge text per planning/04.
+    #[allow(dead_code)] // Retained as part of the worker API.
     pub fn transcribe_detailed(&self, audio: Vec<f32>) -> Result<TranscriptionOutput> {
         let output = self.transcribe_inner(audio, false)?;
         Ok(output.unwrap_or_else(|| TranscriptionOutput {
@@ -1447,7 +1452,6 @@ impl TranscriptionManager {
         // run extension and the fuzzy-correction skip are gated on
         // `model_is_whisper` instead, since non-whisper archs can advertise
         // the feature while rejecting the whisper-kind extension.
-        let mut model_takes_initial_prompt = false;
         // Whether the loaded model is actually whisper-family (arch string).
         // Non-whisper archs (e.g. Voxtral Small) can advertise
         // Feature::InitialPrompt yet reject the whisper-kind run extension
@@ -1493,7 +1497,7 @@ impl TranscriptionManager {
             if let LoadedEngine::TranscribeCpp(session) = &engine {
                 let model = session.model();
                 let caps = model.capabilities();
-                model_takes_initial_prompt = model.supports(Feature::InitialPrompt);
+                let model_takes_initial_prompt = model.supports(Feature::InitialPrompt);
                 model_is_whisper = model.arch() == "whisper";
                 model_supports_translate = caps.supports_translate;
                 model_languages = caps.languages;
@@ -2381,6 +2385,41 @@ pub fn get_available_accelerators() -> AvailableAccelerators {
     }
 }
 
+impl Drop for TranscriptionManager {
+    fn drop(&mut self) {
+        // Skip shutdown unless this is the very last clone. TranscriptionManager
+        // is cloned by initiate_model_load() and the watcher thread — those
+        // clones dropping must not kill the watcher. The watcher thread holds
+        // its own clone, so engine's strong_count is always >= 2 while the
+        // watcher is alive. When it reaches 1, only this instance remains
+        // and we can safely shut down.
+        if Arc::strong_count(&self.engine) > 1 {
+            return;
+        }
+
+        // Signal the watcher thread to shutdown
+        self.shutdown_signal.store(true, Ordering::Relaxed);
+
+        // Wait for the thread to finish gracefully.
+        // Use match instead of unwrap to avoid panicking if the mutex is
+        // poisoned — a panic inside Drop calls abort().
+        let mut guard = match self.watcher_handle.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                warn!("Recovered poisoned watcher_handle mutex during TranscriptionManager drop — a panic occurred earlier this session");
+                e.into_inner()
+            }
+        };
+        if let Some(handle) = guard.take() {
+            if let Err(e) = handle.join() {
+                warn!("Failed to join idle watcher thread: {:?}", e);
+            } else {
+                debug!("Idle watcher thread joined successfully");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2736,40 +2775,5 @@ mod tests {
         assert!(matches!(plan.task, Task::Transcribe));
         assert_eq!(plan.language.as_deref(), Some("es"));
         assert_eq!(plan.target_language, None);
-    }
-}
-
-impl Drop for TranscriptionManager {
-    fn drop(&mut self) {
-        // Skip shutdown unless this is the very last clone. TranscriptionManager
-        // is cloned by initiate_model_load() and the watcher thread — those
-        // clones dropping must not kill the watcher. The watcher thread holds
-        // its own clone, so engine's strong_count is always >= 2 while the
-        // watcher is alive. When it reaches 1, only this instance remains
-        // and we can safely shut down.
-        if Arc::strong_count(&self.engine) > 1 {
-            return;
-        }
-
-        // Signal the watcher thread to shutdown
-        self.shutdown_signal.store(true, Ordering::Relaxed);
-
-        // Wait for the thread to finish gracefully.
-        // Use match instead of unwrap to avoid panicking if the mutex is
-        // poisoned — a panic inside Drop calls abort().
-        let mut guard = match self.watcher_handle.lock() {
-            Ok(g) => g,
-            Err(e) => {
-                warn!("Recovered poisoned watcher_handle mutex during TranscriptionManager drop — a panic occurred earlier this session");
-                e.into_inner()
-            }
-        };
-        if let Some(handle) = guard.take() {
-            if let Err(e) = handle.join() {
-                warn!("Failed to join idle watcher thread: {:?}", e);
-            } else {
-                debug!("Idle watcher thread joined successfully");
-            }
-        }
     }
 }

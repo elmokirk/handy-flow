@@ -649,121 +649,6 @@ pub fn is_no_input_device_error(error_message: &str) -> bool {
             && normalized.contains("coreaudio"))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        is_microphone_access_denied, is_no_input_device_error, run_consumer, AudioRecorder, Cmd,
-        OriginalWav,
-    };
-
-    #[test]
-    fn original_wav_flushes_same_file_and_finalizes_at_stop() {
-        let path = std::env::temp_dir().join(format!(
-            "handy-original-wav-{}-{}.wav",
-            std::process::id(),
-            crate::storage::ids::new_id()
-        ));
-        let mut original = OriginalWav::create(&path).unwrap();
-        original.append(&[0.1; 16_000]).unwrap();
-        original.last_sync = Instant::now() - Duration::from_secs(31);
-        original.append(&[0.2; 16_000]).unwrap();
-        assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 32_000);
-        original.finish().unwrap();
-        assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 32_000);
-        std::fs::remove_file(path).unwrap();
-    }
-    use std::{
-        sync::{
-            atomic::{AtomicBool, Ordering},
-            mpsc, Arc,
-        },
-        thread,
-        time::{Duration, Instant},
-    };
-
-    #[test]
-    fn unopened_recorder_does_not_need_reopen() {
-        // No worker has been spawned yet, so there is nothing to reap. Guards
-        // against inverting the "no worker" case, which would make every first
-        // open() take the rebuild path.
-        let recorder = AudioRecorder::new().expect("recorder");
-        assert!(!recorder.needs_reopen());
-    }
-
-    #[test]
-    fn stream_error_requires_reopen() {
-        let recorder = AudioRecorder::new().expect("recorder");
-        recorder.stream_error.store(true, Ordering::Relaxed);
-        assert!(recorder.needs_reopen());
-    }
-
-    #[test]
-    fn shutdown_is_processed_without_audio_samples() {
-        let (sample_tx, sample_rx) = mpsc::channel();
-        let (cmd_tx, cmd_rx) = mpsc::channel();
-        let (done_tx, done_rx) = mpsc::channel();
-        let worker = thread::spawn(move || {
-            run_consumer(
-                48_000,
-                None,
-                sample_rx,
-                cmd_rx,
-                None,
-                None,
-                Arc::new(AtomicBool::new(false)),
-                Instant::now(),
-            );
-            let _ = done_tx.send(());
-        });
-
-        cmd_tx.send(Cmd::Shutdown).expect("send shutdown");
-        let stopped = done_rx.recv_timeout(Duration::from_secs(1));
-
-        // Unblock the old implementation so a failing test still exits cleanly.
-        drop(sample_tx);
-        worker.join().expect("join consumer");
-        assert!(stopped.is_ok(), "shutdown waited for an audio sample");
-    }
-
-    #[test]
-    fn detects_access_is_denied() {
-        assert!(is_microphone_access_denied("Access is denied"));
-    }
-
-    #[test]
-    fn detects_permission_denied() {
-        assert!(is_microphone_access_denied("permission denied"));
-    }
-
-    #[test]
-    fn detects_windows_error_code() {
-        assert!(is_microphone_access_denied("WASAPI error: 0x80070005"));
-    }
-
-    #[test]
-    fn does_not_match_unrelated_errors() {
-        assert!(!is_microphone_access_denied("device not found"));
-    }
-
-    #[test]
-    fn detects_no_input_device() {
-        assert!(is_no_input_device_error("No input device found"));
-    }
-
-    #[test]
-    fn detects_coreaudio_config_error() {
-        assert!(is_no_input_device_error(
-            "Failed to fetch preferred config: A backend-specific error has occurred: An unknown error unknown to the coreaudio-rs API occurred"
-        ));
-    }
-
-    #[test]
-    fn does_not_match_other_errors_for_no_device() {
-        assert!(!is_no_input_device_error("permission denied"));
-        assert!(!is_no_input_device_error("device not found"));
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn run_consumer(
     in_sample_rate: u32,
@@ -1063,5 +948,120 @@ fn run_consumer(
                 let _ = ready_tx.send(());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        is_microphone_access_denied, is_no_input_device_error, run_consumer, AudioRecorder, Cmd,
+        OriginalWav,
+    };
+
+    #[test]
+    fn original_wav_flushes_same_file_and_finalizes_at_stop() {
+        let path = std::env::temp_dir().join(format!(
+            "handy-original-wav-{}-{}.wav",
+            std::process::id(),
+            crate::storage::ids::new_id()
+        ));
+        let mut original = OriginalWav::create(&path).unwrap();
+        original.append(&[0.1; 16_000]).unwrap();
+        original.last_sync = Instant::now() - Duration::from_secs(31);
+        original.append(&[0.2; 16_000]).unwrap();
+        assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 32_000);
+        original.finish().unwrap();
+        assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 32_000);
+        std::fs::remove_file(path).unwrap();
+    }
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc, Arc,
+        },
+        thread,
+        time::{Duration, Instant},
+    };
+
+    #[test]
+    fn unopened_recorder_does_not_need_reopen() {
+        // No worker has been spawned yet, so there is nothing to reap. Guards
+        // against inverting the "no worker" case, which would make every first
+        // open() take the rebuild path.
+        let recorder = AudioRecorder::new().expect("recorder");
+        assert!(!recorder.needs_reopen());
+    }
+
+    #[test]
+    fn stream_error_requires_reopen() {
+        let recorder = AudioRecorder::new().expect("recorder");
+        recorder.stream_error.store(true, Ordering::Relaxed);
+        assert!(recorder.needs_reopen());
+    }
+
+    #[test]
+    fn shutdown_is_processed_without_audio_samples() {
+        let (sample_tx, sample_rx) = mpsc::channel();
+        let (cmd_tx, cmd_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            run_consumer(
+                48_000,
+                None,
+                sample_rx,
+                cmd_rx,
+                None,
+                None,
+                Arc::new(AtomicBool::new(false)),
+                Instant::now(),
+            );
+            let _ = done_tx.send(());
+        });
+
+        cmd_tx.send(Cmd::Shutdown).expect("send shutdown");
+        let stopped = done_rx.recv_timeout(Duration::from_secs(1));
+
+        // Unblock the old implementation so a failing test still exits cleanly.
+        drop(sample_tx);
+        worker.join().expect("join consumer");
+        assert!(stopped.is_ok(), "shutdown waited for an audio sample");
+    }
+
+    #[test]
+    fn detects_access_is_denied() {
+        assert!(is_microphone_access_denied("Access is denied"));
+    }
+
+    #[test]
+    fn detects_permission_denied() {
+        assert!(is_microphone_access_denied("permission denied"));
+    }
+
+    #[test]
+    fn detects_windows_error_code() {
+        assert!(is_microphone_access_denied("WASAPI error: 0x80070005"));
+    }
+
+    #[test]
+    fn does_not_match_unrelated_errors() {
+        assert!(!is_microphone_access_denied("device not found"));
+    }
+
+    #[test]
+    fn detects_no_input_device() {
+        assert!(is_no_input_device_error("No input device found"));
+    }
+
+    #[test]
+    fn detects_coreaudio_config_error() {
+        assert!(is_no_input_device_error(
+            "Failed to fetch preferred config: A backend-specific error has occurred: An unknown error unknown to the coreaudio-rs API occurred"
+        ));
+    }
+
+    #[test]
+    fn does_not_match_other_errors_for_no_device() {
+        assert!(!is_no_input_device_error("permission denied"));
+        assert!(!is_no_input_device_error("device not found"));
     }
 }
