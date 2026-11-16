@@ -200,7 +200,7 @@ fn checkpoint_failure_stops_audio_forwarding_and_preserves_partial_wav() {
     assert!(h.sink.finish().write_failed);
     assert!(path.exists());
     let (db, _) =
-        crate::storage::migrations::open_and_migrate(&dir.path().join("history.db"), "test")
+        crate::storage::migrations::open_and_migrate(dir.path().join("history.db"), "test")
             .unwrap();
     let capture_id = crate::delivery::pipeline::complete_failed_prepared_dictation(
         &db,

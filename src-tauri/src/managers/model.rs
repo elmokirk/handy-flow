@@ -1342,7 +1342,7 @@ impl ModelManager {
                 continue;
             }
             let model_path = self.models_dir.join(&model.filename);
-            let partial_path = self.models_dir.join(format!("{}.partial", &model.filename));
+            let partial_path = self.models_dir.join(format!("{}.partial", model.filename));
 
             model.is_downloaded = model_path.exists();
             model.is_downloading = false;
