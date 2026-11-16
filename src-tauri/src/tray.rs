@@ -41,6 +41,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 pub enum TrayIconState {
     Idle,
     Recording,
+    #[allow(dead_code)] // Retained for the transcribing tray state.
     Transcribing,
 }
 

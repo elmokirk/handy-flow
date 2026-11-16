@@ -117,3 +117,136 @@ fn explicit_purge_removes_rows_in_order_but_never_audio_files() {
     .unwrap();
     assert!(purge_trashed(&db, &active.id).is_err());
 }
+
+#[test]
+fn stor260_trash_pages_are_bounded_and_restore_is_visible() {
+    use handy_app_lib::storage::repositories::captures::{count_trashed, list_trashed_page};
+    let (db, _) = seeded("pages260");
+    {
+        let conn = db.conn();
+        for i in 0..3000 {
+            conn.execute("INSERT INTO captures(id, title, integrity_state, created_at_ms, updated_at_ms, deleted_at_ms) VALUES (?1, 'entry', 'audio_missing', ?2, ?2, ?2)", rusqlite::params![format!("cap-{i:04}"), i]).unwrap();
+        }
+    }
+    assert_eq!(count_trashed(&db).unwrap(), 3000);
+    let first = list_trashed_page(&db, 1000, 0).unwrap();
+    let second = list_trashed_page(&db, 200, 200).unwrap();
+    assert_eq!(first.len(), 200);
+    assert_eq!(second.len(), 200);
+    assert_ne!(first[0].id, second[0].id);
+    db.conn().execute("INSERT INTO transcription_attempts(id, capture_id, attempt_number, normalized_stt, provenance, status, is_canonical, created_at_ms) VALUES ('search-attempt', ?1, 1, 'restoreduniqueword', 'live', 'success', 1, 1)", [&first[0].id]).unwrap();
+    handy_app_lib::storage::repositories::search::rebuild_search_index(&db).unwrap();
+    assert!(restore_capture(&db, &first[0].id).unwrap());
+    let hits = handy_app_lib::storage::repositories::search::search(
+        &db,
+        "restoreduniqueword",
+        None,
+        20,
+        0,
+    )
+    .unwrap();
+    assert!(hits
+        .iter()
+        .any(|hit| hit.capture_id.as_deref() == Some(first[0].id.as_str())));
+    assert_eq!(count_trashed(&db).unwrap(), 2999);
+    assert!(list_active_captures(&db, 200, 0)
+        .unwrap()
+        .iter()
+        .any(|c| c.id == first[0].id));
+}
+
+#[test]
+fn stor260_purge_failure_keeps_reference_and_missing_file_retry_succeeds() {
+    use handy_app_lib::storage::repositories::captures::purge_trashed_with_audio;
+    let (db, dir) = seeded("purge260");
+    let recordings = dir.join("recordings");
+    std::fs::create_dir_all(recordings.join("blocked.wav")).unwrap();
+    let id = capture_with_audio(&db, "blocked", "blocked.wav");
+    trash_capture(&db, &id).unwrap();
+    assert!(purge_trashed_with_audio(&db, &id, &recordings).is_err());
+    assert!(get_capture(&db, &id)
+        .unwrap()
+        .unwrap()
+        .deleted_at_ms
+        .is_some());
+    std::fs::remove_dir(recordings.join("blocked.wav")).unwrap();
+    purge_trashed_with_audio(&db, &id, &recordings).unwrap();
+    assert!(get_capture(&db, &id).unwrap().is_none());
+}
+
+#[cfg(windows)]
+#[test]
+fn stor260_locked_audio_cannot_be_orphaned_and_retry_works() {
+    use handy_app_lib::storage::repositories::captures::purge_trashed_with_audio;
+    use std::os::windows::fs::OpenOptionsExt;
+    let (db, dir) = seeded("locked260");
+    let recordings = dir.join("recordings");
+    std::fs::create_dir_all(&recordings).unwrap();
+    let path = recordings.join("locked.wav");
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 16000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(&path, spec).unwrap();
+    writer.write_sample::<i16>(1).unwrap();
+    writer.finalize().unwrap();
+    let id = capture_with_audio(&db, "locked", "locked.wav");
+    trash_capture(&db, &id).unwrap();
+    let locked = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(&path)
+        .unwrap();
+    assert!(purge_trashed_with_audio(&db, &id, &recordings).is_err());
+    assert!(get_capture(&db, &id)
+        .unwrap()
+        .unwrap()
+        .deleted_at_ms
+        .is_some());
+    drop(locked);
+    let report = handy_app_lib::storage::recovery::reconcile_history(&db, &recordings).unwrap();
+    assert!(report.adopted_orphan_recordings.is_empty());
+    purge_trashed_with_audio(&db, &id, &recordings).unwrap();
+    assert!(!path.exists());
+}
+
+#[test]
+fn stor260_restore_and_purge_are_serialized() {
+    use handy_app_lib::storage::repositories::captures::purge_trashed_with_audio;
+    use std::sync::{Arc, Barrier};
+    let (db, dir) = seeded("race260");
+    let db = Arc::new(db);
+    let id = capture_with_audio(&db, "race", "race.wav");
+    trash_capture(&db, &id).unwrap();
+    let barrier = Arc::new(Barrier::new(3));
+    let restore = {
+        let (db, id, barrier) = (db.clone(), id.clone(), barrier.clone());
+        std::thread::spawn(move || {
+            barrier.wait();
+            restore_capture(&db, &id).unwrap()
+        })
+    };
+    let purge = {
+        let (db, id, barrier) = (db.clone(), id.clone(), barrier.clone());
+        std::thread::spawn(move || {
+            barrier.wait();
+            purge_trashed_with_audio(&db, &id, &dir)
+        })
+    };
+    barrier.wait();
+    let restored = restore.join().unwrap();
+    let purged = purge.join().unwrap();
+    match get_capture(&db, &id).unwrap() {
+        None => {
+            assert!(!restored);
+            assert!(purged.is_ok());
+        }
+        Some(capture) => {
+            assert!(restored);
+            assert!(purged.is_err());
+            assert!(capture.deleted_at_ms.is_none());
+        }
+    }
+}

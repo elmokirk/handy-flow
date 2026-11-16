@@ -83,7 +83,7 @@ impl SnippetManager {
                     // comparison and reattached around the replacement.
                     let first = strip_edge_punct(tokens[i]);
                     let last = strip_edge_punct(tokens[i + n - 1]);
-                    let mut cores: Vec<&str> = tokens[i..i + n].iter().copied().collect();
+                    let mut cores: Vec<&str> = tokens[i..i + n].to_vec();
                     cores[0] = first.core;
                     cores[n - 1] = last.core;
                     let phrase = cores.join(" ").to_lowercase();

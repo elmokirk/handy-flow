@@ -1143,6 +1143,18 @@ async trashCanonicalHistoryEntry(captureId: string) : Promise<Result<null, strin
     else return { status: "error", error: e  as any };
 }
 },
+async restoreCaptureEntry(captureId: string) : Promise<Result<boolean, string>> {
+    try { return { status: "ok", data: await TAURI_INVOKE("restore_capture_entry", { captureId }) }; }
+    catch (e) { if (e instanceof Error) throw e; else return { status: "error", error: e as any }; }
+},
+async purgeTrashedEntry(captureId: string) : Promise<Result<null, string>> {
+    try { return { status: "ok", data: await TAURI_INVOKE("purge_trashed_entry", { captureId }) }; }
+    catch (e) { if (e instanceof Error) throw e; else return { status: "error", error: e as any }; }
+},
+async listTrashPage(limit: number, offset: number) : Promise<Result<TrashPage, string>> {
+    try { return { status: "ok", data: await TAURI_INVOKE("list_trash_page", { limit, offset }) }; }
+    catch (e) { if (e instanceof Error) throw e; else return { status: "error", error: e as any }; }
+},
 async retryCanonicalHistoryEntry(captureId: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("retry_canonical_history_entry", { captureId }) };
@@ -1365,6 +1377,8 @@ export type CanonicalEntry = { capture_id: string; legacy_history_id: number | n
  * Relative audio file name; resolve via `canonical_audio_path`.
  */
 audio_file_name: string | null; raw_text: string | null; derived: DerivedTextSummary[] }
+export type TrashEntry = { capture_id: string; title: string; created_at_ms: number; deleted_at_ms: number | null; audio_file_name: string | null; integrity_state: string; snippet: string }
+export type TrashPage = { entries: TrashEntry[]; total: number }
 export type CanonicalHistoryEntry = { capture_id: string; created_at_ms: number; title: string; text: string; saved: boolean; audio_file_name: string | null; source_app: string | null; origin: string; integrity_state: string; attempt_status: string; attempt_error: string | null; audio_duration_ms: number | null; completed_samples: number; completed_chunks: number; review_seams: number; text_reviewed: boolean }
 export type CanonicalHistoryFilter = { from_ms: number | null; to_ms: number | null; origin: string | null }
 export type CanonicalHistoryPage = { entries: CanonicalHistoryEntry[]; next_cursor: string | null }

@@ -2,7 +2,6 @@
 
 use crate::managers::dictionary::DictionaryManager;
 use crate::storage::database::AppDatabase;
-use crate::storage::repositories::dictionary::DictionaryEntry;
 use tauri::AppHandle;
 
 fn manager(app: &AppHandle) -> Result<DictionaryManager, String> {

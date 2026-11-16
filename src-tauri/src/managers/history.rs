@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local, Utc};
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use rusqlite::{params, Connection, OptionalExtension};
 use rusqlite_migration::{Migrations, M};
 use serde::{Deserialize, Serialize};
@@ -403,10 +403,23 @@ impl HistoryManager {
             return Ok(());
         }
         let db = self.canonical_db()?;
+        let limit = crate::settings::get_history_limit(&self.app_handle);
+        Self::cleanup_canonical_with_policy(&db, period, limit)
+    }
+
+    fn cleanup_canonical_with_policy(
+        db: &crate::storage::database::AppDatabase,
+        period: crate::settings::RecordingRetentionPeriod,
+        limit: usize,
+    ) -> Result<()> {
+        use crate::settings::RecordingRetentionPeriod;
+        if period == RecordingRetentionPeriod::Never {
+            return Ok(());
+        }
         let conn = db.conn();
         let ids: Vec<String> = match period {
             RecordingRetentionPeriod::PreserveLimit => {
-                let limit = crate::settings::get_history_limit(&self.app_handle) as i64;
+                let limit = limit as i64;
                 let mut stmt = conn.prepare(
                     "SELECT id FROM captures
                      WHERE deleted_at_ms IS NULL AND saved = 0 AND import_ref IS NULL
@@ -449,7 +462,7 @@ impl HistoryManager {
         };
         drop(conn);
         for id in ids {
-            crate::storage::repositories::captures::trash_capture(&db, &id)?;
+            crate::storage::repositories::captures::trash_capture(db, &id)?;
         }
         Ok(())
     }
@@ -988,31 +1001,15 @@ impl HistoryManager {
         )?)
     }
 
-    /// Explicit, separately confirmed purge of ONE trashed capture:
-    /// repository removes canonical rows in FK order, then the audio file
-    /// is deleted here (filesystem is the manager's responsibility).
-    /// A missing file is logged but does not fail the purge; a DB failure
-    /// aborts before any filesystem change, so state stays consistent.
-    // UI/command wiring lands with the Phase-2 Integrator bundle;
-    // until then these canonical APIs are intentionally unused.
-    #[allow(dead_code)]
+    /// Delete audio before its trashed row while holding the database write lock.
     pub async fn purge_trashed_entry(&self, capture_id: String) -> Result<()> {
         let db = self.canonical_db()?;
-        let purged = crate::storage::repositories::captures::purge_trashed(&db, &capture_id)
-            .map_err(|e| anyhow!("Purge refused for {capture_id}: {e}"))?;
-
-        if let Some(name) = &purged.audio_file_name {
-            let path = self.get_audio_file_path(name);
-            match fs::remove_file(&path) {
-                Ok(()) => debug!("Purged audio file {:?}", path),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    warn!("Purge: audio file {:?} already gone", path);
-                }
-                Err(e) => {
-                    error!("Purge: could not delete audio file {:?}: {}", path, e);
-                }
-            }
-        }
+        let recordings = self.get_audio_file_path("");
+        crate::storage::repositories::captures::purge_trashed_with_audio(
+            &db,
+            &capture_id,
+            &recordings,
+        )?;
         info!("Capture {} purged (explicit)", capture_id);
         Ok(())
     }
@@ -1110,6 +1107,56 @@ mod tests {
             ],
         )
         .expect("insert history entry");
+    }
+
+    #[test]
+    fn stor260_retention_keeps_missing_audio_and_supports_restore() {
+        use crate::settings::RecordingRetentionPeriod;
+        use crate::storage::repositories::captures::{count_trashed, restore_capture};
+        let dir = tempfile::tempdir().unwrap();
+        let (db, _) =
+            crate::storage::migrations::open_and_migrate(dir.path().join("history.db"), "test")
+                .unwrap();
+        for i in 0..9 {
+            let state = if i == 0 {
+                "audio_missing"
+            } else {
+                "audio_valid"
+            };
+            db.conn().execute("INSERT INTO captures(id, title, integrity_state, created_at_ms, updated_at_ms) VALUES (?1, 'test', ?2, ?3, ?3)", rusqlite::params![format!("c{i}"), state, i]).unwrap();
+            db.conn().execute("INSERT INTO transcription_attempts(id, capture_id, attempt_number, provenance, status, is_canonical, created_at_ms) VALUES (?1, ?2, 1, 'live', 'success', 1, ?3)", rusqlite::params![format!("a{i}"), format!("c{i}"), i]).unwrap();
+        }
+        HistoryManager::cleanup_canonical_with_policy(&db, RecordingRetentionPeriod::Never, 5)
+            .unwrap();
+        assert_eq!(count_trashed(&db).unwrap(), 0);
+        HistoryManager::cleanup_canonical_with_policy(
+            &db,
+            RecordingRetentionPeriod::PreserveLimit,
+            5,
+        )
+        .unwrap();
+        assert_eq!(count_trashed(&db).unwrap(), 3);
+        assert!(
+            crate::storage::repositories::captures::get_capture(&db, "c0")
+                .unwrap()
+                .unwrap()
+                .deleted_at_ms
+                .is_none()
+        );
+        for id in ["c1", "c2", "c3"] {
+            assert!(restore_capture(&db, id).unwrap());
+        }
+        assert_eq!(count_trashed(&db).unwrap(), 0);
+        HistoryManager::cleanup_canonical_with_policy(&db, RecordingRetentionPeriod::Never, 5)
+            .unwrap();
+        assert_eq!(count_trashed(&db).unwrap(), 0);
+        HistoryManager::cleanup_canonical_with_policy(
+            &db,
+            RecordingRetentionPeriod::PreserveLimit,
+            5,
+        )
+        .unwrap();
+        assert_eq!(count_trashed(&db).unwrap(), 3);
     }
 
     #[test]

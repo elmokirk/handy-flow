@@ -504,7 +504,7 @@ fn default_model() -> String {
     "".to_string()
 }
 
-const CURRENT_SETTINGS_SCHEMA_VERSION: u32 = 2;
+const CURRENT_SETTINGS_SCHEMA_VERSION: u32 = 3;
 
 fn default_settings_schema_version() -> u32 {
     CURRENT_SETTINGS_SCHEMA_VERSION
@@ -602,7 +602,7 @@ fn default_history_limit() -> usize {
 }
 
 fn default_recording_retention_period() -> RecordingRetentionPeriod {
-    RecordingRetentionPeriod::PreserveLimit
+    RecordingRetentionPeriod::Never
 }
 
 fn default_audio_feedback_volume() -> f32 {
@@ -1016,6 +1016,29 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
                 }
             };
 
+        if settings_value
+            .get("settings_schema_version")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            < 3
+        {
+            if let Ok(dir) = crate::portable::app_data_dir(app) {
+                let source = dir.join(SETTINGS_STORE_PATH);
+                let backup = dir.join(format!(
+                    "{}.bak-{}",
+                    SETTINGS_STORE_PATH,
+                    chrono::Local::now().format("%Y%m%d")
+                ));
+                if !backup.exists() {
+                    match std::fs::copy(&source, &backup) {
+                        Ok(_) => log::info!("Settings backup created at {:?}", backup),
+                        Err(e) => warn!("Could not back up settings before migration: {e}"),
+                    }
+                }
+            } else {
+                warn!("Could not locate settings for migration backup");
+            }
+        }
         if apply_settings_migrations(&mut settings, &settings_value) {
             updated = true;
         }
@@ -1132,6 +1155,19 @@ fn apply_settings_migrations(
         updated = true;
     }
 
+    if stored_schema_version < 3 {
+        if settings_value
+            .get("recording_retention_period")
+            .and_then(|v| v.as_str())
+            == Some("preserve_limit")
+            && settings_value.get("history_limit").and_then(|v| v.as_u64()) == Some(5)
+        {
+            settings.recording_retention_period = RecordingRetentionPeriod::Never;
+        }
+        settings.settings_schema_version = CURRENT_SETTINGS_SCHEMA_VERSION;
+        updated = true;
+    }
+
     // The generic GPU choice was removed in favor of Auto or an exact device.
     // Normalize settings created by builds that exposed that short-lived option.
     if settings.transcribe_accelerator == TranscribeAcceleratorSetting::Gpu
@@ -1204,6 +1240,46 @@ mod tests {
 
     /// Every field must survive a partial store: a missing key must never fail
     /// the whole-settings parse (#1619). `json!({})` is the extreme case.
+    #[test]
+    fn stor260_retention_migration_is_one_time_and_conservative() {
+        let mut raw = default_settings_json();
+        raw["settings_schema_version"] = 2.into();
+        raw["history_limit"] = 5.into();
+        raw["recording_retention_period"] = "preserve_limit".into();
+        let mut settings: AppSettings = serde_json::from_value(raw.clone()).unwrap();
+        assert!(apply_settings_migrations(&mut settings, &raw));
+        assert_eq!(
+            settings.recording_retention_period,
+            RecordingRetentionPeriod::Never
+        );
+        assert_eq!(
+            settings.settings_schema_version,
+            CURRENT_SETTINGS_SCHEMA_VERSION
+        );
+        settings.recording_retention_period = RecordingRetentionPeriod::PreserveLimit;
+        let saved = serde_json::to_value(&settings).unwrap();
+        let mut restarted: AppSettings = serde_json::from_value(saved.clone()).unwrap();
+        apply_settings_migrations(&mut restarted, &saved);
+        assert_eq!(
+            restarted.recording_retention_period,
+            RecordingRetentionPeriod::PreserveLimit
+        );
+        raw["history_limit"] = 7.into();
+        let mut divergent: AppSettings = serde_json::from_value(raw.clone()).unwrap();
+        apply_settings_migrations(&mut divergent, &raw);
+        assert_eq!(
+            divergent.recording_retention_period,
+            RecordingRetentionPeriod::PreserveLimit
+        );
+        let partial = serde_json::json!({"recording_retention_period": "broken"});
+        let mut safe = salvage_settings(&partial);
+        apply_settings_migrations(&mut safe, &partial);
+        assert_eq!(
+            safe.recording_retention_period,
+            RecordingRetentionPeriod::Never
+        );
+    }
+
     #[test]
     fn empty_store_parses_with_defaults() {
         let settings: AppSettings = serde_json::from_value(serde_json::json!({}))
