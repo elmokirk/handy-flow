@@ -35,7 +35,7 @@ jobs:
               target_commitish: context.sha,
               draft: true,
               prerelease: false,
-              body: 'Windows x64 fix for the AAC/M4A/FLAC/OGG import: the staged copy is now flushed through a write handle, fixing the deterministic "Zugriff verweigert (os error 5)" that broke every drag-and-drop and picker import since the feature shipped. The owner validates the imported recordings after installing; report any regression before wider rollout.',
+              body: 'Storage healing (STOR-260): history entries no longer disappear silently. Retention default is now Never (one-time migration only for installs still on the old default pair), a paginated trash view in History settings offers restore and confirmed purge (bulk restore via explicit selection), purge deletes the audio file before the database row with visible errors on locked files, and entries whose audio file is missing stay visible with an audio-file-missing badge. Also clears the full clippy --all-targets --all-features gate debt of the codebase. The owner validates the installed release; report any regression before wider rollout.',
               generate_release_notes: true
             })
             return data.id
