@@ -2,13 +2,12 @@
 //! a time in chunks that yield to dictation. Progress is kept in memory.
 
 use anyhow::{anyhow, Result};
-use log::{error, info, warn};
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::cell::Cell;
 use std::collections::VecDeque;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
@@ -17,8 +16,8 @@ use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 
 use crate::actions::process_transcription_output;
-use crate::audio_toolkit::{decode_audio_file, read_wav_samples, save_wav_file};
-use crate::managers::history::{HistoryEntry, HistoryManager};
+use crate::audio_toolkit::read_wav_samples;
+use crate::managers::history::HistoryManager;
 use crate::managers::transcription::{
     panic_payload_message, ChunkControl, Transcription, TranscriptionManager,
 };
@@ -113,51 +112,6 @@ impl TranscriptionJobManager {
         self.jobs
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    /// Decodes `path` into a recording, then adds it to History and queues
-    /// it. The recording exists first, so no entry is ever without audio.
-    pub fn transcribe_file(&self, path: PathBuf) -> Result<HistoryEntry> {
-        // A malformed file may panic the decoder.
-        let samples = catch_unwind(AssertUnwindSafe(|| decode_audio_file(&path))).unwrap_or_else(
-            |payload| {
-                Err(anyhow!(
-                    "Failed to read the file: {}",
-                    panic_payload_message(payload.as_ref())
-                ))
-            },
-        )?;
-        if samples.is_empty() {
-            return Err(anyhow!("The file has no audio"));
-        }
-
-        let hm = self.app.state::<Arc<HistoryManager>>();
-        let file_name = format!("handy-file-{}.wav", chrono::Utc::now().timestamp_millis());
-        let recording = hm.get_audio_file_path(&file_name);
-        // Written aside and renamed, so a crash never leaves a partial one.
-        let partial = recording.with_extension("wav.partial");
-        if let Err(e) = save_wav_file(&partial, &samples)
-            .and_then(|()| std::fs::rename(&partial, &recording).map_err(Into::into))
-        {
-            remove_recording(&partial);
-            return Err(e);
-        }
-        drop(samples);
-
-        let source_name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string());
-        let entry = match hm.save_file_entry(file_name, source_name) {
-            Ok(entry) => entry,
-            Err(e) => {
-                remove_recording(&recording);
-                return Err(e);
-            }
-        };
-        info!("Queued file transcription for history entry {}", entry.id);
-        self.queue(entry.id, false);
-        Ok(entry)
     }
 
     /// Queues the entry to be transcribed again from its recording, ahead
@@ -353,15 +307,6 @@ impl TranscriptionJobManager {
 enum JobEnd {
     Finished { post_process_failed: bool },
     Cancelled,
-}
-
-/// Best-effort cleanup; the caller is already reporting the failure.
-fn remove_recording(path: &Path) {
-    if let Err(e) = std::fs::remove_file(path) {
-        if e.kind() != std::io::ErrorKind::NotFound {
-            error!("Failed to remove {}: {}", path.display(), e);
-        }
-    }
 }
 
 fn crashed(payload: &(dyn std::any::Any + Send)) -> anyhow::Error {

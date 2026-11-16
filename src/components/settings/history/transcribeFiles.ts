@@ -50,8 +50,8 @@ export const transcribeFiles = async (paths: string[]): Promise<number> => {
   }));
   let added = 0;
   for (const [index, path] of paths.entries()) {
-    // Its audio is read in full before it appears in History.
-    const result = await commands.transcribeFile(path).finally(() => {
+    // Stream into canonical capture storage before scheduling transcription.
+    const result = await commands.importLocalAudio(path).finally(() => {
       useFileReadsStore.setState((state) => ({
         reads: state.reads.filter((read) => read.id !== reads[index].id),
       }));

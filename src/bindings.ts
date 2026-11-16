@@ -1013,7 +1013,7 @@ async cancelHistoryEntryTranscription(id: number) : Promise<void> {
  * Adds an audio or video file to History and queues its transcription.
  * Fails without adding anything if the file has no audio Handy can read.
  */
-async transcribeFile(path: string) : Promise<Result<HistoryEntry, string>> {
+async transcribeFile(path: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("transcribe_file", { path }) };
 } catch (e) {

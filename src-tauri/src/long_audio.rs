@@ -1089,6 +1089,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn long_float_wav_import_streams_beyond_fallback_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("long.wav");
+        let mut writer = hound::WavWriter::create(
+            &source,
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: SAMPLE_RATE,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        let frames = 9_000_000_u32;
+        for _ in 0..frames {
+            writer.write_sample(0.1_f32).unwrap();
+        }
+        writer.finalize().unwrap();
+        assert!(source.metadata().unwrap().len() > 32 * 1024 * 1024);
+        let output = prepare_working_wav(&source, dir.path(), "streamed").unwrap();
+        assert_ne!(source, output);
+        assert_eq!(inspect_wav(&output).unwrap(), u64::from(frames));
+    }
+
+    #[test]
+    fn canonical_opus_webm_import_uses_bounded_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["tone_440hz_mono.opus", "tone_440hz_stereo_120ms.webm"] {
+            let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(name);
+            let output = prepare_working_wav(&source, dir.path(), name).unwrap();
+            assert!(inspect_wav(&output).is_ok());
+        }
+        let oversized = dir.path().join("oversized.opus");
+        File::create(&oversized)
+            .unwrap()
+            .set_len(32 * 1024 * 1024 + 1)
+            .unwrap();
+        assert!(prepare_working_wav(&oversized, dir.path(), "oversized")
+            .unwrap_err()
+            .contains("IMPORT_FALLBACK_LIMIT"));
+    }
+
+    #[test]
     fn only_short_live_no_speech_is_discardable() {
         assert!(should_discard_silent_live_job(
             NO_SPEECH_ERROR,
