@@ -176,3 +176,48 @@ fn finish_returns_the_detector_for_the_next_recording() {
     assert_eq!(captured.vad.frame_samples(), FRAME);
     assert_eq!(captured.vad.hangover_for(VadPolicy::Streaming), 20);
 }
+
+#[test]
+fn checkpoint_failure_stops_audio_forwarding_and_preserves_partial_wav() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("capture.wav");
+    let errors = Arc::new(Mutex::new(Vec::new()));
+    let observed = errors.clone();
+    let mut h = harness(VadPolicy::Disabled);
+    h.sink = h
+        .sink
+        .with_durable_wav(&path)
+        .unwrap()
+        .on_write_error(Arc::new(move |error| {
+            observed.lock().unwrap().push(error);
+        }));
+    h.sink.process_chunk(chunk(&[0.5; FRAME], FRAME));
+    h.sink.fail_next_checkpoint = true;
+    h.sink.process_chunk(chunk(&[0.4; FRAME], FRAME));
+    h.sink.process_chunk(chunk(&[0.3; FRAME], FRAME));
+    assert_eq!(errors.lock().unwrap().len(), 1);
+    assert_eq!(h.fed.lock().unwrap().len(), FRAME);
+    assert!(h.sink.finish().write_failed);
+    assert!(path.exists());
+    let (db, _) =
+        crate::storage::migrations::open_and_migrate(&dir.path().join("history.db"), "test")
+            .unwrap();
+    let capture_id = crate::delivery::pipeline::complete_failed_prepared_dictation(
+        &db,
+        "Failed recording",
+        Some("capture.wav"),
+        None,
+        None,
+        "checkpoint failed",
+        None,
+        None,
+    )
+    .unwrap();
+    let report = crate::storage::recovery::reconcile_startup(&db, dir.path()).unwrap();
+    assert!(report.adopted_orphan_recordings.is_empty());
+    let attempts =
+        crate::storage::repositories::transcriptions::attempts_for_capture(&db, &capture_id)
+            .unwrap();
+    assert_eq!(attempts[0].status, "failed");
+    assert!(hound::WavReader::open(path).unwrap().duration() >= FRAME as u32);
+}

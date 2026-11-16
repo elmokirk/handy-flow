@@ -513,6 +513,7 @@ pub struct AudioRecordingManager {
     cached_device: Arc<Mutex<Option<(String, String)>>>,
     /// The last recording was all-zero samples, not just audio without speech.
     last_input_silent: Arc<AtomicBool>,
+    last_write_failed: Arc<AtomicBool>,
 }
 
 impl AudioRecordingManager {
@@ -555,6 +556,7 @@ impl AudioRecordingManager {
             capture_generation: Arc::new(AtomicU64::new(0)),
             cached_device: Arc::new(Mutex::new(None)),
             last_input_silent: Arc::new(AtomicBool::new(false)),
+            last_write_failed: Arc::new(AtomicBool::new(false)),
         };
 
         // Always-on?  Open immediately.
@@ -976,10 +978,16 @@ impl AudioRecordingManager {
                     );
                 }
                 let captured = stopped.sink.finish();
+                self.last_write_failed
+                    .store(captured.write_failed, Ordering::Release);
                 self.return_vad(captured.vad);
                 self.last_input_silent
                     .store(captured.input_silent, Ordering::Release);
-                captured.samples
+                if captured.write_failed {
+                    Vec::new()
+                } else {
+                    captured.samples
+                }
             }
             Err(e) => {
                 // The recording and its detector are lost with the sink.
@@ -1062,6 +1070,7 @@ impl AudioRecordingManager {
                 return Err(e);
             }
 
+            self.last_write_failed.store(false, Ordering::Release);
             let (ready_tx, receiver) = mpsc::channel();
             let sink = CaptureSink::new(
                 self.lend_vad()?,
@@ -1070,7 +1079,29 @@ impl AudioRecordingManager {
                 Arc::clone(&self.on_audio),
                 ready_tx,
             )
-            .with_durable_wav(wav_path)?;
+            .with_durable_wav(wav_path)?
+            .on_write_error({
+                let app = self.app_handle.clone();
+                let binding = binding_id.to_string();
+                Arc::new(move |detail| {
+                    // Stop outside the delivery thread: recorder.stop joins it.
+                    let app = app.clone();
+                    let binding = binding.clone();
+                    std::thread::spawn(move || {
+                        if let Some(action) = crate::actions::ACTION_MAP.get(&binding) {
+                            action.stop(&app, &binding, "");
+                        }
+                        crate::notices::raise(
+                            &app,
+                            crate::notices::Notice::new(
+                                NoticeCode::RecordingFailed,
+                                crate::notices::NoticeSource::Dictation,
+                            )
+                            .with_detail(detail),
+                        );
+                    });
+                })
+            });
 
             let recorder = self.recorder.lock().unwrap();
             let Some(microphone) = recorder.as_ref() else {
@@ -1235,6 +1266,10 @@ impl AudioRecordingManager {
     }
 
     /// Whether the last stopped recording's device sent only digital silence.
+    pub fn last_write_failed(&self) -> bool {
+        self.last_write_failed.load(Ordering::Acquire)
+    }
+
     pub fn last_input_silent(&self) -> bool {
         self.last_input_silent.load(Ordering::Acquire)
     }

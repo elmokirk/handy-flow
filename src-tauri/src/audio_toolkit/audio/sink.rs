@@ -76,6 +76,7 @@ pub struct CapturedAudio {
     pub input_silent: bool,
     /// The detector the recording borrowed, for the next one.
     pub vad: CaptureVad,
+    pub write_failed: bool,
 }
 
 /// One recording's consumer of 16 kHz mono audio from handy-recorder. Runs on
@@ -92,6 +93,10 @@ pub struct CaptureSink {
     ready: Option<mpsc::Sender<()>>,
     samples: Vec<f32>,
     heard_sound: bool,
+    on_write_error: Option<Arc<dyn Fn(String) + Send + Sync>>,
+    write_failed: bool,
+    #[cfg(test)]
+    fail_next_checkpoint: bool,
     durable: Option<hound::WavWriter<std::io::BufWriter<std::fs::File>>>,
 }
 
@@ -130,7 +135,16 @@ impl CaptureSink {
             samples: Vec::new(),
             heard_sound: false,
             durable: None,
+            on_write_error: None,
+            write_failed: false,
+            #[cfg(test)]
+            fail_next_checkpoint: false,
         }
+    }
+
+    pub fn on_write_error(mut self, callback: Arc<dyn Fn(String) + Send + Sync>) -> Self {
+        self.on_write_error = Some(callback);
+        self
     }
 
     pub fn with_durable_wav(mut self, path: &std::path::Path) -> anyhow::Result<Self> {
@@ -177,6 +191,7 @@ impl CaptureSink {
             // `ready` is spent on the first chunk, so `None` means audio came.
             input_silent: self.ready.is_none() && !self.heard_sound,
             vad: self.vad,
+            write_failed: self.write_failed,
         }
     }
 
@@ -188,6 +203,9 @@ impl CaptureSink {
 
 impl Sink for CaptureSink {
     fn process_chunk(&mut self, chunk: AudioChunk<'_>) {
+        if self.write_failed {
+            return;
+        }
         if let Some(ready) = self.ready.take() {
             let _ = ready.send(());
         }
@@ -204,8 +222,20 @@ impl Sink for CaptureSink {
                     writer.write_sample((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
                 })
                 .and_then(|_| writer.flush());
+            #[cfg(test)]
+            let result = if self.fail_next_checkpoint {
+                Err(hound::Error::IoError(std::io::Error::other(
+                    "injected disk write failure",
+                )))
+            } else {
+                result
+            };
             if let Err(error) = result {
-                log::error!("Durable capture checkpoint failed: {error}");
+                self.write_failed = true;
+                if let Some(callback) = &self.on_write_error {
+                    callback(error.to_string());
+                }
+                return;
             }
         }
         if let Some(levels) = self.visualizer.feed(real) {

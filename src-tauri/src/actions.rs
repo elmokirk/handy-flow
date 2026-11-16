@@ -2,12 +2,6 @@
 use crate::apple_intelligence;
 use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, SoundType};
 use crate::audio_toolkit::VadPolicy;
-fn is_microphone_access_denied(error: &str) -> bool {
-    error.to_lowercase().contains("permission")
-}
-fn is_no_input_device_error(error: &str) -> bool {
-    error.to_lowercase().contains("no input device")
-}
 use crate::delivery::pipeline::complete_failed_prepared_dictation;
 use crate::delivery::{deliver_with_audit, DeliverySource, SqliteDeliveryAudit};
 use crate::managers::audio::AudioRecordingManager;
@@ -111,12 +105,6 @@ pub(crate) fn record_cancelled_capture(app: &AppHandle) {
         }
     }
     let _ = app.emit("canonical-history-changed", ());
-}
-
-#[derive(Clone, serde::Serialize)]
-struct RecordingErrorEvent {
-    error_type: String,
-    detail: Option<String>,
 }
 
 /// Audio facts the canonical `captures` row wants. Hashing is skipped when
@@ -670,6 +658,16 @@ pub(crate) async fn deliver_background_live(
     if !capture_is_active(&hm, capture_id) {
         return;
     }
+    crate::notices::clear(app, crate::notices::NoticeSource::Dictation);
+    if processed.post_process_failed {
+        crate::notices::raise_without_overlay(
+            app,
+            crate::notices::Notice::new(
+                crate::notices::NoticeCode::PostProcessFailed,
+                crate::notices::NoticeSource::Dictation,
+            ),
+        );
+    }
     let mut source = DeliverySource {
         capture_id: Some(capture_id.to_string()),
         attempt_id: attempt_id.to_string(),
@@ -953,19 +951,13 @@ impl ShortcutAction for TranscribeAction {
             utils::hide_recording_overlay(app);
             set_tray_state(app, TrayIconState::Idle);
             if let Some(err) = recording_error {
-                let error_type = if is_microphone_access_denied(&err) {
-                    "microphone_permission_denied"
-                } else if is_no_input_device_error(&err) {
-                    "no_input_device"
-                } else {
-                    "unknown"
-                };
-                let _ = app.emit(
-                    "recording-error",
-                    RecordingErrorEvent {
-                        error_type: error_type.to_string(),
-                        detail: Some(err),
-                    },
+                crate::notices::raise(
+                    app,
+                    crate::notices::Notice::new(
+                        crate::notices::NoticeCode::RecordingFailed,
+                        crate::notices::NoticeSource::Dictation,
+                    )
+                    .with_detail(err),
                 );
             }
         }
@@ -1033,7 +1025,7 @@ impl ShortcutAction for TranscribeAction {
                 if samples.is_empty() {
                     error!("Recording produced no audio samples");
                     if let Some(capture) = &active {
-                        if wav_may_contain_audio(&capture.wav_path) {
+                        if rm.last_write_failed() || wav_may_contain_audio(&capture.wav_path) {
                             record_canonical_failure(
                                 &hm,
                                 Some(&capture.capture_id),
