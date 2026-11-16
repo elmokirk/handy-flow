@@ -30,7 +30,7 @@ pub const OVERLAP_SAMPLES: u64 = 2 * SAMPLE_RATE as u64;
 /// AAC (M4A/MP4/ADTS), Vorbis-in-OGG and FLAC are decoded natively; Opus and
 /// AMR recordings have no native decoder yet and are rejected here.
 pub const SUPPORTED_IMPORT_EXTENSIONS: &[&str] = &[
-    "wav", "mp3", "m4a", "mp4", "m4b", "m4r", "aac", "flac", "ogg", "oga", "mov",
+    "wav", "mp3", "m4a", "mp4", "m4b", "m4r", "aac", "flac", "ogg", "oga", "mov", "opus", "webm",
 ];
 // ponytail: six-minute one-shot ceiling preserves foreground dictation UX;
 // the isolated child falls back to small windows if a device cannot run it.
@@ -254,6 +254,13 @@ pub fn prepare_working_wav(
     if inspect_wav(&work_path).is_ok() {
         return Ok(work_path);
     }
+    if matches!(extension.as_str(), "opus" | "webm") {
+        log::info!("Using bounded Opus/WebM import fallback");
+        let samples =
+            crate::audio_toolkit::audio::decode_audio_file(source).map_err(|e| e.to_string())?;
+        crate::audio_toolkit::save_wav_file(&work_path, &samples).map_err(|e| e.to_string())?;
+        return Ok(work_path);
+    }
     let file = File::open(source).map_err(|e| e.to_string())?;
     let decoder = Decoder::try_from(file).map_err(|e| format!("Cannot decode audio: {e}"))?;
     let staging = work_dir.join(format!("{capture_id}.part"));
@@ -267,7 +274,11 @@ pub fn prepare_working_wav(
         },
     )
     .map_err(|e| e.to_string())?;
-    let converted = UniformSourceIterator::new(decoder, 1, SAMPLE_RATE);
+    let converted = UniformSourceIterator::new(
+        decoder,
+        std::num::NonZeroU16::new(1).unwrap(),
+        std::num::NonZeroU32::new(SAMPLE_RATE).unwrap(),
+    );
     let mut count = 0_u64;
     for sample in converted {
         let scaled = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;

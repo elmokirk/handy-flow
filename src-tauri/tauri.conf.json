@@ -45,7 +45,11 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libgtk-layer-shell0", "libopenblas0"],
+        "depends": [
+          "libgtk-layer-shell0",
+          "libopenblas0",
+          "libssl3t64 | libssl3"
+        ],
         "files": {
           "/usr/lib/Handy": "transcribe-libs"
         }
@@ -71,7 +75,8 @@
     },
     "windows": {
       "nsis": {
-        "template": "nsis/installer.nsi"
+        "template": "nsis/installer.nsi",
+        "installerIcon": "icons/icon.ico"
       }
     }
   },

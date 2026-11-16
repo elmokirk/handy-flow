@@ -1,6 +1,7 @@
-use crate::managers::model::{ModelInfo, ModelManager};
+use crate::managers::model::{ModelInfo, ModelManager, RetiredModel, LANGUAGE_DETECTOR_ID};
 use crate::managers::transcription::{ModelStateEvent, TranscriptionManager};
-use crate::settings::{get_settings, write_settings};
+use crate::notices::{self, NoticeSource};
+use crate::settings::{get_settings, write_settings, ModelUnloadTimeout};
 use log::error;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -49,8 +50,8 @@ pub async fn download_model(
         .map_err(|e| e.to_string());
 
     if let Err(ref error) = result {
-        // Log as well as emit: the toast is transient, and failed downloads have
-        // historically been undiagnosable because logs showed nothing (#1579).
+        // Log as well as emit: failed downloads have historically been
+        // undiagnosable because logs showed nothing (#1579).
         error!("Model download failed for {}: {}", model_id, error);
         let _ = app_handle.emit(
             "model-download-failed",
@@ -59,6 +60,54 @@ pub async fn download_model(
     }
 
     result
+}
+
+/// Whether the language detector is on disk.
+#[tauri::command]
+#[specta::specta]
+pub fn is_language_detector_downloaded(model_manager: State<'_, Arc<ModelManager>>) -> bool {
+    model_manager.language_detector_path().is_some()
+}
+
+/// Download the language detector on its own. Progress, completion,
+/// cancellation and failure use the model download events under
+/// `LANGUAGE_DETECTOR_ID`.
+#[tauri::command]
+#[specta::specta]
+pub async fn download_language_detector(
+    app_handle: AppHandle,
+    model_manager: State<'_, Arc<ModelManager>>,
+) -> Result<(), String> {
+    let result = model_manager
+        .download_language_detector()
+        .await
+        .map_err(|e| e.to_string());
+    if let Err(ref error) = result {
+        error!("Language detector download failed: {}", error);
+        let _ = app_handle.emit(
+            "model-download-failed",
+            serde_json::json!({ "model_id": LANGUAGE_DETECTOR_ID, "error": error }),
+        );
+    }
+    result
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_retired_models(model_manager: State<'_, Arc<ModelManager>>) -> Vec<RetiredModel> {
+    model_manager.get_retired_models()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn delete_retired_model(
+    model_manager: State<'_, Arc<ModelManager>>,
+    model_id: String,
+) -> Result<(), String> {
+    model_manager.delete_retired_model(&model_id).map_err(|e| {
+        error!("Retired model delete failed for {}: {}", model_id, e);
+        e.to_string()
+    })
 }
 
 #[tauri::command]
@@ -72,8 +121,13 @@ pub async fn delete_model(
     // If deleting the active model, unload it and clear the setting
     let settings = get_settings(&app_handle);
     if settings.selected_model == model_id {
-        transcription_manager
-            .unload_model()
+        transcription_manager.ensure_model_unlocked()?;
+        // Waits for the worker to exit (behind any transcription in progress)
+        // before the file is deleted, so keep it off the async workers.
+        let tm = Arc::clone(&transcription_manager);
+        tauri::async_runtime::spawn_blocking(move || tm.unload_model())
+            .await
+            .map_err(|e| format!("Failed to unload model: {}", e))?
             .map_err(|e| format!("Failed to unload model: {}", e))?;
 
         let mut settings = get_settings(&app_handle);
@@ -81,40 +135,79 @@ pub async fn delete_model(
         write_settings(&app_handle, settings);
     }
 
-    model_manager
-        .delete_model(&model_id)
-        .map_err(|e| e.to_string())
+    model_manager.delete_model(&model_id).map_err(|e| {
+        // The UI only shows a generic failure message, so the cause has to be logged.
+        error!("Model delete failed for {}: {}", model_id, e);
+        e.to_string()
+    })
 }
 
 /// Select a downloaded model without loading native inference in the UI
 /// process. The isolated worker loads it for the next queued attempt.
 pub fn switch_active_model(app: &AppHandle, model_id: &str) -> Result<(), String> {
     let model_manager = app.state::<Arc<ModelManager>>();
+    let transcription_manager = app.state::<Arc<TranscriptionManager>>();
+    transcription_manager.ensure_model_unlocked()?;
+
+    // Atomically claim the loading slot — prevents concurrent model loads
+    // from tray double-clicks or overlapping commands. The guard resets the
+    // flag on drop (including early returns, errors, and panics).
+    let _loading_guard = transcription_manager
+        .try_start_loading()
+        .ok_or_else(|| "Model load already in progress".to_string())?;
+
+    // Check if model exists and is available
     let model_info = model_manager
         .get_model_info(model_id)
         .ok_or_else(|| format!("Model not found: {model_id}"))?;
     if !model_info.is_downloaded {
         return Err(format!("Model not downloaded: {model_id}"));
     }
-    let transcription_manager = app.state::<Arc<TranscriptionManager>>();
-    if transcription_manager.is_model_loaded() {
-        transcription_manager
-            .unload_model()
-            .map_err(|e| e.to_string())?;
-    }
-    let mut settings = get_settings(app);
+
+    let settings = get_settings(app);
+    let unload_timeout = settings.model_unload_timeout;
+    let old_model = settings.selected_model.clone();
+
+    // Persist the new selection early so the frontend sees the correct model
+    // when it reacts to events emitted by load_model.
+    let mut settings = settings;
     settings.selected_model = model_id.to_string();
-    settings.onboarding_completed = true;
+
     write_settings(app, settings);
-    let _ = app.emit(
-        "model-state-changed",
-        ModelStateEvent {
-            event_type: "selection_changed".into(),
-            model_id: Some(model_id.into()),
-            model_name: Some(model_info.name),
-            error: None,
-        },
-    );
+
+    // Skip eager loading if unload is set to "Immediately" — the model
+    // will be loaded on-demand during the next transcription.
+    if unload_timeout == ModelUnloadTimeout::Immediately {
+        // Notify frontend — load_model won't be called so no events
+        // would otherwise be emitted.
+        let _ = app.emit(
+            "model-state-changed",
+            ModelStateEvent {
+                event_type: "selection_changed".to_string(),
+                model_id: Some(model_id.to_string()),
+                model_name: Some(model_info.name.clone()),
+                error: None,
+            },
+        );
+        log::info!(
+            "Model selection changed to {} (not loading — unload set to Immediately).",
+            model_id
+        );
+        return Ok(());
+    }
+
+    // Load the model. On failure, revert the persisted selection.
+    if let Err(e) = transcription_manager.load_model(model_id) {
+        notices::raise(
+            app,
+            transcription_manager.model_load_notice(model_id, &e, NoticeSource::Model),
+        );
+        let mut settings = get_settings(app);
+        settings.selected_model = old_model;
+        write_settings(app, settings);
+        return Err(e.to_string());
+    }
+
     Ok(())
 }
 #[tauri::command]

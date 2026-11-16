@@ -1,7 +1,13 @@
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use crate::apple_intelligence;
 use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, SoundType};
-use crate::audio_toolkit::{is_microphone_access_denied, is_no_input_device_error, VadPolicy};
+use crate::audio_toolkit::VadPolicy;
+fn is_microphone_access_denied(error: &str) -> bool {
+    error.to_lowercase().contains("permission")
+}
+fn is_no_input_device_error(error: &str) -> bool {
+    error.to_lowercase().contains("no input device")
+}
 use crate::delivery::pipeline::complete_failed_prepared_dictation;
 use crate::delivery::{deliver_with_audit, DeliverySource, SqliteDeliveryAudit};
 use crate::managers::audio::AudioRecordingManager;
@@ -27,6 +33,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
+use tauri_specta::Event;
 
 #[cfg(test)]
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -533,6 +540,7 @@ async fn maybe_convert_chinese_variant(
 }
 
 pub(crate) struct ProcessedTranscription {
+    pub post_process_failed: bool,
     pub final_text: String,
     pub post_processed_text: Option<String>,
     pub post_process_prompt: Option<String>,
@@ -552,6 +560,7 @@ fn resolve_effective_language(app: &AppHandle, settings: &AppSettings) -> String
     match model_manager.get_model_info(&active_model) {
         Some(info) => crate::managers::model::effective_language(
             &settings.selected_language,
+            &settings.spoken_languages,
             &info.supported_languages,
             info.supports_language_detection,
         ),
@@ -580,7 +589,14 @@ pub(crate) async fn process_transcription_output(
     }
 
     if post_process {
-        if let Some(processed_text) = post_process_transcription(&settings, &final_text).await {
+        if let Some(processed_text) = tokio::time::timeout(
+            Duration::from_secs(60),
+            post_process_transcription(&settings, &final_text),
+        )
+        .await
+        .ok()
+        .flatten()
+        {
             post_processed_text = Some(processed_text.clone());
             final_text = processed_text;
 
@@ -599,6 +615,7 @@ pub(crate) async fn process_transcription_output(
     }
 
     ProcessedTranscription {
+        post_process_failed: post_process && post_processed_text.is_none(),
         final_text,
         post_processed_text,
         post_process_prompt,
@@ -728,6 +745,16 @@ pub(crate) async fn deliver_background_live(
             Some(audit) => deliver_with_audit(sink.as_ref(), &audit, &source, &text),
             None => sink.deliver(&text),
         };
+        let _ = TranscriptionCompleteEvent {
+            outcome: if result.is_ok() {
+                TranscriptionOutcome::Typed
+            } else {
+                TranscriptionOutcome::Failed
+            },
+            audio_seconds: meta.duration_samples as f64 / 16000.0,
+            wait_seconds: meta.stopped_at.elapsed().as_secs_f64(),
+        }
+        .emit(&app_clone);
         if let Err(error) = result {
             log::error!("Could not deliver background transcript: {error}");
             let _ = app_clone.emit("paste-error", ());
@@ -830,7 +857,10 @@ impl ShortcutAction for TranscribeAction {
         let start_result = new_capture
             .as_ref()
             .map_err(Clone::clone)
-            .and_then(|capture| rm.try_start_recording(&binding_id, vad_policy, &capture.wav_path));
+            .and_then(|capture| {
+                rm.try_start_recording(&binding_id, vad_policy, &capture.wav_path)
+                    .map_err(|error| error.to_string())
+            });
         match start_result {
             Ok(readiness) => {
                 LIVE_DELIVERY_GENERATION.fetch_add(1, Ordering::AcqRel);
@@ -1394,4 +1424,26 @@ mod tests {
             false
         ));
     }
+}
+
+/// How a dictation ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum TranscriptionOutcome {
+    /// The text was typed.
+    Typed,
+    /// Nothing was heard, so nothing was typed.
+    Empty,
+    /// The microphone sent only digital silence (e.g. muted).
+    Silent,
+    /// Transcribing or pasting failed.
+    Failed,
+}
+
+/// Emitted when a dictation finishes (not on cancel); onboarding uses it to measure speed.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
+pub struct TranscriptionCompleteEvent {
+    pub outcome: TranscriptionOutcome,
+    pub audio_seconds: f64,
+    pub wait_seconds: f64,
 }
