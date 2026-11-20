@@ -1286,10 +1286,9 @@ fn post_process_transcription_text(
         // Convert the script before custom words so they match in the script
         // the user writes in. Decided from the text, since mixed Mandarin/English
         // is often detected as English; Japanese is never rewritten.
-        let raw = match chinese_variety_for_text(&raw, &output_language) {
-            Some(variety) => convert_chinese_script(&raw, variety, settings.chinese_script),
-            None => raw,
-        };
+        let raw = PreviewScript::new(settings.chinese_script, &output_language)
+            .convert(&raw, "")
+            .0;
 
         let corrected = if !settings.custom_words.is_empty() && !custom_words_already_prompted {
             apply_custom_words(
@@ -1712,6 +1711,57 @@ mod tests {
             preview.convert("学校に", "行きます"),
             ("学校に".to_string(), "行きます".to_string())
         );
+    }
+
+    #[test]
+    fn production_script_conversion_matches_existing_rule_and_preview_segments() {
+        for script in [
+            ChineseScript::AsTranscribed,
+            ChineseScript::Simplified,
+            ChineseScript::TraditionalTw,
+            ChineseScript::TraditionalHk,
+        ] {
+            for evidence in [
+                OutputLanguageEvidence::Unknown,
+                OutputLanguageEvidence::ModelDetected("en".into()),
+                OutputLanguageEvidence::UserSelected("zh".into()),
+                OutputLanguageEvidence::ModelDetected("yue".into()),
+                OutputLanguageEvidence::ModelDetected("ja".into()),
+                OutputLanguageEvidence::TranslatedToEnglish,
+            ] {
+                let settings = AppSettings {
+                    chinese_script: script,
+                    filler_word_removal_enabled: false,
+                    ..Default::default()
+                };
+                for (committed, tentative) in [
+                    ("我跟你说，", "I forgot my laptop"),
+                    ("我們今天下午去學校，", "然後食飯"),
+                    ("学校に", "行きます"),
+                    ("Hello ", "world"),
+                ] {
+                    let raw = format!("{committed}{tentative}");
+                    let expected = match chinese_variety_for_text(&raw, &evidence) {
+                        Some(variety) => convert_chinese_script(&raw, variety, script),
+                        None => raw.clone(),
+                    };
+                    let preview = PreviewScript::new(script, &evidence);
+                    assert_eq!(preview.convert(&raw, "").0, expected);
+                    let (left, right) = preview.convert(committed, tentative);
+                    assert_eq!(format!("{left}{right}"), expected);
+                    assert_eq!(
+                        post_process_transcription_text(
+                            raw,
+                            &settings,
+                            false,
+                            &evidence,
+                            &languages(&["zh", "en", "ja", "yue"])
+                        ),
+                        expected
+                    );
+                }
+            }
+        }
     }
 
     #[test]
