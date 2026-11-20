@@ -37,6 +37,105 @@ struct ActiveDictation {
     file_name: String,
     wav_path: std::path::PathBuf,
     target_window: Option<isize>,
+    session: DictationSession,
+}
+
+fn take_active_dictation(
+    active: &mut Option<ActiveDictation>,
+    expected_wav: Option<&std::path::Path>,
+) -> Option<ActiveDictation> {
+    if expected_wav.is_some_and(|expected| {
+        active
+            .as_ref()
+            .is_none_or(|capture| capture.wav_path != expected)
+    }) {
+        return None;
+    }
+    active.take()
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DictationSession {
+    generation: u64,
+    cancel_generation: u64,
+}
+
+impl DictationSession {
+    #[cfg(test)]
+    pub(crate) fn for_test(generation: u64, cancel_generation: u64) -> Self {
+        Self {
+            generation,
+            cancel_generation,
+        }
+    }
+    fn is_current(self, generation: u64, cancel_generation: u64) -> bool {
+        self.generation == generation && self.cancel_generation == cancel_generation
+    }
+}
+
+/// Serialize notice/overlay changes with starts. Recheck on the main thread,
+/// since a queued UI update may outlive the recording that produced it.
+pub(crate) fn update_dictation_ui(
+    app: &AppHandle,
+    session: DictationSession,
+    update: impl FnOnce(&AppHandle) + Send + 'static,
+) {
+    let app_clone = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _active = ACTIVE_DICTATION.lock().unwrap();
+        if session.is_current(
+            LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
+            app_clone
+                .state::<Arc<AudioRecordingManager>>()
+                .cancel_generation(),
+        ) {
+            update(&app_clone);
+        }
+    });
+}
+
+fn empty_recording_outcome(input_silent: bool, error: Option<&str>) -> TranscriptionOutcome {
+    if error.is_some() {
+        TranscriptionOutcome::Failed
+    } else if input_silent {
+        TranscriptionOutcome::Silent
+    } else {
+        TranscriptionOutcome::Empty
+    }
+}
+
+pub(crate) fn report_live_failure(
+    app: &AppHandle,
+    meta: crate::long_audio::LiveJob,
+    error: String,
+) {
+    update_dictation_ui(app, meta.session, move |app| {
+        use crate::notices::{self, Notice, NoticeCode, NoticeSource};
+        let no_speech = error == "Audio contains no recognized speech";
+        if error == crate::long_audio::NO_MODEL_SELECTED_ERROR {
+            app.state::<Arc<TranscriptionManager>>()
+                .raise_no_model_selected();
+        } else if no_speech {
+            notices::clear(app, NoticeSource::Dictation);
+            utils::hide_recording_overlay(app);
+        } else {
+            notices::raise(
+                app,
+                Notice::new(NoticeCode::TranscriptionFailed, NoticeSource::Dictation)
+                    .with_detail(error),
+            );
+        }
+        let _ = TranscriptionCompleteEvent {
+            outcome: if no_speech {
+                TranscriptionOutcome::Empty
+            } else {
+                TranscriptionOutcome::Failed
+            },
+            audio_seconds: meta.duration_samples as f64 / 16000.0,
+            wait_seconds: meta.stopped_at.elapsed().as_secs_f64(),
+        }
+        .emit(app);
+    });
 }
 
 #[cfg(target_os = "windows")]
@@ -137,6 +236,44 @@ fn wav_may_contain_audio(path: &std::path::Path) -> bool {
     }
 }
 
+fn prepare_live_attempt(
+    hm: &HistoryManager,
+    capture: &ActiveDictation,
+    model_id: String,
+) -> anyhow::Result<String> {
+    let db = hm.canonical_db()?;
+    let (_, sha, size) = audio_facts(Some(&capture.file_name), &capture.wav_path);
+    let (Some(sha), Some(size)) = (sha, size) else {
+        anyhow::bail!("Could not verify original WAV before inference");
+    };
+    crate::storage::repositories::captures::attach_audio(
+        &db,
+        &capture.capture_id,
+        &capture.file_name,
+        &sha,
+        size,
+    )?;
+    let duration = hound::WavReader::open(&capture.wav_path)?.duration();
+    crate::storage::repositories::captures::set_audio_duration(
+        &db,
+        &capture.capture_id,
+        i64::from(duration) * 1000 / 16_000,
+    )?;
+    let attempt = crate::storage::repositories::transcriptions::insert_attempt(
+        &db,
+        &crate::storage::repositories::transcriptions::NewAttempt {
+            capture_id: capture.capture_id.clone(),
+            engine_raw: None,
+            normalized_stt: None,
+            model_id: Some(model_id),
+            language: None,
+            normalizer_version: crate::NORMALIZER_VERSION.to_string(),
+            dictionary_snapshot_sha256: None,
+        },
+    )?;
+    Ok(attempt.id)
+}
+
 /// PAD-306: record a dictation whose transcription failed, so the failure is
 /// diagnosable in the canonical tables instead of legacy-history-only.
 fn record_canonical_failure(
@@ -189,6 +326,7 @@ impl Drop for FinishGuard {
 pub trait ShortcutAction: Send + Sync {
     fn start(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str);
     fn stop(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str);
+    fn stop_if_capture(&self, _app: &AppHandle, _binding_id: &str, _wav_path: &std::path::Path) {}
 }
 
 // Transcribe Action
@@ -658,16 +796,19 @@ pub(crate) async fn deliver_background_live(
     if !capture_is_active(&hm, capture_id) {
         return;
     }
-    crate::notices::clear(app, crate::notices::NoticeSource::Dictation);
-    if processed.post_process_failed {
-        crate::notices::raise_without_overlay(
-            app,
-            crate::notices::Notice::new(
-                crate::notices::NoticeCode::PostProcessFailed,
-                crate::notices::NoticeSource::Dictation,
-            ),
-        );
-    }
+    let post_process_failed = processed.post_process_failed;
+    update_dictation_ui(app, meta.session, move |app| {
+        crate::notices::clear(app, crate::notices::NoticeSource::Dictation);
+        if post_process_failed {
+            crate::notices::raise_without_overlay(
+                app,
+                crate::notices::Notice::new(
+                    crate::notices::NoticeCode::PostProcessFailed,
+                    crate::notices::NoticeSource::Dictation,
+                ),
+            );
+        }
+    });
     let mut source = DeliverySource {
         capture_id: Some(capture_id.to_string()),
         attempt_id: attempt_id.to_string(),
@@ -704,7 +845,11 @@ pub(crate) async fn deliver_background_live(
     let timely = should_auto_paste(
         meta.duration_samples,
         meta.stopped_at.elapsed(),
-        meta.generation == LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
+        meta.session.is_current(
+            LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
+            app.state::<Arc<AudioRecordingManager>>()
+                .cancel_generation(),
+        ),
         app.state::<Arc<AudioRecordingManager>>().is_recording(),
         delivery_target_is_ready(app, meta.target_window),
     );
@@ -715,12 +860,15 @@ pub(crate) async fn deliver_background_live(
 
     let app_clone = app.clone();
     let text = processed.final_text;
-    let expected_generation = meta.generation;
     let _ = app.run_on_main_thread(move || {
-        if expected_generation != LIVE_DELIVERY_GENERATION.load(Ordering::Acquire)
-            || app_clone
+        if !meta.session.is_current(
+            LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
+            app_clone
                 .state::<Arc<AudioRecordingManager>>()
-                .is_recording()
+                .cancel_generation(),
+        ) || app_clone
+            .state::<Arc<AudioRecordingManager>>()
+            .is_recording()
             || !delivery_target_is_ready(&app_clone, meta.target_window)
             || !capture_is_active(
                 &app_clone.state::<Arc<HistoryManager>>(),
@@ -762,11 +910,16 @@ pub(crate) async fn deliver_background_live(
 
 impl ShortcutAction for TranscribeAction {
     fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
+        let mut active_dictation = ACTIVE_DICTATION.lock().unwrap();
         let start_time = Instant::now();
         debug!("TranscribeAction::start called for binding: {}", binding_id);
 
         let rm = app.state::<Arc<AudioRecordingManager>>();
         let hm = app.state::<Arc<HistoryManager>>();
+        let session = DictationSession {
+            generation: LIVE_DELIVERY_GENERATION.fetch_add(1, Ordering::AcqRel) + 1,
+            cancel_generation: rm.cancel_generation(),
+        };
 
         // Native ASR is loaded only in the isolated worker after capture.
         let kickoff_started = Instant::now();
@@ -844,6 +997,7 @@ impl ShortcutAction for TranscribeAction {
                 wav_path: hm.recordings_dir().join(&file_name),
                 file_name,
                 target_window: foreground_target(),
+                session,
             })
         })();
         let _ = app.emit("canonical-history-changed", ());
@@ -855,9 +1009,8 @@ impl ShortcutAction for TranscribeAction {
             .and_then(|capture| rm.try_start_recording(&binding_id, vad_policy, &capture.wav_path));
         match start_result {
             Ok(readiness) => {
-                LIVE_DELIVERY_GENERATION.fetch_add(1, Ordering::AcqRel);
                 let capture_id = new_capture.as_ref().unwrap().capture_id.clone();
-                *ACTIVE_DICTATION.lock().unwrap() = new_capture.ok();
+                *active_dictation = new_capture.ok();
                 debug!(
                     "Recording request accepted in {:?}; waiting for first microphone samples",
                     recording_start_time.elapsed()
@@ -962,6 +1115,25 @@ impl ShortcutAction for TranscribeAction {
     }
 
     fn stop(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
+        self.stop_capture(app, binding_id, None);
+    }
+
+    fn stop_if_capture(&self, app: &AppHandle, binding_id: &str, wav_path: &std::path::Path) {
+        self.stop_capture(app, binding_id, Some(wav_path));
+    }
+}
+
+impl TranscribeAction {
+    fn stop_capture(
+        &self,
+        app: &AppHandle,
+        binding_id: &str,
+        expected_wav: Option<&std::path::Path>,
+    ) {
+        let mut active_guard = ACTIVE_DICTATION.lock().unwrap();
+        let Some(active) = take_active_dictation(&mut active_guard, expected_wav) else {
+            return;
+        };
         // Prevent a slow microphone from emitting a ready event or start chime
         // after the user has already requested stop.
         app.state::<Arc<AudioRecordingManager>>()
@@ -988,8 +1160,10 @@ impl ShortcutAction for TranscribeAction {
 
         let binding_id = binding_id.to_string(); // Clone binding_id for the async task
         let post_process = self.post_process;
-        let cancel_generation = rm.cancel_generation();
-        let active = ACTIVE_DICTATION.lock().unwrap().take();
+        let session = active.session;
+        let cancel_generation = session.cancel_generation;
+        let stopped_at = Instant::now();
+        drop(active_guard);
 
         tauri::async_runtime::spawn(async move {
             let _guard = FinishGuard(ah.clone());
@@ -999,7 +1173,10 @@ impl ShortcutAction for TranscribeAction {
             );
 
             let stop_recording_time = Instant::now();
-            if let Some(samples) = rm.stop_recording(&binding_id, cancel_generation) {
+            let stopped = rm.stop_recording(&binding_id, cancel_generation, &active.wav_path);
+            let active = Some(active);
+            if let Some(stopped) = stopped {
+                let samples = stopped.samples;
                 debug!(
                     "Recording stopped and samples retrieved in {:?}, sample count: {}",
                     stop_recording_time.elapsed(),
@@ -1008,22 +1185,39 @@ impl ShortcutAction for TranscribeAction {
 
                 if rm.was_cancelled_since(cancel_generation) {
                     debug!("Transcription operation cancelled after recording stop");
-                    utils::hide_recording_overlay(&ah);
-                    set_tray_state(&ah, TrayIconState::Idle);
+                    if let Some(capture) = &active {
+                        record_canonical_failure(
+                            &hm,
+                            Some(&capture.capture_id),
+                            None,
+                            Some(&capture.file_name),
+                            &capture.wav_path,
+                            stopped
+                                .error
+                                .as_deref()
+                                .unwrap_or("Recording cancelled by user"),
+                        );
+                        let _ = ah.emit("canonical-history-changed", ());
+                    }
                     return;
                 }
 
-                if samples.is_empty() {
+                if samples.is_empty() || stopped.input_silent || stopped.error.is_some() {
                     error!("Recording produced no audio samples");
                     if let Some(capture) = &active {
-                        if rm.last_write_failed() || wav_may_contain_audio(&capture.wav_path) {
+                        let failure = stopped.error.as_deref().unwrap_or(if stopped.input_silent {
+                            "Microphone supplied only digital silence"
+                        } else {
+                            "Recording contains no speech after voice activity detection"
+                        });
+                        if stopped.error.is_some() || wav_may_contain_audio(&capture.wav_path) {
                             record_canonical_failure(
                                 &hm,
                                 Some(&capture.capture_id),
                                 None,
                                 Some(&capture.file_name),
                                 &capture.wav_path,
-                                "Recorder returned no samples; original WAV preserved",
+                                failure,
                             );
                             if hound::WavReader::open(&capture.wav_path).is_err() {
                                 if let Ok(db) = hm.canonical_db() {
@@ -1046,13 +1240,42 @@ impl ShortcutAction for TranscribeAction {
                         }
                         let _ = ah.emit("canonical-history-changed", ());
                     }
-                    utils::hide_recording_overlay(&ah);
-                    set_tray_state(&ah, TrayIconState::Idle);
+                    let outcome =
+                        empty_recording_outcome(stopped.input_silent, stopped.error.as_deref());
+                    update_dictation_ui(&ah, session, move |app| {
+                        crate::notices::clear(app, crate::notices::NoticeSource::Dictation);
+                        match outcome {
+                            TranscriptionOutcome::Silent | TranscriptionOutcome::Failed => {
+                                crate::notices::raise(
+                                    app,
+                                    crate::notices::Notice::new(
+                                        if outcome == TranscriptionOutcome::Silent {
+                                            crate::notices::NoticeCode::MicrophoneSilent
+                                        } else {
+                                            crate::notices::NoticeCode::RecordingFailed
+                                        },
+                                        crate::notices::NoticeSource::Dictation,
+                                    )
+                                    .with_detail(stopped.error),
+                                )
+                            }
+                            _ => utils::hide_recording_overlay(app),
+                        }
+                        set_tray_state(app, TrayIconState::Idle);
+                        let _ = TranscriptionCompleteEvent {
+                            outcome,
+                            audio_seconds: samples.len() as f64 / 16000.0,
+                            wait_seconds: stopped_at.elapsed().as_secs_f64(),
+                        }
+                        .emit(app);
+                    });
                 } else {
                     let Some(capture) = &active else {
                         error!("Recording stopped without an active canonical capture");
-                        utils::hide_recording_overlay(&ah);
-                        set_tray_state(&ah, TrayIconState::Idle);
+                        update_dictation_ui(&ah, session, |app| {
+                            utils::hide_recording_overlay(app);
+                            set_tray_state(app, TrayIconState::Idle);
+                        });
                         return;
                     };
                     let file_name = &capture.file_name;
@@ -1078,63 +1301,23 @@ impl ShortcutAction for TranscribeAction {
                             );
                         }
                     }
-                    let prepared_attempt_id = if wav_saved {
-                        let facts = audio_facts(Some(file_name), wav_path_for_verify);
-                        match (hm.canonical_db(), facts.1, facts.2) {
-                            (Ok(db), Some(sha), Some(size)) => {
-                                let prepared = crate::storage::repositories::captures::attach_audio(
-                                    &db, &capture.capture_id, file_name, &sha, size,
-                                ).and_then(|_| {
-                                    let duration_ms = hound::WavReader::open(wav_path_for_verify)
-                                        .map(|reader| i64::from(reader.duration()) * 1000 / 16_000)
-                                        .unwrap_or_default();
-                                    crate::storage::repositories::captures::set_audio_duration(
-                                        &db, &capture.capture_id, duration_ms,
-                                    )?;
-                                    crate::storage::repositories::transcriptions::insert_attempt(
-                                        &db,
-                                        &crate::storage::repositories::transcriptions::NewAttempt {
-                                            capture_id: capture.capture_id.clone(),
-                                            engine_raw: None,
-                                            normalized_stt: None,
-                                            model_id: Some(get_settings(&ah).selected_model),
-                                            language: None,
-                                            normalizer_version: crate::NORMALIZER_VERSION.to_string(),
-                                            dictionary_snapshot_sha256: None,
-                                        },
-                                    )
-                                });
-                                prepared.map(|attempt| attempt.id).map_err(|e| {
-                                    error!("Could not prepare canonical transcription attempt: {e}");
-                                    e
-                                }).ok()
-                            }
-                            _ => {
-                                error!("Could not verify original WAV before inference");
-                                None
-                            }
-                        }
-                    } else {
-                        None
-                    };
+                    update_dictation_ui(&ah, session, |app| {
+                        utils::hide_recording_overlay(app);
+                        set_tray_state(app, TrayIconState::Idle);
+                    });
+                    let duration_samples = hound::WavReader::open(wav_path_for_verify)
+                        .map(|reader| u64::from(reader.duration()))
+                        .unwrap_or_default();
+                    let registered = wav_saved && ah.state::<crate::long_audio::TranscriptionQueue>().register_live(
+                        crate::long_audio::LiveJob { post_process, session, stopped_at, duration_samples, target_window: capture.target_window },
+                        || match prepare_live_attempt(&hm, capture, get_settings(&ah).selected_model) {
+                            Ok(id) => Some(id),
+                            Err(error) => { error!("Could not prepare canonical transcription attempt: {error:#}"); None }
+                        },
+                    );
                     let _ = ah.emit("canonical-history-changed", ());
 
-                    if let Some(attempt_id) = prepared_attempt_id {
-                        let duration_samples = hound::WavReader::open(wav_path_for_verify)
-                            .map(|reader| u64::from(reader.duration()))
-                            .unwrap_or_default();
-                        ah.state::<crate::long_audio::TranscriptionQueue>()
-                            .register_live(
-                                attempt_id,
-                                crate::long_audio::LiveJob {
-                                    post_process,
-                                    generation: LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
-                                    stopped_at: Instant::now(),
-                                    duration_samples,
-                                    target_window: capture.target_window,
-                                },
-                            );
-                    } else {
+                    if !registered {
                         record_canonical_failure(
                             &hm,
                             Some(&capture.capture_id),
@@ -1145,8 +1328,6 @@ impl ShortcutAction for TranscribeAction {
                         );
                         let _ = ah.emit("canonical-history-changed", ());
                     }
-                    utils::hide_recording_overlay(&ah);
-                    set_tray_state(&ah, TrayIconState::Idle);
                 }
             } else {
                 debug!("No samples retrieved from recording stop");
@@ -1161,8 +1342,10 @@ impl ShortcutAction for TranscribeAction {
                     );
                     let _ = ah.emit("canonical-history-changed", ());
                 }
-                utils::hide_recording_overlay(&ah);
-                set_tray_state(&ah, TrayIconState::Idle);
+                update_dictation_ui(&ah, session, |app| {
+                    utils::hide_recording_overlay(app);
+                    set_tray_state(app, TrayIconState::Idle);
+                });
             }
         });
 
@@ -1235,6 +1418,62 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn delayed_write_callback_cannot_claim_a_new_take_on_the_same_binding() {
+        let mut active = Some(super::ActiveDictation {
+            capture_id: "new-capture".into(),
+            file_name: "new.wav".into(),
+            wav_path: "new.wav".into(),
+            target_window: None,
+            session: super::DictationSession {
+                generation: 8,
+                cancel_generation: 2,
+            },
+        });
+        assert!(
+            super::take_active_dictation(&mut active, Some(std::path::Path::new("old.wav")))
+                .is_none()
+        );
+        assert_eq!(active.as_ref().unwrap().capture_id, "new-capture");
+        let claimed =
+            super::take_active_dictation(&mut active, Some(std::path::Path::new("new.wav")))
+                .unwrap();
+        assert_eq!(claimed.session.generation, 8);
+        assert!(active.is_none());
+        assert!(
+            super::take_active_dictation(&mut active, None).is_none(),
+            "a second stop cannot claim the same take"
+        );
+    }
+    #[test]
+    fn stale_or_cancelled_dictation_cannot_change_notices() {
+        let session = super::DictationSession {
+            generation: 7,
+            cancel_generation: 2,
+        };
+        assert!(session.is_current(7, 2));
+        assert!(
+            !session.is_current(8, 2),
+            "fast restart of the same binding"
+        );
+        assert!(!session.is_current(7, 3), "cancel after stop");
+        assert!(!session.is_current(8, 3));
+    }
+
+    #[test]
+    fn stop_outcome_distinguishes_silence_no_speech_and_write_error() {
+        use super::TranscriptionOutcome::{Empty, Failed, Silent};
+        assert_eq!(super::empty_recording_outcome(true, None), Silent);
+        assert_eq!(super::empty_recording_outcome(false, None), Empty);
+        assert_eq!(
+            super::empty_recording_outcome(true, Some("disk full")),
+            Failed
+        );
+        assert_eq!(
+            super::empty_recording_outcome(false, Some("disk full")),
+            Failed
+        );
+    }
     use super::{
         complete_unless_cancelled, is_blank_transcription, should_auto_paste, strip_think_block,
         wav_may_contain_audio,

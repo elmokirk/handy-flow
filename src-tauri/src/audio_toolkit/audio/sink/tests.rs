@@ -221,3 +221,23 @@ fn checkpoint_failure_stops_audio_forwarding_and_preserves_partial_wav() {
     assert_eq!(attempts[0].status, "failed");
     assert!(hound::WavReader::open(path).unwrap().duration() >= FRAME as u32);
 }
+
+#[test]
+fn checkpoint_failure_preserves_detail_even_when_the_input_is_silent() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = harness(VadPolicy::Offline);
+    h.sink = h
+        .sink
+        .with_durable_wav(&dir.path().join("failed.wav"))
+        .unwrap();
+    h.sink.fail_next_checkpoint = true;
+    h.sink.process_chunk(chunk(&[0.0; FRAME], FRAME));
+    let captured = h.sink.finish();
+    assert!(captured.input_silent);
+    assert!(captured.write_failed);
+    assert!(captured
+        .write_error
+        .as_deref()
+        .unwrap()
+        .contains("injected disk write failure"));
+}

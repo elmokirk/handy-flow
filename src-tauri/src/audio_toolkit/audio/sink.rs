@@ -77,6 +77,7 @@ pub struct CapturedAudio {
     /// The detector the recording borrowed, for the next one.
     pub vad: CaptureVad,
     pub write_failed: bool,
+    pub write_error: Option<String>,
 }
 
 /// One recording's consumer of 16 kHz mono audio from handy-recorder. Runs on
@@ -95,6 +96,7 @@ pub struct CaptureSink {
     heard_sound: bool,
     on_write_error: Option<Arc<dyn Fn(String) + Send + Sync>>,
     write_failed: bool,
+    write_error: Option<String>,
     #[cfg(test)]
     fail_next_checkpoint: bool,
     durable: Option<hound::WavWriter<std::io::BufWriter<std::fs::File>>>,
@@ -137,6 +139,7 @@ impl CaptureSink {
             durable: None,
             on_write_error: None,
             write_failed: false,
+            write_error: None,
             #[cfg(test)]
             fail_next_checkpoint: false,
         }
@@ -192,6 +195,7 @@ impl CaptureSink {
             input_silent: self.ready.is_none() && !self.heard_sound,
             vad: self.vad,
             write_failed: self.write_failed,
+            write_error: self.write_error,
         }
     }
 
@@ -232,6 +236,7 @@ impl Sink for CaptureSink {
             };
             if let Err(error) = result {
                 self.write_failed = true;
+                self.write_error = Some(error.to_string());
                 if let Some(callback) = &self.on_write_error {
                     callback(error.to_string());
                 }

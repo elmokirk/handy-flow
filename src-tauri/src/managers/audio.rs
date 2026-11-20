@@ -238,7 +238,10 @@ const WHISPER_SAMPLE_RATE: usize = 16000;
 #[derive(Clone, Debug)]
 pub enum RecordingState {
     Idle,
-    Recording { binding_id: String },
+    Recording {
+        binding_id: String,
+        wav_path: std::path::PathBuf,
+    },
     Stopping,
 }
 
@@ -456,6 +459,14 @@ pub struct RecordingReadiness {
     generation: u64,
 }
 
+/// Facts frozen before the manager returns to Idle. A new recording cannot
+/// replace these with its own silence or failure status.
+pub struct StoppedRecording {
+    pub samples: Vec<f32>,
+    pub input_silent: bool,
+    pub error: Option<String>,
+}
+
 impl RecordingReadiness {
     pub fn wait(self) -> bool {
         self.receiver.recv().is_ok()
@@ -511,7 +522,6 @@ pub struct AudioRecordingManager {
     cached_device: Arc<Mutex<Option<(String, String)>>>,
     /// The last recording was all-zero samples, not just audio without speech.
     last_input_silent: Arc<AtomicBool>,
-    last_write_failed: Arc<AtomicBool>,
 }
 
 impl AudioRecordingManager {
@@ -552,7 +562,6 @@ impl AudioRecordingManager {
             capture_generation: Arc::new(AtomicU64::new(0)),
             cached_device: Arc::new(Mutex::new(None)),
             last_input_silent: Arc::new(AtomicBool::new(false)),
-            last_write_failed: Arc::new(AtomicBool::new(false)),
         };
 
         // Always-on?  Open immediately.
@@ -954,7 +963,7 @@ impl AudioRecordingManager {
 
     /// Stops the recording on `microphone`, returning its audio and taking
     /// back the detector it borrowed.
-    fn collect_recording(&self, microphone: &OpenMicrophone) -> Vec<f32> {
+    fn collect_recording(&self, microphone: &OpenMicrophone) -> StoppedRecording {
         match microphone.recorder.stop() {
             Ok(stopped) => {
                 match &stopped.end_reason {
@@ -974,15 +983,17 @@ impl AudioRecordingManager {
                     );
                 }
                 let captured = stopped.sink.finish();
-                self.last_write_failed
-                    .store(captured.write_failed, Ordering::Release);
                 self.return_vad(captured.vad);
                 self.last_input_silent
                     .store(captured.input_silent, Ordering::Release);
-                if captured.write_failed {
-                    Vec::new()
-                } else {
-                    captured.samples
+                StoppedRecording {
+                    samples: if captured.write_failed {
+                        Vec::new()
+                    } else {
+                        captured.samples
+                    },
+                    input_silent: self.last_input_silent(),
+                    error: captured.write_error,
                 }
             }
             Err(e) => {
@@ -993,7 +1004,11 @@ impl AudioRecordingManager {
                     microphone.failed.store(true, Ordering::Release);
                 }
                 *self.vad.lock().unwrap() = VadSlot::Unloaded;
-                Vec::new()
+                StoppedRecording {
+                    samples: Vec::new(),
+                    input_silent: false,
+                    error: Some(e.to_string()),
+                }
             }
         }
     }
@@ -1066,7 +1081,6 @@ impl AudioRecordingManager {
                 return Err(e);
             }
 
-            self.last_write_failed.store(false, Ordering::Release);
             let (ready_tx, receiver) = mpsc::channel();
             let sink = CaptureSink::new(
                 self.lend_vad()?,
@@ -1079,22 +1093,19 @@ impl AudioRecordingManager {
             .on_write_error({
                 let app = self.app_handle.clone();
                 let binding = binding_id.to_string();
+                let wav_path = wav_path.to_path_buf();
                 Arc::new(move |detail| {
+                    log::error!("Recording checkpoint failed: {detail}");
                     // Stop outside the delivery thread: recorder.stop joins it.
                     let app = app.clone();
                     let binding = binding.clone();
+                    let wav_path = wav_path.clone();
                     std::thread::spawn(move || {
                         if let Some(action) = crate::actions::ACTION_MAP.get(&binding) {
-                            action.stop(&app, &binding, "");
+                            action.stop_if_capture(&app, &binding, &wav_path);
                         }
-                        crate::notices::raise(
-                            &app,
-                            crate::notices::Notice::new(
-                                NoticeCode::RecordingFailed,
-                                crate::notices::NoticeSource::Dictation,
-                            )
-                            .with_detail(detail),
-                        );
+                        // The stop result owns the error and reports it after
+                        // persistence, guarded by its dictation session.
                     });
                 })
             });
@@ -1112,6 +1123,7 @@ impl AudioRecordingManager {
                         &mut state,
                         RecordingState::Recording {
                             binding_id: binding_id.to_string(),
+                            wav_path: wav_path.to_path_buf(),
                         },
                     );
                     debug!("Recording requested for binding {binding_id}");
@@ -1261,11 +1273,7 @@ impl AudioRecordingManager {
         self.cancel_generation.load(Ordering::Acquire)
     }
 
-    /// Whether the last stopped recording's device sent only digital silence.
-    pub fn last_write_failed(&self) -> bool {
-        self.last_write_failed.load(Ordering::Acquire)
-    }
-
+    /// Read only while draining a recording, before returning to Idle.
     pub fn last_input_silent(&self) -> bool {
         self.last_input_silent.load(Ordering::Acquire)
     }
@@ -1274,14 +1282,20 @@ impl AudioRecordingManager {
         self.cancel_generation.load(Ordering::Acquire) != generation
     }
 
-    pub fn stop_recording(&self, binding_id: &str, cancel_generation: u64) -> Option<Vec<f32>> {
-        self.invalidate_recording_readiness();
+    pub fn stop_recording(
+        &self,
+        binding_id: &str,
+        cancel_generation: u64,
+        expected_wav: &std::path::Path,
+    ) -> Option<StoppedRecording> {
         let mut state = self.state.lock().unwrap();
 
         match *state {
             RecordingState::Recording {
                 binding_id: ref active,
-            } if active == binding_id => {
+                ref wav_path,
+            } if active == binding_id && wav_path == expected_wav => {
+                self.invalidate_recording_readiness();
                 self.set_state(&mut state, RecordingState::Stopping);
                 drop(state);
 
@@ -1307,17 +1321,20 @@ impl AudioRecordingManager {
                     }
                 }
 
-                let samples = match self.recorder.lock().unwrap().as_ref() {
+                let mut stopped = match self.recorder.lock().unwrap().as_ref() {
                     Some(microphone) => self.collect_recording(microphone),
                     None => {
                         error!("Recorder not available");
                         self.last_input_silent.store(false, Ordering::Release);
-                        Vec::new()
+                        StoppedRecording {
+                            samples: Vec::new(),
+                            input_silent: false,
+                            error: Some("Recorder not available".into()),
+                        }
                     }
                 };
 
                 *self.is_recording.lock().unwrap() = false;
-                self.set_state(&mut self.state.lock().unwrap(), RecordingState::Idle);
 
                 // In on-demand mode, close the mic (lazily if the setting is enabled)
                 if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
@@ -1328,21 +1345,17 @@ impl AudioRecordingManager {
                     }
                 }
 
-                if self.was_cancelled_since(cancel_generation) {
-                    debug!("Recording stop cancelled; discarding captured samples");
-                    return None;
-                }
+                // The output and microphone cleanup both belong to this take.
+                // Only now may another start reuse the manager.
+                self.set_state(&mut self.state.lock().unwrap(), RecordingState::Idle);
 
                 // Pad if very short
-                let s_len = samples.len();
+                let s_len = stopped.samples.len();
                 // debug!("Got {} samples", s_len);
                 if s_len < WHISPER_SAMPLE_RATE && s_len > 0 {
-                    let mut padded = samples;
-                    padded.resize(WHISPER_SAMPLE_RATE * 5 / 4, 0.0);
-                    Some(padded)
-                } else {
-                    Some(samples)
+                    stopped.samples.resize(WHISPER_SAMPLE_RATE * 5 / 4, 0.0);
                 }
+                Some(stopped)
             }
             _ => None,
         }
@@ -1364,7 +1377,7 @@ impl AudioRecordingManager {
 
         match *state {
             RecordingState::Recording { .. } => {
-                self.set_state(&mut state, RecordingState::Idle);
+                self.set_state(&mut state, RecordingState::Stopping);
                 drop(state);
 
                 if let Some(microphone) = self.recorder.lock().unwrap().as_ref() {
@@ -1381,6 +1394,7 @@ impl AudioRecordingManager {
                         self.stop_microphone_stream();
                     }
                 }
+                self.set_state(&mut self.state.lock().unwrap(), RecordingState::Idle);
             }
             RecordingState::Stopping => {
                 debug!("Cancellation requested while recording is stopping");
