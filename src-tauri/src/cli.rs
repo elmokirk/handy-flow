@@ -4,6 +4,10 @@ use std::path::PathBuf;
 #[derive(Parser, Debug, Clone, Default)]
 #[command(name = "handy", about = "Handy - Speech to Text")]
 pub struct CliArgs {
+    #[arg(long, hide = true, requires = "canonical_import")]
+    pub canonical_sandbox: Option<PathBuf>,
+    #[arg(long, hide = true, requires = "canonical_sandbox")]
+    pub canonical_import: Option<PathBuf>,
     /// Internal line-oriented worker protocol; not an interactive CLI mode.
     #[arg(long, hide = true)]
     pub transcription_worker: bool,

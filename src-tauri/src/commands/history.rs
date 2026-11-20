@@ -512,7 +512,10 @@ fn queue_retry(app: &AppHandle, capture_id: String) -> Result<(), String> {
     Ok(())
 }
 
-fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String, String> {
+pub(crate) fn import_local_audio_file(
+    app: AppHandle,
+    source_path: String,
+) -> Result<String, String> {
     use crate::storage::models::IntegrityState;
     use crate::storage::repositories::{captures, transcriptions};
 

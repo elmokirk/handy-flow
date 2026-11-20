@@ -4,6 +4,7 @@ mod apple_intelligence;
 mod audio_feedback;
 pub mod audio_toolkit;
 mod autostart;
+mod canonical_headless;
 mod catalog;
 mod chinese_script;
 pub mod cli;
@@ -845,6 +846,10 @@ pub fn run(cli_args: CliArgs) {
     memory::init_allocator();
 
     // Detect portable mode before anything else
+    if let Err(error) = canonical_headless::validate(&cli_args) {
+        eprintln!("error: {error}");
+        std::process::exit(2);
+    }
     portable::init();
 
     // Parse console logging directives from RUST_LOG, falling back to info-level logging
@@ -1055,7 +1060,8 @@ pub fn run(cli_args: CliArgs) {
 
     // The headless path must run as its own instance (see the single-instance
     // note below), not forward to an already-running app.
-    let headless_mode = cli_args.transcription_worker
+    let headless_mode = cli_args.canonical_sandbox.is_some()
+        || cli_args.transcription_worker
         || cli_args.transcribe_file.is_some()
         || cli_args.list_devices
         || cli_args.list_models;
@@ -1204,7 +1210,12 @@ pub fn run(cli_args: CliArgs) {
                 let args = cli_args.clone();
                 std::thread::spawn(move || {
                     let code = run_headless_guarded(|| {
-                        if args.transcription_worker {
+                        if args.canonical_sandbox.is_some() {
+                            canonical_headless::run(&handle, &args).unwrap_or_else(|error| {
+                                eprintln!("error: {error}");
+                                1
+                            })
+                        } else if args.transcription_worker {
                             long_audio::run_worker(&handle)
                         } else {
                             run_headless_transcription(&handle, &args)
