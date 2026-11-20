@@ -27,8 +27,8 @@ pub const OVERLAP_SAMPLES: u64 = 2 * SAMPLE_RATE as u64;
 /// Audio file extensions accepted by the import pipeline. Recognition and
 /// validation are content-based (rodio/Symphonia probes the media, not the
 /// name), so the extension list only decides which files we even accept.
-/// AAC (M4A/MP4/ADTS), Vorbis-in-OGG and FLAC are decoded natively; Opus and
-/// AMR recordings have no native decoder yet and are rejected here.
+/// AAC, Vorbis and FLAC use the regular decoder; Opus/WebM can use the
+/// bounded Symphonia/libopus fallback. AMR remains unsupported.
 pub const SUPPORTED_IMPORT_EXTENSIONS: &[&str] = &[
     "wav", "mp3", "m4a", "mp4", "m4b", "m4r", "aac", "flac", "ogg", "oga", "mov", "opus", "webm",
 ];
@@ -147,7 +147,7 @@ fn silence_cut(path: &Path, start: u64, end: u64, total: u64) -> Result<u64, Str
 /// the formats that would have worked.
 pub fn unsupported_import_error(extension: &str) -> String {
     format!(
-        "Unsupported audio file type '.{extension}'. Supported: WAV, MP3, M4A/MP4 (AAC), AAC, FLAC, OGG. Opus and AMR recordings are not supported yet."
+        "Unsupported audio file type '.{extension}'. Supported: WAV, MP3, M4A/MP4/M4B/M4R (AAC), AAC, FLAC, OGG/OGA, MOV, Opus, WebM. AMR recordings are not supported yet."
     )
 }
 
@@ -1461,6 +1461,9 @@ mod tests {
         let error = prepare_working_wav(&path, &dir.path().join("work"), "capture").unwrap_err();
         assert!(error.contains("Unsupported audio file type"), "{error}");
         assert!(error.contains("Opus"), "{error}");
+        assert!(error.contains("Opus, WebM"), "{error}");
+        assert!(error.contains("AMR recordings are not supported yet"), "{error}");
+        assert!(!error.contains("Opus and AMR"), "{error}");
     }
 
     #[test]
