@@ -47,6 +47,16 @@ and (for focused-app delivery) foreground window, at most six minutes of audio,
 and at most 30 seconds since stop. Check before the hook, while it waits, after
 completion, and again on the main thread immediately before delivery.
 
+Every start attempt advances the delivery generation before recorder startup,
+including an attempt that fails. A previous pending result then remains in
+history instead of pasting. The final delivery gate deliberately retains the
+capture lock through delivery: releasing it after the check would let a new
+start invalidate the result before the actual paste. Cancellation also retains
+this lock through the synchronous recorder drain. These choices can delay new
+starts and queued UI updates by the delivery/drain duration, including a main
+thread cancel. They are latency tradeoffs, not a deadlock proof or a hard
+realtime guarantee; preserve the ordering when maintaining these paths.
+
 Cancellation checks run every 25 ms while awaiting the hook. Dropping the future
 reaches the existing `kill_on_drop`; hook timeout remains 30 seconds. Failed hooks
 fall back to their input text, empty stdout suppresses delivery, and exactly one
@@ -66,6 +76,21 @@ capture claims, session ownership, queue registration, hook process I/O,
 fallback/timeout/drop, delivery eligibility, immutable history, and delivery audit.
 The hook process tests run on Windows and require Windows PowerShell.
 
-Owner runtime checks, measured import RAM bounds, actual model-backed Opus/WebM
-import, and a real Specta export remain separate acceptance work. This page is
-not a release approval or a claim that those checks ran.
+The 2026-11-20 acceptance follow-up exported the actual Specta command/event
+registry in an isolated temporary test, without starting the user app. Generated
+bindings replace stale accelerator/model/settings declarations and match that
+export. Its canonical staging/preparation measurements used synthetic 10/60-minute
+float WAVs and 359-second Opus/WebM files in separate processes. These measure
+only preparation, excluding models, queue, database and WebView; they establish
+neither a universal RAM ceiling nor model-backed end-to-end acceptance. Commands,
+fixture hashes, baseline/peak counters and exclusions are in the workspace's
+`status/runs/UP-700-acceptance-followup-*` evidence.
+
+A fresh debug build also transcribed synthetic Opus/WebM speech with an already
+cached Parakeet model through the existing headless CLI, using a private portable
+copy and no user settings/audio. Its normal debug startup re-exported the same
+Specta contract. This CLI shares preparation and inference but does not insert
+canonical history; it does not validate the GUI import/queue/history flow.
+
+Owner runtime checks and actual model-backed Opus/WebM import through canonical
+history remain separate acceptance work. This page is not a release approval.
