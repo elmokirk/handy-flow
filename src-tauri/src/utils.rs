@@ -1,4 +1,3 @@
-use crate::managers::audio::AudioRecordingManager;
 use crate::managers::transcription::TranscriptionManager;
 use crate::shortcut;
 use crate::TranscriptionCoordinator;
@@ -98,20 +97,17 @@ pub fn cancel_current_operation(app: &AppHandle) {
     shortcut::unregister_cancel_shortcut(app);
 
     // Cancel any ongoing recording
-    let audio_manager = app.state::<Arc<AudioRecordingManager>>();
-    let recording_was_active = audio_manager.is_recording();
-    audio_manager.cancel_recording();
-    if recording_was_active {
-        crate::actions::record_cancelled_capture(app);
-    }
+    let (recording_was_active, session) = crate::actions::cancel_recording_capture(app);
 
     // Stop a transcription already in progress.
     let tm = app.state::<Arc<TranscriptionManager>>();
     tm.cancel_transcription();
 
     // Update tray icon and hide overlay
-    set_tray_state(app, crate::tray::TrayIconState::Idle);
-    hide_recording_overlay(app);
+    crate::actions::update_dictation_ui(app, session, |app| {
+        set_tray_state(app, crate::tray::TrayIconState::Idle);
+        hide_recording_overlay(app);
+    });
 
     // Unload model if immediate unload is enabled. Done before notifying the
     // coordinator, so a recording started next always loads afresh; it

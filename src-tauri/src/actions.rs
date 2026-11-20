@@ -163,12 +163,28 @@ fn delivery_target_is_ready(app: &AppHandle, expected_window: Option<isize>) -> 
 static ACTIVE_DICTATION: Lazy<Mutex<Option<ActiveDictation>>> = Lazy::new(|| Mutex::new(None));
 static LIVE_DELIVERY_GENERATION: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn record_cancelled_capture(app: &AppHandle) {
-    let Some(capture) = ACTIVE_DICTATION.lock().unwrap().take() else {
-        return;
+pub(crate) fn cancel_recording_capture(app: &AppHandle) -> (bool, DictationSession) {
+    // Serialize cancellation with starts, stop claims and the final paste gate.
+    // Freeze the old capture before Idle can let a new start replace it.
+    let mut active = ACTIVE_DICTATION.lock().unwrap();
+    let audio = app.state::<Arc<AudioRecordingManager>>();
+    let recording_was_active = audio.is_recording();
+    let recording_error = audio.cancel_recording();
+    let session = DictationSession {
+        generation: LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
+        cancel_generation: audio.cancel_generation(),
+    };
+    let capture = if recording_was_active {
+        active.take()
+    } else {
+        None
+    };
+    drop(active);
+    let Some(capture) = capture else {
+        return (recording_was_active, session);
     };
     let hm = app.state::<Arc<HistoryManager>>();
-    if !wav_may_contain_audio(&capture.wav_path) {
+    if recording_error.is_none() && !wav_may_contain_audio(&capture.wav_path) {
         if let Ok(db) = hm.canonical_db() {
             if let Err(error) = crate::long_audio::discard_silent_live_capture(
                 &db,
@@ -179,7 +195,7 @@ pub(crate) fn record_cancelled_capture(app: &AppHandle) {
             }
         }
         let _ = app.emit("canonical-history-changed", ());
-        return;
+        return (recording_was_active, session);
     }
     let valid = hound::WavReader::open(&capture.wav_path)
         .map(|reader| reader.duration() > 0)
@@ -190,7 +206,9 @@ pub(crate) fn record_cancelled_capture(app: &AppHandle) {
         None,
         valid.then_some(capture.file_name.as_str()),
         &capture.wav_path,
-        "Recording cancelled by user",
+        recording_error
+            .as_deref()
+            .unwrap_or("Recording cancelled by user"),
     );
     if !valid {
         if let Ok(db) = hm.canonical_db() {
@@ -202,6 +220,7 @@ pub(crate) fn record_cancelled_capture(app: &AppHandle) {
         }
     }
     let _ = app.emit("canonical-history-changed", ());
+    (recording_was_active, session)
 }
 
 /// Audio facts the canonical `captures` row wants. Hashing is skipped when
@@ -1183,11 +1202,13 @@ impl TranscribeAction {
         let Some(active) = take_active_dictation(&mut active_guard, expected_wav) else {
             return;
         };
-        // Prevent a slow microphone from emitting a ready event or start chime
-        // after the user has already requested stop.
-        app.state::<Arc<AudioRecordingManager>>()
-            .invalidate_recording_readiness();
-
+        let rm = Arc::clone(&app.state::<Arc<AudioRecordingManager>>());
+        if !rm.claim_recording_stop(binding_id, &active.wav_path) {
+            // Cancellation may already own the drain; leave its capture for
+            // cancel_recording_capture rather than consuming it twice.
+            *active_guard = Some(active);
+            return;
+        }
         // Unregister the cancel shortcut when transcription stops
         shortcut::unregister_cancel_shortcut(app);
 
@@ -1195,7 +1216,6 @@ impl TranscribeAction {
         debug!("TranscribeAction::stop called for binding: {}", binding_id);
 
         let ah = app.clone();
-        let rm = Arc::clone(&app.state::<Arc<AudioRecordingManager>>());
         let hm = Arc::clone(&app.state::<Arc<HistoryManager>>());
 
         // Keep the recording indicator until the recorder finishes its short

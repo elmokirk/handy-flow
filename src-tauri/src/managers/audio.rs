@@ -242,7 +242,25 @@ pub enum RecordingState {
         binding_id: String,
         wav_path: std::path::PathBuf,
     },
-    Stopping,
+    Stopping {
+        binding_id: String,
+        wav_path: std::path::PathBuf,
+    },
+}
+
+impl RecordingState {
+    fn stop_for(&self, binding: &str, expected_wav: &std::path::Path) -> Option<Self> {
+        match self {
+            Self::Recording {
+                binding_id,
+                wav_path,
+            } if binding_id == binding && wav_path == expected_wav => Some(Self::Stopping {
+                binding_id: binding_id.clone(),
+                wav_path: wav_path.clone(),
+            }),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1047,7 +1065,7 @@ impl AudioRecordingManager {
         self.recording_active.store(
             matches!(
                 *guard,
-                RecordingState::Recording { .. } | RecordingState::Stopping
+                RecordingState::Recording { .. } | RecordingState::Stopping { .. }
             ),
             Ordering::SeqCst,
         );
@@ -1282,21 +1300,31 @@ impl AudioRecordingManager {
         self.cancel_generation.load(Ordering::Acquire) != generation
     }
 
+    /// Reserve this exact take before dispatching asynchronous drain work.
+    /// Cancel then only signals the drain, rather than collecting its sink.
+    pub fn claim_recording_stop(&self, binding_id: &str, expected_wav: &std::path::Path) -> bool {
+        let mut state = self.state.lock().unwrap();
+        let Some(stopping) = state.stop_for(binding_id, expected_wav) else {
+            return false;
+        };
+        self.invalidate_recording_readiness();
+        self.set_state(&mut state, stopping);
+        true
+    }
+
     pub fn stop_recording(
         &self,
         binding_id: &str,
         cancel_generation: u64,
         expected_wav: &std::path::Path,
     ) -> Option<StoppedRecording> {
-        let mut state = self.state.lock().unwrap();
+        let state = self.state.lock().unwrap();
 
         match *state {
-            RecordingState::Recording {
+            RecordingState::Stopping {
                 binding_id: ref active,
                 ref wav_path,
             } if active == binding_id && wav_path == expected_wav => {
-                self.invalidate_recording_readiness();
-                self.set_state(&mut state, RecordingState::Stopping);
                 drop(state);
 
                 // Optionally keep recording for a bit longer to capture trailing audio.
@@ -1370,19 +1398,29 @@ impl AudioRecordingManager {
     }
 
     /// Cancel any ongoing recording without returning audio samples
-    pub fn cancel_recording(&self) {
+    pub fn cancel_recording(&self) -> Option<String> {
         self.invalidate_recording_readiness();
         self.cancel_generation.fetch_add(1, Ordering::AcqRel);
         let mut state = self.state.lock().unwrap();
 
         match *state {
-            RecordingState::Recording { .. } => {
-                self.set_state(&mut state, RecordingState::Stopping);
+            RecordingState::Recording {
+                ref binding_id,
+                ref wav_path,
+            } => {
+                let stopping = RecordingState::Stopping {
+                    binding_id: binding_id.clone(),
+                    wav_path: wav_path.clone(),
+                };
+                self.set_state(&mut state, stopping);
                 drop(state);
 
-                if let Some(microphone) = self.recorder.lock().unwrap().as_ref() {
-                    let _ = self.collect_recording(microphone); // Discard the result
-                }
+                let error = self
+                    .recorder
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .and_then(|microphone| self.collect_recording(microphone).error);
 
                 *self.is_recording.lock().unwrap() = false;
 
@@ -1395,11 +1433,13 @@ impl AudioRecordingManager {
                     }
                 }
                 self.set_state(&mut self.state.lock().unwrap(), RecordingState::Idle);
+                error
             }
-            RecordingState::Stopping => {
+            RecordingState::Stopping { .. } => {
                 debug!("Cancellation requested while recording is stopping");
+                None
             }
-            RecordingState::Idle => {}
+            RecordingState::Idle => None,
         }
     }
 }
@@ -1407,6 +1447,32 @@ impl AudioRecordingManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stop_claim_preserves_capture_identity_and_refuses_stale_or_repeated_claims() {
+        let recording = RecordingState::Recording {
+            binding_id: "transcribe".into(),
+            wav_path: "new.wav".into(),
+        };
+        assert!(recording
+            .stop_for("transcribe", std::path::Path::new("old.wav"))
+            .is_none());
+        assert!(recording
+            .stop_for("other", std::path::Path::new("new.wav"))
+            .is_none());
+        let stopping = recording
+            .stop_for("transcribe", std::path::Path::new("new.wav"))
+            .unwrap();
+        assert!(
+            matches!(&stopping, RecordingState::Stopping { binding_id, wav_path } if binding_id == "transcribe" && wav_path == std::path::Path::new("new.wav"))
+        );
+        assert!(stopping
+            .stop_for("transcribe", std::path::Path::new("new.wav"))
+            .is_none());
+        assert!(RecordingState::Idle
+            .stop_for("transcribe", std::path::Path::new("new.wav"))
+            .is_none());
+    }
 
     /// A recorder error, without touching a device: the request is rejected
     /// before one is opened.
