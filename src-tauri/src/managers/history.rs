@@ -356,26 +356,6 @@ impl HistoryManager {
         Ok(entry)
     }
 
-    /// Save the entry for a file whose audio is already at `file_name`.
-    /// Retention never removes it (only deleting it does); never
-    /// post-processed.
-    pub fn save_file_entry(&self, file_name: String, source_name: String) -> Result<HistoryEntry> {
-        self.insert_entry(HistoryEntry {
-            id: 0,
-            file_name,
-            timestamp: Utc::now().timestamp(),
-            saved: false,
-            title: String::new(),
-            transcription_text: String::new(),
-            post_processed_text: None,
-            post_process_prompt: None,
-            post_process_requested: false,
-            source_name: Some(source_name),
-            language: None,
-            language_source: None,
-        })
-    }
-
     /// Insert `entry`, filling in its id and title, and announce it.
     fn insert_entry(&self, mut entry: HistoryEntry) -> Result<HistoryEntry> {
         entry.title = self.format_timestamp_title(entry.timestamp);

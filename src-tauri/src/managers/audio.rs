@@ -7,7 +7,6 @@ use crate::audio_toolkit::{
     CaptureSink, CaptureVad, SileroVad, SpeechScorer, VadPolicy, VoiceActivityDetector,
 };
 use crate::helpers::clamshell;
-use crate::managers::transcription::StreamRouter;
 use crate::notices::NoticeCode;
 use crate::settings::{get_settings, write_settings, AppSettings, VadBackend};
 use crate::utils;
@@ -486,8 +485,7 @@ pub struct AudioRecordingManager {
     airpods_mode: Arc<AtomicBool>,
     /// Spectrum levels for the overlay.
     on_levels: LevelCallback,
-    /// VAD-passed frames for live streaming, via a shared `StreamRouter`
-    /// (captured directly, not via Tauri state — see its docs).
+    /// Disabled preview feed; the sink still captures durable audio and VAD.
     on_audio: AudioFrameCallback,
     is_open: Arc<Mutex<bool>>,
     is_recording: Arc<Mutex<bool>>,
@@ -519,10 +517,7 @@ pub struct AudioRecordingManager {
 impl AudioRecordingManager {
     /* ---------- construction ------------------------------------------------ */
 
-    pub fn new(
-        app: &tauri::AppHandle,
-        stream_router: Arc<StreamRouter>,
-    ) -> Result<Self, anyhow::Error> {
+    pub fn new(app: &tauri::AppHandle) -> Result<Self, anyhow::Error> {
         let settings = get_settings(app);
         let mode = if settings.always_on_microphone {
             MicrophoneMode::AlwaysOn
@@ -534,7 +529,8 @@ impl AudioRecordingManager {
             let app_handle = app.clone();
             Arc::new(move |levels| utils::emit_levels(&app_handle, &levels))
         };
-        let on_audio: AudioFrameCallback = Arc::new(move |frame| stream_router.feed(frame));
+        // Live preview stays disabled; keep the sink callback boundary intact.
+        let on_audio: AudioFrameCallback = Arc::new(|_frame| {});
 
         let manager = Self {
             state: Arc::new(Mutex::new(RecordingState::Idle)),

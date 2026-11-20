@@ -765,8 +765,6 @@ impl ShortcutAction for TranscribeAction {
         let start_time = Instant::now();
         debug!("TranscribeAction::start called for binding: {}", binding_id);
 
-        // Load model in the background
-        let tm = app.state::<Arc<TranscriptionManager>>();
         let rm = app.state::<Arc<AudioRecordingManager>>();
         let hm = app.state::<Arc<HistoryManager>>();
 
@@ -943,7 +941,6 @@ impl ShortcutAction for TranscribeAction {
         } else {
             // Starting failed (for example due to blocked microphone permissions).
             // Revert UI state so we don't stay stuck in the recording overlay.
-            tm.cancel_stream();
             utils::hide_recording_overlay(app);
             set_tray_state(app, TrayIconState::Idle);
             if let Some(err) = recording_error {
@@ -978,7 +975,6 @@ impl ShortcutAction for TranscribeAction {
 
         let ah = app.clone();
         let rm = Arc::clone(&app.state::<Arc<AudioRecordingManager>>());
-        let tm = Arc::clone(&app.state::<Arc<TranscriptionManager>>());
         let hm = Arc::clone(&app.state::<Arc<HistoryManager>>());
 
         // Keep the recording indicator until the recorder finishes its short
@@ -1012,7 +1008,6 @@ impl ShortcutAction for TranscribeAction {
 
                 if rm.was_cancelled_since(cancel_generation) {
                     debug!("Transcription operation cancelled after recording stop");
-                    tm.cancel_stream();
                     utils::hide_recording_overlay(&ah);
                     set_tray_state(&ah, TrayIconState::Idle);
                     return;
@@ -1051,9 +1046,6 @@ impl ShortcutAction for TranscribeAction {
                         }
                         let _ = ah.emit("canonical-history-changed", ());
                     }
-                    // Tear down any streaming worker so its channel doesn't leak
-                    // and block the next start_stream.
-                    tm.cancel_stream();
                     utils::hide_recording_overlay(&ah);
                     set_tray_state(&ah, TrayIconState::Idle);
                 } else {
@@ -1169,8 +1161,6 @@ impl ShortcutAction for TranscribeAction {
                     );
                     let _ = ah.emit("canonical-history-changed", ());
                 }
-                // Tear down any streaming worker so its channel doesn't leak.
-                tm.cancel_stream();
                 utils::hide_recording_overlay(&ah);
                 set_tray_state(&ah, TrayIconState::Idle);
             }

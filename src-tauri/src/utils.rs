@@ -13,16 +13,6 @@ use tauri::{AppHandle, Manager};
 pub use crate::overlay::*;
 pub use crate::tray::*;
 
-/// Preserve diagnostic text in development builds, but redact it in releases.
-/// Do not use for secrets such as API keys, which must always be redacted.
-pub fn redact_text(text: &str) -> &str {
-    if cfg!(debug_assertions) {
-        text
-    } else {
-        "[REDACTED]"
-    }
-}
-
 /// Main window's opening and minimum page size, in logical pixels.
 #[cfg(target_os = "macos")]
 pub const MAIN_WINDOW_SIZE: (f64, f64) = (720.0, 600.0);
@@ -115,10 +105,8 @@ pub fn cancel_current_operation(app: &AppHandle) {
         crate::actions::record_cancelled_capture(app);
     }
 
-    // Abandon any live streaming transcription, and stop a transcription
-    // already in progress
+    // Stop a transcription already in progress.
     let tm = app.state::<Arc<TranscriptionManager>>();
-    tm.cancel_stream();
     tm.cancel_transcription();
 
     // Update tray icon and hide overlay

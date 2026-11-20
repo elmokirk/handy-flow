@@ -1,5 +1,5 @@
-//! How audio is decoded: the one place the model's traits and the settings
-//! choose between streaming, long-form chunking and a single run.
+//! How batch audio is decoded: the model's traits and settings choose between
+//! long-form chunking and a single run.
 
 use crate::engine_supervisor::LoadedInfo;
 
@@ -23,18 +23,6 @@ impl ModelTraits {
     }
 }
 
-/// How a recording is decoded while it is still going.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LiveDecode {
-    /// The model decodes the audio as it arrives.
-    Stream,
-    /// Long audio is cut at pauses and each chunk decoded once its cut is
-    /// certain.
-    Chunked,
-    /// Nothing until the recording stops; then it is decoded in batch.
-    None,
-}
-
 /// How a whole clip is decoded: a recording without a live result, a
 /// re-transcribed history entry, or a file from the CLI.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,20 +34,7 @@ pub enum BatchDecode {
     Whole,
 }
 
-/// Streaming wins: a streaming model handles long audio itself. Otherwise
-/// long audio is chunked unless the model keeps its accuracy on it.
-pub fn live_decode(model: ModelTraits, long_form_chunking: bool) -> LiveDecode {
-    if model.streaming {
-        LiveDecode::Stream
-    } else if long_form_chunking && !model.long_form {
-        LiveDecode::Chunked
-    } else {
-        LiveDecode::None
-    }
-}
-
-/// As live, except that a streaming model takes a whole clip in one run, as
-/// it did before long-form chunking existed.
+/// Streaming models take a whole clip in one run, as before long-form chunking.
 pub fn batch_decode(model: ModelTraits, long_form_chunking: bool) -> BatchDecode {
     if long_form_chunking && !model.long_form && !model.streaming {
         BatchDecode::Chunked

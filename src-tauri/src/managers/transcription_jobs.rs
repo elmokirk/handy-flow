@@ -65,14 +65,6 @@ struct Jobs {
 }
 
 impl Jobs {
-    fn has(&self, entry_id: i64) -> bool {
-        self.running
-            .as_ref()
-            .is_some_and(|r| r.entry_id == entry_id)
-            || self.retries.contains(&entry_id)
-            || self.files.contains(&entry_id)
-    }
-
     fn is_idle(&self) -> bool {
         self.running.is_none() && self.retries.is_empty() && self.files.is_empty()
     }
@@ -112,32 +104,6 @@ impl TranscriptionJobManager {
         self.jobs
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    /// Queues the entry to be transcribed again from its recording, ahead
-    /// of any file.
-    pub fn retry(&self, entry_id: i64) {
-        self.queue(entry_id, true);
-    }
-
-    /// Queues the entry to be transcribed from its recording, unless it
-    /// already is.
-    fn queue(&self, entry_id: i64, retry: bool) {
-        {
-            let mut jobs = self.lock();
-            if jobs.has(entry_id) {
-                return;
-            }
-            if retry {
-                jobs.retries.push_back(entry_id);
-            } else {
-                jobs.files.push_back(entry_id);
-            }
-            self.sync_job_active(&jobs);
-        }
-        self.emit(entry_id, TranscriptionJobStatus::Queued);
-        crate::tray::update_tray_menu(&self.app);
-        self.wake.notify_one();
     }
 
     /// Stops the entry's job: a queued one is dropped, a running one stops
