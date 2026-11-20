@@ -513,7 +513,7 @@ async changeTranscribeGpuDevice(device: string | null) : Promise<Result<null, st
  * First-call cost is dominated by enumerating GPU devices through the
  * transcribe.cpp Metal/Vulkan backend, which loads dynamic libraries and
  * probes hardware. Run it on the blocking pool so the webview thread
- * stays responsive â€” see also the startup pre-warm in `lib.rs`.
+ * stays responsive — see also the startup pre-warm in `lib.rs`.
  */
 async getAvailableAccelerators() : Promise<AvailableAccelerators> {
     return await TAURI_INVOKE("get_available_accelerators");
@@ -562,6 +562,22 @@ async triggerUpdateCheck() : Promise<Result<null, string>> {
 async showMainWindowCommand() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("show_main_window_command") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async showScratchpad() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("show_scratchpad") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async hideScratchpad() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("hide_scratchpad") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -962,144 +978,6 @@ async unloadModelManually() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async getHistoryEntries(cursor: number | null, limit: number | null) : Promise<Result<PaginatedHistory, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_history_entries", { cursor, limit }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async toggleHistoryEntrySaved(id: number) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("toggle_history_entry_saved", { id }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getAudioFilePath(fileName: string) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_audio_file_path", { fileName }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async deleteHistoryEntry(id: number) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("delete_history_entry", { id }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Queues the entry to be transcribed again with the current model. Its
- * progress and outcome arrive as `TranscriptionJob` events.
- */
-async retryHistoryEntryTranscription(id: number) : Promise<void> {
-    await TAURI_INVOKE("retry_history_entry_transcription", { id });
-},
-/**
- * Stops the entry's background transcription: a queued one is dropped, a
- * running one stops after the chunk it is on. The entry keeps the text it
- * had before.
- */
-async cancelHistoryEntryTranscription(id: number) : Promise<void> {
-    await TAURI_INVOKE("cancel_history_entry_transcription", { id });
-},
-/**
- * Adds an audio or video file to History and queues its transcription.
- * Fails without adding anything if the file has no audio Handy can read.
- */
-async transcribeFile(path: string) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("transcribe_file", { path }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async updateHistoryLimit(limit: number) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("update_history_limit", { limit }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async updateRecordingRetentionPeriod(period: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("update_recording_retention_period", { period }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Checks if the Mac is a laptop by detecting battery presence
- *
- * This uses pmset to check for battery information.
- * Returns true if a battery is detected (laptop), false otherwise (desktop)
- */
-async isLaptop() : Promise<Result<boolean, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("is_laptop") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getActiveNotices() : Promise<Notice[]> {
-    return await TAURI_INVOKE("get_active_notices");
-},
-/**
- * The user is done with a notice. Matching the code leaves alone a newer
- * notice that replaced it after the user's view was drawn.
- */
-async dismissNotice(source: NoticeSource, code: NoticeCode) : Promise<void> {
-    await TAURI_INVOKE("dismiss_notice", { source, code });
-},
-/**
- * Hides the overlay notice; it stays active in the tray and footer.
- */
-async dismissOverlayNotice() : Promise<void> {
-    await TAURI_INVOKE("dismiss_overlay_notice");
-}
-,
-async changePttSetting(enabled: boolean) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_ptt_setting", { enabled }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async changeOrtAcceleratorSetting(accelerator: OrtAcceleratorSetting) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_ort_accelerator_setting", { accelerator }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async showScratchpad() : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("show_scratchpad") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async hideScratchpad() : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("hide_scratchpad") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async dictionaryList() : Promise<Result<DictionaryEntry[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("dictionary_list") };
@@ -1124,6 +1002,9 @@ async dictionaryDelete(id: string) : Promise<Result<boolean, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Import legacy settings `custom_words` once (idempotent) and report count.
+ */
 async dictionaryImportLegacy() : Promise<Result<number, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("dictionary_import_legacy") };
@@ -1132,6 +1013,9 @@ async dictionaryImportLegacy() : Promise<Result<number, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Import a CSV (term, alias1;alias2) exported earlier / manually edited.
+ */
 async dictionaryImportCsv(csv: string) : Promise<Result<number, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("dictionary_import_csv", { csv }) };
@@ -1140,6 +1024,9 @@ async dictionaryImportCsv(csv: string) : Promise<Result<number, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Export as `term;alias1|alias2` lines (CSV-ish, stable order).
+ */
 async dictionaryExport() : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("dictionary_export") };
@@ -1172,6 +1059,9 @@ async snippetsDelete(id: string) : Promise<Result<boolean, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Live preview: what would the current snippet set do to this text?
+ */
 async snippetsTestApply(text: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("snippets_test_apply", { text }) };
@@ -1204,6 +1094,11 @@ async promptProfilesDelete(id: string) : Promise<Result<boolean, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Run one transform profile against the note's CURRENT content and append
+ * the result as a NEW version (source = `transform`). The source version
+ * stays untouched and remains restorable (PAD-303, G3).
+ */
 async notesTransform(noteId: string, profileId: string) : Promise<Result<NoteVersionDto, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("notes_transform", { noteId, profileId }) };
@@ -1220,6 +1115,11 @@ async notesList() : Promise<Result<NoteDto[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Bounded full-text search over active notes (NOTE-304). `limit` is
+ * clamped 1..=200 downstream, so a frontend bug cannot request an
+ * unbounded scan.
+ */
 async notesSearch(query: string, limit: number, offset: number) : Promise<Result<NoteDto[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("notes_search", { query, limit, offset }) };
@@ -1244,6 +1144,11 @@ async notesCurrent(noteId: string) : Promise<Result<NoteVersionDto | null, strin
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Autosave entry point: append a version when content changed (hash
+ * dedupe makes identical saves a no-op). `source` must be a
+ * frontend-allowed source (`manual_edit` | `dictation`).
+ */
 async notesAppend(noteId: string, content: string, source: string) : Promise<Result<NoteVersionDto | null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("notes_append", { noteId, content, source }) };
@@ -1260,6 +1165,10 @@ async notesVersions(noteId: string) : Promise<Result<NoteVersionDto[], string>> 
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Restore an older version as a NEW version (append-only; never rewrites
+ * history).
+ */
 async notesRestoreVersion(noteId: string, versionNo: number) : Promise<Result<NoteVersionDto | null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("notes_restore_version", { noteId, versionNo }) };
@@ -1316,6 +1225,54 @@ async historySearch(query: string, limit: number, offset: number) : Promise<Resu
     else return { status: "error", error: e  as any };
 }
 },
+async getHistoryEntries(cursor: number | null, limit: number | null) : Promise<Result<PaginatedHistory, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_history_entries", { cursor, limit }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async toggleHistoryEntrySaved(id: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("toggle_history_entry_saved", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getAudioFilePath(fileName: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_audio_file_path", { fileName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteHistoryEntry(id: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_history_entry", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Queues the entry to be transcribed again with the current model. Its
+ * progress and outcome arrive as `TranscriptionJob` events.
+ */
+async retryHistoryEntryTranscription(id: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("retry_history_entry_transcription", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Canonical history page used by the app UI. Filtering happens in SQLite
+ * before the stable `(created_at_ms, id)` cursor is applied.
+ */
 async canonicalHistoryPage(filter: CanonicalHistoryFilter, limit: number, cursor: string | null) : Promise<Result<CanonicalHistoryPage, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("canonical_history_page", { filter, limit, cursor }) };
@@ -1332,6 +1289,10 @@ async canonicalSeamDetails(captureId: string) : Promise<Result<CanonicalSeamDeta
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Save a user-reviewed version of the canonical transcript without changing
+ * the original attempt or recording.
+ */
 async confirmCanonicalHistoryText(captureId: string, text: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("confirm_canonical_history_text", { captureId, text }) };
@@ -1365,16 +1326,28 @@ async trashCanonicalHistoryEntry(captureId: string) : Promise<Result<null, strin
 }
 },
 async restoreCaptureEntry(captureId: string) : Promise<Result<boolean, string>> {
-    try { return { status: "ok", data: await TAURI_INVOKE("restore_capture_entry", { captureId }) }; }
-    catch (e) { if (e instanceof Error) throw e; else return { status: "error", error: e as any }; }
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("restore_capture_entry", { captureId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
 async purgeTrashedEntry(captureId: string) : Promise<Result<null, string>> {
-    try { return { status: "ok", data: await TAURI_INVOKE("purge_trashed_entry", { captureId }) }; }
-    catch (e) { if (e instanceof Error) throw e; else return { status: "error", error: e as any }; }
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("purge_trashed_entry", { captureId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
 async listTrashPage(limit: number, offset: number) : Promise<Result<TrashPage, string>> {
-    try { return { status: "ok", data: await TAURI_INVOKE("list_trash_page", { limit, offset }) }; }
-    catch (e) { if (e instanceof Error) throw e; else return { status: "error", error: e as any }; }
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_trash_page", { limit, offset }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
 async retryCanonicalHistoryEntry(captureId: string) : Promise<Result<null, string>> {
     try {
@@ -1392,6 +1365,39 @@ async importLocalAudio(sourcePath: string) : Promise<Result<string, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async updateHistoryLimit(limit: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_history_limit", { limit }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateRecordingRetentionPeriod(period: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_recording_retention_period", { period }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Stub implementation for non-macOS platforms
+ * Always returns false since laptop detection is macOS-specific
+ */
+async isLaptop() : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("is_laptop") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Count-only Wispr Flow import preview (IMP-002). Opens the user-provided
+ * flow.sqlite READ-ONLY and reports what a full import would bring in —
+ * nothing is written anywhere.
+ */
 async wisprDryRun(dbPath: string) : Promise<Result<ImportReport, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("wispr_dry_run", { dbPath }) };
@@ -1400,6 +1406,11 @@ async wisprDryRun(dbPath: string) : Promise<Result<ImportReport, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Full Wispr Flow import (IMP-002). Idempotent: re-runs skip already
+ * imported rows via the captures.import_ref unique index. Audio blobs are
+ * extracted into the app's recordings dir.
+ */
 async wisprRunImport(dbPath: string) : Promise<Result<ImportReport, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("wispr_run_import", { dbPath }) };
@@ -1424,9 +1435,52 @@ async hideFloatingBar() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Toggle dictation from UI surfaces without a keyboard shortcut (FEAT-104
+ * floating bar, tray alternatives). Routes through the same coordinator the
+ * global shortcut and `--toggle-transcription` CLI flag use, so start/stop
+ * semantics stay identical across entry points.
+ */
 async toggleTranscription() : Promise<void> {
     await TAURI_INVOKE("toggle_transcription");
-}}
+},
+/**
+ * Stops the entry's background transcription: a queued one is dropped, a
+ * running one stops after the chunk it is on. The entry keeps the text it
+ * had before.
+ */
+async cancelHistoryEntryTranscription(id: number) : Promise<void> {
+    await TAURI_INVOKE("cancel_history_entry_transcription", { id });
+},
+/**
+ * Adds an audio or video file to History and queues its transcription.
+ * Fails without adding anything if the file has no audio Handy can read.
+ */
+async transcribeFile(path: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("transcribe_file", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getActiveNotices() : Promise<Notice[]> {
+    return await TAURI_INVOKE("get_active_notices");
+},
+/**
+ * The user is done with a notice. Matching the code leaves alone a newer
+ * notice that replaced it after the user's view was drawn.
+ */
+async dismissNotice(source: NoticeSource, code: NoticeCode) : Promise<void> {
+    await TAURI_INVOKE("dismiss_notice", { source, code });
+},
+/**
+ * Hides the overlay notice; it stays active in the tray and footer.
+ */
+async dismissOverlayNotice() : Promise<void> {
+    await TAURI_INVOKE("dismiss_overlay_notice");
+}
+}
 
 /** user-defined events **/
 
@@ -1457,7 +1511,7 @@ transcriptionJob: "transcription-job"
 
 /**
  * The container-level `serde(default)` (backed by the `Default` impl below)
- * guarantees every field â€” including ones added in the future â€” falls back to
+ * guarantees every field — including ones added in the future — falls back to
  * its `get_default_settings()` value when missing from a stored settings
  * object, so a partial store can never fail the whole load (#1619).
  * Field-level defaults below take precedence where present.
@@ -1488,9 +1542,13 @@ hold_threshold_ms?: number; audio_feedback?: boolean; audio_feedback_volume?: nu
  * The app version whose What's New the user has already seen. Fresh installs
  * default to the current version (nothing is "new" to them). Existing users
  * upgrading from before this key existed are blanked by the migration so they
- * see the current release's notes â€” see `apply_settings_migrations`.
+ * see the current release's notes — see `apply_settings_migrations`.
  */
-whats_new_last_seen_version?: string; selected_model?: string; onboarding_completed?: boolean; always_on_microphone?: boolean; selected_microphone?: string | null;
+whats_new_last_seen_version?: string; selected_model?: string; onboarding_completed?: boolean; always_on_microphone?: boolean;
+/**
+ * FEAT-104: always-on floating dictation launcher bar, bottom-center.
+ */
+floating_bar_enabled?: boolean; selected_microphone?: string | null;
 /**
  * Which input channel to use on the selected microphone device.
  * None means "average all channels" (original behavior).
@@ -1500,7 +1558,7 @@ selected_channel?: number | null; clamshell_microphone?: string | null; selected
  * Every language the person dictates in (codes, e.g. ["en", "zh"]),
  * picked during onboarding. Empty until then.
  */
-spoken_languages?: string[]; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; theme?: Theme; experimental_enabled?: boolean; lazy_stream_close?: boolean;
+spoken_languages?: string[]; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; delivery_target?: DeliveryTarget; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; theme?: Theme; experimental_enabled?: boolean; lazy_stream_close?: boolean;
 /**
  * Experimental, macOS only: move a Bluetooth headset (AirPods) to this
  * Mac while recording, so its microphone does not return silence while
@@ -1541,10 +1599,10 @@ long_form_chunking?: boolean; language_detection?: LanguageDetectionMode;
 language_detection_window_secs?: number;
 /**
  * Which recording overlay to show: None / Minimal / Live. Streaming mode is
- * not gated on this â€” that follows model capability. Migrated from the old
- * `overlay_position` (position `none` â†’ style `None`).
+ * not gated on this — that follows model capability. Migrated from the old
+ * `overlay_position` (position `none` → style `None`).
  */
-overlay_style?: OverlayStyle ; push_to_talk?: boolean; floating_bar_enabled?: boolean; delivery_target?: DeliveryTarget; ort_accelerator?: OrtAcceleratorSetting; }
+overlay_style?: OverlayStyle }
 export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"
 export type AutoUnavailableReason =
@@ -1560,11 +1618,28 @@ export type AutoUnavailableReason =
  * None of their languages fit the model.
  */
 { kind: "no_match" }
-export type AvailableAccelerators = { transcribe: string[]; gpu_devices: GpuDeviceOption[] ; ort: string[]; }
+export type AvailableAccelerators = { transcribe: string[]; gpu_devices: GpuDeviceOption[] }
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
 /**
+ * A history row in the canonical model: immutable RAW text plus every
+ * derived version, so the UI can always distinguish the two.
+ */
+export type CanonicalEntry = { capture_id: string; legacy_history_id: number | null; title: string; created_at_ms: number; integrity_state: string; trashed: boolean;
+/**
+ * Relative audio file name; resolve via `canonical_audio_path`.
+ */
+audio_file_name: string | null; raw_text: string | null; derived: DerivedTextSummary[] }
+export type CanonicalHistoryEntry = { capture_id: string; created_at_ms: number; title: string; text: string; saved: boolean; audio_file_name: string | null; source_app: string | null; origin: string; integrity_state: string; attempt_status: string; attempt_error: string | null; audio_duration_ms: number | null; completed_samples: number; completed_chunks: number; review_seams: number; text_reviewed: boolean }
+export type CanonicalHistoryFilter = { from_ms: number | null; to_ms: number | null;
+/**
+ * `handy`, `wispr`, or `manual`; absent means every origin.
+ */
+origin: string | null }
+export type CanonicalHistoryPage = { entries: CanonicalHistoryEntry[]; next_cursor: string | null }
+export type CanonicalSeamDetail = { position_ms: number; left: string; right: string }
+/**
  * Script applied to Mandarin and Cantonese output. Traditional carries its region
- * (Taiwan vs Hong Kong forms, e.g. è£¡/è£) rather than guessing it.
+ * (Taiwan vs Hong Kong forms, e.g. 裡/裏) rather than guessing it.
  */
 export type ChineseScript =
 /**
@@ -1581,6 +1656,17 @@ export type ChineseScript =
 "traditional_hk"
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
+/**
+ * Where a finished transcript is delivered (PAD-305). Each variant maps
+ * to one `DeliverySink`; adding a destination must not add a branch to
+ * the paste path.
+ */
+export type DeliveryTarget = "focused_app" | "scratchpad" | "clipboard"
+/**
+ * One derived text version shown next to — never instead of — the raw.
+ */
+export type DerivedTextSummary = { representation_id: string; kind: string; text: string; created_at_ms: number }
+export type DictionaryEntry = { id: string; term: string; aliases: string[]; enabled: boolean; created_at_ms: number; updated_at_ms: number }
 export type GpuDeviceOption = { id: string; name: string; total_vram_mb: number }
 export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null; post_process_requested: boolean;
 /**
@@ -1605,9 +1691,10 @@ export type ImplementationChangeResult = { success: boolean;
  * List of binding IDs that were reset to defaults due to incompatibility
  */
 reset_bindings: string[] }
+export type ImportReport = { history_imported: number; history_skipped: number; history_invalid_timestamp: number; audio_extracted: number; dictionary_imported: number; snippet_triggers_imported: number; polish_imported: number; errors: string[] }
 export type KeyboardDiagnosticReport = { secure_input_enabled: boolean; culprit_pid: number | null; culprit_name: string | null;
 /**
- * Counts only â€” key identity is deliberately never captured.
+ * Counts only — key identity is deliberately never captured.
  */
 key_down: number; key_up: number; flags_changed: number; mouse: number; duration_ms: number }
 export type KeyboardImplementation = "tauri" | "handy_keys" |
@@ -1680,10 +1767,10 @@ export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
  * A macOS privacy permission Handy asks for during onboarding.
  */
 export type MacPermission = "accessibility" | "microphone"
-export type ModelInfo = { id: string; name: string; description: string; filename: string; source: ModelSource; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean; supports_streaming: boolean; supports_language_detection: boolean ; is_directory: boolean; engine_type: EngineType; }
+export type ModelInfo = { id: string; name: string; description: string; filename: string; source: ModelSource; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean; supports_streaming: boolean; supports_language_detection: boolean }
 export type ModelLoadStatus = { is_loaded: boolean; current_model: string | null }
 /**
- * Where a model comes from and how Handy obtains it â€” the routing discriminant
+ * Where a model comes from and how Handy obtains it — the routing discriminant
  * for downloading and on-disk resolution.
  */
 export type ModelSource =
@@ -1702,11 +1789,13 @@ sha256: string | null } } |
  */
 { HuggingFace: { repo_id: string; revision: string } } |
 /**
- * Already present on disk â€” a user-provided custom model, or one discovered
+ * Already present on disk — a user-provided custom model, or one discovered
  * in a shared cache. Nothing to download.
  */
 "Local"
 export type ModelUnloadTimeout = "never" | "immediately" | "min_2" | "min_5" | "min_10" | "min_15" | "hour_1" | "sec_15"
+export type NoteDto = { id: string; title: string; pinned: boolean; trashed: boolean; created_at_ms: number; updated_at_ms: number }
+export type NoteVersionDto = { id: string; note_id: string; version_no: number; content: string; source: string; created_at_ms: number }
 export type Notice = { code: NoticeCode; level: NoticeLevel; source: NoticeSource;
 /**
  * What only Rust knows, such as a model name or a raw error.
@@ -1765,6 +1854,7 @@ export type PostProcessApiFormat =
  */
 "anthropic"
 export type PostProcessProvider = { id: string; label: string; base_url: string; allow_base_url_edit?: boolean; models_endpoint?: string | null; supports_structured_output?: boolean; api_format?: PostProcessApiFormat }
+export type PromptProfileRecord = { id: string; name: string; kind: string; system_prompt: string; user_template: string; provider_id: string; model: string; temperature: number | null; enabled: boolean; created_at_ms: number; updated_at_ms: number }
 /**
  * Recording phase events for windows that follow along (onboarding's Try it).
  */
@@ -1844,6 +1934,7 @@ export type ShortcutActivation =
  */
 "hold_or_toggle"
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
+export type SnippetRecord = { id: string; trigger: string; replacement: string; priority: number; enabled: boolean; created_at_ms: number; updated_at_ms: number }
 export type SoundTheme = "marimba" | "pop" | "custom"
 /**
  * Phase of the streaming overlay card, emitted to drive its UI state.
@@ -1856,7 +1947,7 @@ export type StreamPhase =
  */
 "listening" |
 /**
- * Finalizing or post-processing â€” show a spinner.
+ * Finalizing or post-processing — show a spinner.
  */
 "working"
 /**
@@ -1924,6 +2015,8 @@ export type TranscriptionOutcome =
  * Transcribing or pasting failed.
  */
 "failed"
+export type TrashEntry = { capture_id: string; title: string; created_at_ms: number; deleted_at_ms: number | null; audio_file_name: string | null; integrity_state: string; snippet: string }
+export type TrashPage = { entries: TrashEntry[]; total: number }
 export type TypingTool = "auto" | "wtype" | "kwtype" | "dotool" | "ydotool" | "xdotool"
 export type VadBackend = "silero" | "earshot"
 export type WindowsMicrophonePermissionStatus = { supported: boolean; overall_access: PermissionAccess; device_access: PermissionAccess; app_access: PermissionAccess; desktop_app_access: PermissionAccess }
@@ -1987,47 +2080,3 @@ function __makeEvents__<T extends Record<string, any>>(
 		},
 	);
 }
-
-export type CanonicalEntry = { capture_id: string; legacy_history_id: number | null; title: string; created_at_ms: number; integrity_state: string; trashed: boolean;
-/**
- * Relative audio file name; resolve via `canonical_audio_path`.
- */
-audio_file_name: string | null; raw_text: string | null; derived: DerivedTextSummary[] }
-
-export type TrashEntry = { capture_id: string; title: string; created_at_ms: number; deleted_at_ms: number | null; audio_file_name: string | null; integrity_state: string; snippet: string }
-
-export type TrashPage = { entries: TrashEntry[]; total: number }
-
-export type CanonicalHistoryEntry = { capture_id: string; created_at_ms: number; title: string; text: string; saved: boolean; audio_file_name: string | null; source_app: string | null; origin: string; integrity_state: string; attempt_status: string; attempt_error: string | null; audio_duration_ms: number | null; completed_samples: number; completed_chunks: number; review_seams: number; text_reviewed: boolean }
-
-export type CanonicalHistoryFilter = { from_ms: number | null; to_ms: number | null; origin: string | null }
-
-export type CanonicalHistoryPage = { entries: CanonicalHistoryEntry[]; next_cursor: string | null }
-
-export type CanonicalSeamDetail = { position_ms: number; left: string; right: string }
-
-export type DeliveryTarget = "focused_app" | "scratchpad" | "clipboard"
-
-export type DerivedTextSummary = { representation_id: string; kind: string; text: string; created_at_ms: number }
-
-export type DictionaryEntry = { id: string; term: string; aliases: string[]; enabled: boolean; created_at_ms: number; updated_at_ms: number }
-
-export type EngineType =
-/**
- * Any GGML/GGUF model loaded through transcribe-cpp (Whisper, Parakeet,
- * Voxtral, Qwen3-ASR, Nemotron, â€¦). The architecture is auto-detected from
- * the file, so this one variant covers the whole transcribe-cpp family.
- */
-"TranscribeCpp" | "Parakeet" | "Moonshine" | "MoonshineStreaming" | "SenseVoice" | "GigaAM" | "Canary" | "Cohere"
-
-export type ImportReport = { history_imported: number; history_skipped: number; history_invalid_timestamp: number; audio_extracted: number; dictionary_imported: number; snippet_triggers_imported: number; polish_imported: number; errors: string[] }
-
-export type NoteDto = { id: string; title: string; pinned: boolean; trashed: boolean; created_at_ms: number; updated_at_ms: number }
-
-export type NoteVersionDto = { id: string; note_id: string; version_no: number; content: string; source: string; created_at_ms: number }
-
-export type OrtAcceleratorSetting = "auto" | "cpu" | "cuda" | "directml" | "rocm"
-
-export type PromptProfileRecord = { id: string; name: string; kind: string; system_prompt: string; user_template: string; provider_id: string; model: string; temperature: number | null; enabled: boolean; created_at_ms: number; updated_at_ms: number }
-
-export type SnippetRecord = { id: string; trigger: string; replacement: string; priority: number; enabled: boolean; created_at_ms: number; updated_at_ms: number }
