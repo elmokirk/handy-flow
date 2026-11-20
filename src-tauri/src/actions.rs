@@ -20,7 +20,6 @@ use ferrous_opencc::{config::BuiltinConfig, OpenCC};
 use log::{debug, error, warn};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-#[cfg(test)]
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -29,7 +28,6 @@ use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 use tauri_specta::Event;
 
-#[cfg(test)]
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
 struct ActiveDictation {
@@ -370,7 +368,6 @@ fn is_blank_transcription(transcription: &str) -> bool {
     transcription.trim().is_empty()
 }
 
-#[cfg(test)]
 async fn complete_unless_cancelled<F, C>(operation: F, is_cancelled: C) -> Option<F::Output>
 where
     F: Future,
@@ -386,7 +383,7 @@ where
         if let Ok(result) =
             tokio::time::timeout(CANCELLATION_POLL_INTERVAL, operation.as_mut()).await
         {
-            return Some(result);
+            return (!is_cancelled()).then_some(result);
         }
     }
 }
@@ -777,6 +774,51 @@ fn should_auto_paste(
         && same_window
 }
 
+#[derive(Clone, Copy)]
+struct DeliveryConditions {
+    elapsed: Duration,
+    same_dictation: bool,
+    recording: bool,
+    same_window: bool,
+    capture_active: bool,
+    same_target: bool,
+}
+
+impl DeliveryConditions {
+    fn allow(self, duration_samples: u64) -> bool {
+        self.capture_active
+            && self.same_target
+            && should_auto_paste(
+                duration_samples,
+                self.elapsed,
+                self.same_dictation,
+                self.recording,
+                self.same_window,
+            )
+    }
+}
+
+fn live_delivery_is_ready(
+    app: &AppHandle,
+    capture_id: &str,
+    meta: &crate::long_audio::LiveJob,
+    expected_target: DeliveryTarget,
+) -> bool {
+    let audio = app.state::<Arc<AudioRecordingManager>>();
+    DeliveryConditions {
+        same_target: get_settings(app).delivery_target == expected_target,
+        capture_active: capture_is_active(&app.state::<Arc<HistoryManager>>(), capture_id),
+        elapsed: meta.stopped_at.elapsed(),
+        same_dictation: meta.session.is_current(
+            LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
+            audio.cancel_generation(),
+        ),
+        recording: audio.is_recording(),
+        same_window: delivery_target_is_ready(app, meta.target_window),
+    }
+    .allow(meta.duration_samples)
+}
+
 pub(crate) async fn deliver_background_live(
     app: &AppHandle,
     capture_id: &str,
@@ -842,39 +884,46 @@ pub(crate) async fn deliver_background_live(
     let _ = hm.cleanup_canonical_entries();
     let _ = app.emit("canonical-history-changed", ());
 
-    let timely = should_auto_paste(
-        meta.duration_samples,
-        meta.stopped_at.elapsed(),
-        meta.session.is_current(
-            LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
-            app.state::<Arc<AudioRecordingManager>>()
-                .cancel_generation(),
-        ),
-        app.state::<Arc<AudioRecordingManager>>().is_recording(),
-        delivery_target_is_ready(app, meta.target_window),
-    );
-    if !timely || processed.final_text.is_empty() {
+    let expected_target = get_settings(app).delivery_target;
+    if processed.final_text.is_empty()
+        || !live_delivery_is_ready(app, capture_id, &meta, expected_target)
+    {
         let _ = app.emit("background-transcription-ready", capture_id);
         return;
     }
 
+    // The immutable attempt and optional post-process representation are
+    // already stored. Only the local delivery text passes through the hook.
+    let Some(text) = complete_unless_cancelled(
+        crate::transcription_hook::apply(app, processed.final_text),
+        || !live_delivery_is_ready(app, capture_id, &meta, expected_target),
+    )
+    .await
+    else {
+        let _ = app.emit("background-transcription-ready", capture_id);
+        return;
+    };
+    if text.is_empty() {
+        update_dictation_ui(app, meta.session, move |app| {
+            let _ = TranscriptionCompleteEvent {
+                outcome: TranscriptionOutcome::Empty,
+                audio_seconds: meta.duration_samples as f64 / 16000.0,
+                wait_seconds: meta.stopped_at.elapsed().as_secs_f64(),
+            }
+            .emit(app);
+        });
+        return;
+    }
+
     let app_clone = app.clone();
-    let text = processed.final_text;
     let _ = app.run_on_main_thread(move || {
-        if !meta.session.is_current(
-            LIVE_DELIVERY_GENERATION.load(Ordering::Acquire),
-            app_clone
-                .state::<Arc<AudioRecordingManager>>()
-                .cancel_generation(),
-        ) || app_clone
-            .state::<Arc<AudioRecordingManager>>()
-            .is_recording()
-            || !delivery_target_is_ready(&app_clone, meta.target_window)
-            || !capture_is_active(
-                &app_clone.state::<Arc<HistoryManager>>(),
-                source.capture_id.as_deref().unwrap_or_default(),
-            )
-        {
+        let _active = ACTIVE_DICTATION.lock().unwrap();
+        if !live_delivery_is_ready(
+            &app_clone,
+            source.capture_id.as_deref().unwrap_or_default(),
+            &meta,
+            expected_target,
+        ) {
             let _ = app_clone.emit(
                 "background-transcription-ready",
                 source.capture_id.as_deref(),
@@ -1543,6 +1592,176 @@ mod tests {
         ));
 
         assert_eq!(result, Some("done"));
+    }
+
+    #[test]
+    fn a_hook_result_that_becomes_stale_on_completion_is_rejected() {
+        let invalid = std::cell::Cell::new(false);
+        let result = tauri::async_runtime::block_on(complete_unless_cancelled(
+            async {
+                invalid.set(true);
+                "stale hook output"
+            },
+            || invalid.get(),
+        ));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn ineligible_history_only_work_never_starts_a_hook() {
+        let calls = std::cell::Cell::new(0);
+        let result = tauri::async_runtime::block_on(complete_unless_cancelled(
+            async {
+                calls.set(calls.get() + 1);
+                "hook output"
+            },
+            || true,
+        ));
+        assert_eq!(result, None);
+        assert_eq!(calls.get(), 0);
+    }
+
+    #[test]
+    fn pending_hook_is_dropped_when_delivery_eligibility_changes() {
+        struct DropSignal(Arc<AtomicBool>);
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Release);
+            }
+        }
+        let eligible = super::DeliveryConditions {
+            elapsed: Duration::from_secs(1),
+            same_dictation: true,
+            recording: false,
+            same_window: true,
+            capture_active: true,
+            same_target: true,
+        };
+        for (reason, changed) in [
+            (
+                "cancel or new session",
+                super::DeliveryConditions {
+                    same_dictation: false,
+                    ..eligible
+                },
+            ),
+            (
+                "recording",
+                super::DeliveryConditions {
+                    recording: true,
+                    ..eligible
+                },
+            ),
+            (
+                "window",
+                super::DeliveryConditions {
+                    same_window: false,
+                    ..eligible
+                },
+            ),
+            (
+                "delivery target",
+                super::DeliveryConditions {
+                    same_target: false,
+                    ..eligible
+                },
+            ),
+            (
+                "expired",
+                super::DeliveryConditions {
+                    elapsed: Duration::from_secs(31),
+                    ..eligible
+                },
+            ),
+            (
+                "trashed capture",
+                super::DeliveryConditions {
+                    capture_active: false,
+                    ..eligible
+                },
+            ),
+        ] {
+            let conditions = std::cell::Cell::new(eligible);
+            assert!(conditions.get().allow(16_000));
+            let dropped = Arc::new(AtomicBool::new(false));
+            let signal = DropSignal(dropped.clone());
+            let result = tauri::async_runtime::block_on(complete_unless_cancelled(
+                async {
+                    let _signal = signal;
+                    conditions.set(changed);
+                    future::pending::<String>().await
+                },
+                || !conditions.get().allow(16_000),
+            ));
+            assert_eq!(result, None, "{reason}");
+            assert!(
+                dropped.load(Ordering::Acquire),
+                "hook future must be dropped: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn hooked_delivery_keeps_original_history_and_audits_the_actual_text() {
+        use crate::delivery::pipeline::{record_dictation, DictationInput};
+        use crate::delivery::{deliver_with_audit, ScratchpadSink, SqliteDeliveryAudit};
+        use crate::storage::repositories::{deliveries, representations, transcriptions};
+        let dir = tempfile::tempdir().unwrap();
+        let (db, _) =
+            crate::storage::migrations::open_and_migrate(dir.path().join("history.db"), "test")
+                .unwrap();
+        let source = record_dictation(
+            &db,
+            &DictationInput {
+                title: "Hooked dictation",
+                audio_file_name: Some("kept.wav"),
+                audio_sha256: None,
+                audio_size_bytes: None,
+                engine_raw: "original raw",
+                normalized_stt: "Original normalized",
+                model_id: Some("model"),
+                language: None,
+                normalizer_version: "1",
+                post_processed_text: Some("Post processed"),
+                post_process_prompt: Some("prompt"),
+            },
+        )
+        .unwrap();
+        let text = tauri::async_runtime::block_on(complete_unless_cancelled(
+            async { "Hook changed delivery".to_string() },
+            || false,
+        ))
+        .unwrap();
+        let notes = crate::NotesManager::new(db.clone());
+        deliver_with_audit(
+            &ScratchpadSink::new(notes.clone()),
+            &SqliteDeliveryAudit::new(db.clone()),
+            &source,
+            &text,
+        )
+        .unwrap();
+        let capture_id = source.capture_id.as_deref().unwrap();
+        let attempt = transcriptions::canonical_attempt(&db, capture_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(attempt.engine_raw.as_deref(), Some("original raw"));
+        assert_eq!(
+            attempt.normalized_stt.as_deref(),
+            Some("Original normalized")
+        );
+        let representations =
+            representations::representations_for_attempt(&db, &attempt.id).unwrap();
+        assert_eq!(representations.len(), 1);
+        assert_eq!(representations[0].text, "Post processed");
+        let events = deliveries::events_for_capture(&db, capture_id).unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(events[0].success);
+        assert_eq!(events[0].text_sha256, representations::content_hash(&text));
+        let note = notes.list().unwrap().pop().unwrap();
+        assert_eq!(
+            notes.current_content(&note.id).unwrap().as_deref(),
+            Some(text.as_str())
+        );
     }
 
     #[test]
