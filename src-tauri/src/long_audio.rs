@@ -1462,7 +1462,10 @@ mod tests {
         assert!(error.contains("Unsupported audio file type"), "{error}");
         assert!(error.contains("Opus"), "{error}");
         assert!(error.contains("Opus, WebM"), "{error}");
-        assert!(error.contains("AMR recordings are not supported yet"), "{error}");
+        assert!(
+            error.contains("AMR recordings are not supported yet"),
+            "{error}"
+        );
         assert!(!error.contains("Opus and AMR"), "{error}");
     }
 
