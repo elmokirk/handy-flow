@@ -4,7 +4,7 @@ use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, S
 use crate::audio_toolkit::VadPolicy;
 use crate::delivery::pipeline::complete_failed_prepared_dictation;
 use crate::delivery::{deliver_with_audit, DeliverySource, SqliteDeliveryAudit};
-use crate::managers::audio::AudioRecordingManager;
+use crate::managers::audio::{recording_notice_code, AudioRecordingManager};
 use crate::managers::history::HistoryManager;
 use crate::managers::model::ModelManager;
 use crate::managers::transcription::TranscriptionManager;
@@ -827,8 +827,8 @@ impl ShortcutAction for TranscribeAction {
         );
         debug!("Microphone mode - always_on: {}", is_always_on);
 
-        let new_capture = (|| -> Result<ActiveDictation, String> {
-            let db = hm.canonical_db().map_err(|e| e.to_string())?;
+        let new_capture = (|| -> anyhow::Result<ActiveDictation> {
+            let db = hm.canonical_db()?;
             let file_name = format!("handy-{}.wav", crate::storage::ids::new_id());
             let capture = crate::storage::repositories::captures::insert_capture(
                 &db,
@@ -840,8 +840,7 @@ impl ShortcutAction for TranscribeAction {
                     source_app: None,
                     integrity_state: crate::storage::models::IntegrityState::PendingAudio,
                 },
-            )
-            .map_err(|e| e.to_string())?;
+            )?;
             Ok(ActiveDictation {
                 capture_id: capture.id,
                 wav_path: hm.recordings_dir().join(&file_name),
@@ -850,15 +849,12 @@ impl ShortcutAction for TranscribeAction {
             })
         })();
         let _ = app.emit("canonical-history-changed", ());
-        let mut recording_error: Option<String> = None;
+        let mut recording_error: Option<anyhow::Error> = None;
         let recording_start_time = Instant::now();
         let start_result = new_capture
             .as_ref()
-            .map_err(Clone::clone)
-            .and_then(|capture| {
-                rm.try_start_recording(&binding_id, vad_policy, &capture.wav_path)
-                    .map_err(|error| error.to_string())
-            });
+            .map_err(|error| anyhow::anyhow!("{error:#}"))
+            .and_then(|capture| rm.try_start_recording(&binding_id, vad_policy, &capture.wav_path));
         match start_result {
             Ok(readiness) => {
                 LIVE_DELIVERY_GENERATION.fetch_add(1, Ordering::AcqRel);
@@ -954,10 +950,10 @@ impl ShortcutAction for TranscribeAction {
                 crate::notices::raise(
                     app,
                     crate::notices::Notice::new(
-                        crate::notices::NoticeCode::RecordingFailed,
+                        recording_notice_code(&err),
                         crate::notices::NoticeSource::Dictation,
                     )
-                    .with_detail(err),
+                    .with_detail(format!("{err:#}")),
                 );
             }
         }
