@@ -102,6 +102,14 @@ fn empty_recording_outcome(input_silent: bool, error: Option<&str>) -> Transcrip
     }
 }
 
+fn live_failure_outcome(error: &str) -> TranscriptionOutcome {
+    if error == crate::long_audio::NO_SPEECH_ERROR {
+        TranscriptionOutcome::Empty
+    } else {
+        TranscriptionOutcome::Failed
+    }
+}
+
 pub(crate) fn report_live_failure(
     app: &AppHandle,
     meta: crate::long_audio::LiveJob,
@@ -109,11 +117,11 @@ pub(crate) fn report_live_failure(
 ) {
     update_dictation_ui(app, meta.session, move |app| {
         use crate::notices::{self, Notice, NoticeCode, NoticeSource};
-        let no_speech = error == "Audio contains no recognized speech";
+        let outcome = live_failure_outcome(&error);
         if error == crate::long_audio::NO_MODEL_SELECTED_ERROR {
             app.state::<Arc<TranscriptionManager>>()
                 .raise_no_model_selected();
-        } else if no_speech {
+        } else if outcome == TranscriptionOutcome::Empty {
             notices::clear(app, NoticeSource::Dictation);
             utils::hide_recording_overlay(app);
         } else {
@@ -124,11 +132,7 @@ pub(crate) fn report_live_failure(
             );
         }
         let _ = TranscriptionCompleteEvent {
-            outcome: if no_speech {
-                TranscriptionOutcome::Empty
-            } else {
-                TranscriptionOutcome::Failed
-            },
+            outcome,
             audio_seconds: meta.duration_samples as f64 / 16000.0,
             wait_seconds: meta.stopped_at.elapsed().as_secs_f64(),
         }
@@ -1527,6 +1531,20 @@ mod tests {
         );
         assert!(!session.is_current(7, 3), "cancel after stop");
         assert!(!session.is_current(8, 3));
+    }
+
+    #[test]
+    fn shared_no_speech_error_maps_to_empty_live_outcome() {
+        use super::TranscriptionOutcome::{Empty, Failed};
+        assert_eq!(
+            super::live_failure_outcome(crate::long_audio::NO_SPEECH_ERROR),
+            Empty
+        );
+        assert_eq!(
+            super::live_failure_outcome(crate::long_audio::NO_MODEL_SELECTED_ERROR),
+            Failed
+        );
+        assert_eq!(super::live_failure_outcome("inference failed"), Failed);
     }
 
     #[test]

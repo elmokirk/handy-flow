@@ -35,7 +35,7 @@ pub const SUPPORTED_IMPORT_EXTENSIONS: &[&str] = &[
 // ponytail: six-minute one-shot ceiling preserves foreground dictation UX;
 // the isolated child falls back to small windows if a device cannot run it.
 const SINGLE_PASS_MAX_SAMPLES: u64 = 6 * 60 * SAMPLE_RATE as u64;
-const NO_SPEECH_ERROR: &str = "Audio contains no recognized speech";
+pub(crate) const NO_SPEECH_ERROR: &str = "Audio contains no recognized speech";
 pub(crate) const NO_MODEL_SELECTED_ERROR: &str = "No model selected";
 
 fn selected_job_model(model_id: Option<&str>, selected_model: &str) -> Result<String, String> {
