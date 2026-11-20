@@ -92,5 +92,31 @@ copy and no user settings/audio. Its normal debug startup re-exported the same
 Specta contract. This CLI shares preparation and inference but does not insert
 canonical history; it does not validate the GUI import/queue/history flow.
 
-Owner runtime checks and actual model-backed Opus/WebM import through canonical
-history remain separate acceptance work. This page is not a release approval.
+The explicit `--canonical-sandbox <directory> --canonical-import <file>` route
+extends that same executable with HistoryManager, the production queue/importer,
+finish/promotion and `canonical_history_page` readback. It never registers live
+metadata, so completion stays history-only. No queue or worker protocol changed.
+Before portable/plugin/manager initialization it requires a private directory
+named `handy-up700-canonical-*`, the executable directly inside it, the exact
+portable marker and `UP700-SANDBOX` containing `synthetic-only`, input beneath
+`inputs`, local TEMP/TMP/HF paths and offline mode. Reparse points and conflicting
+CLI modes are rejected. This is an acceptance interface for self-created test
+data, not a general unattended importer. Use a newly created sandbox per case;
+never point it at an installed app directory. Settings/model/native DLL copies
+are prepared outside the measured process; no downloads are needed.
+
+The external Windows runner creates the root suspended, assigns it to a
+non-inherited kill-on-close Job Object before resume, preserves the root exit
+code, explicitly terminates remaining job processes on completion/error/timeout,
+and waits for zero active job processes. This is necessary because process::exit
+does not run the detached queue worker's destructors. Do not replace this runner
+with subprocess.run(timeout=...) or a PID snapshot. The runner smoke also checks
+live child/grandchild job membership and waits on retained process handles.
+
+The workspace `status/runs/UP-700-canonical-headless-*` evidence records Opus and
+WebM successes, corrupt supported input and missing selected model failures.
+Certain chunks are pruned during successful promotion, so their final count is
+zero for these short fixtures; retained compressed source hashes are compared
+with the caller input, not with the prepared WAV. Maintain these checks when
+changing import, recovery, promotion or worker startup. Owner runtime checks
+remain separate acceptance work. This page is not a release approval.
