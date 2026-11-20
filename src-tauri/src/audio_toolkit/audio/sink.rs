@@ -1,0 +1,270 @@
+use std::sync::{mpsc, Arc};
+
+use handy_recorder::{AudioChunk, Sink};
+
+use crate::audio_toolkit::{
+    audio::AudioVisualiser,
+    constants,
+    vad::{VadFrame, VoiceActivityDetector},
+};
+
+/// How 16 kHz mono frames should be filtered for one recording session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VadPolicy {
+    /// Bypass VAD and forward every frame.
+    Disabled,
+    /// Current offline-tuned VAD profile.
+    Offline,
+    /// VAD profile with a longer post-speech tail for streaming-capable models.
+    Streaming,
+}
+
+/// A single VAD engine plus the two hangover-tail lengths its smoothing wrapper
+/// should use. The offline and streaming policies are never active
+/// concurrently, so one detector is reconfigured per recording rather than
+/// kept as two resident engines.
+pub struct CaptureVad {
+    detector: Box<dyn VoiceActivityDetector>,
+    offline_hangover_frames: usize,
+    streaming_hangover_frames: usize,
+}
+
+impl CaptureVad {
+    pub fn new(
+        detector: Box<dyn VoiceActivityDetector>,
+        offline_hangover_frames: usize,
+        streaming_hangover_frames: usize,
+    ) -> Self {
+        assert!(
+            detector.frame_samples() > 0,
+            "VAD frame size must be non-zero"
+        );
+        Self {
+            detector,
+            offline_hangover_frames,
+            streaming_hangover_frames,
+        }
+    }
+
+    /// Samples per detector frame; the recorder delivers chunks of this size.
+    pub fn frame_samples(&self) -> usize {
+        self.detector.frame_samples()
+    }
+
+    /// Post-speech hangover tail (in detector frames) for the given policy.
+    /// `Disabled` never reaches the detector, so it maps to the offline value.
+    fn hangover_for(&self, policy: VadPolicy) -> usize {
+        match policy {
+            VadPolicy::Streaming => self.streaming_hangover_frames,
+            VadPolicy::Offline | VadPolicy::Disabled => self.offline_hangover_frames,
+        }
+    }
+}
+
+/// Receives spectrum levels for the recording overlay.
+pub type LevelCallback = Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>;
+/// Receives each 16 kHz mono frame that passes the recording's VAD policy, in
+/// order. Used to feed live streaming transcription as audio arrives.
+pub type AudioFrameCallback = Arc<dyn Fn(&[f32]) + Send + Sync + 'static>;
+
+/// What a finished recording hands back.
+pub struct CapturedAudio {
+    /// 16 kHz mono samples that passed the VAD policy.
+    pub samples: Vec<f32>,
+    /// Every sample received (pre-VAD) was exactly zero, e.g. a muted mic.
+    /// False when no audio arrived at all.
+    pub input_silent: bool,
+    /// The detector the recording borrowed, for the next one.
+    pub vad: CaptureVad,
+    pub write_failed: bool,
+    pub write_error: Option<String>,
+}
+
+/// One recording's consumer of 16 kHz mono audio from handy-recorder. Runs on
+/// the recorder's delivery thread, never the real-time audio thread, so it
+/// can run VAD inline. Chunks are exactly one VAD frame long.
+pub struct CaptureSink {
+    vad: CaptureVad,
+    policy: VadPolicy,
+    visualizer: AudioVisualiser,
+    on_levels: LevelCallback,
+    on_audio: AudioFrameCallback,
+    /// Signalled on the first chunk: the device is delivering audio. Silence
+    /// counts; readiness is not speech.
+    ready: Option<mpsc::Sender<()>>,
+    samples: Vec<f32>,
+    heard_sound: bool,
+    on_write_error: Option<Arc<dyn Fn(String) + Send + Sync>>,
+    write_failed: bool,
+    write_error: Option<String>,
+    #[cfg(test)]
+    fail_next_checkpoint: bool,
+    durable: Option<hound::WavWriter<std::io::BufWriter<std::fs::File>>>,
+}
+
+/// Spectrum window at 16 kHz: 32 ms, near the overlay's ~30 Hz refresh.
+const VISUALIZER_WINDOW: usize = 512;
+const VISUALIZER_BUCKETS: usize = 16;
+
+impl CaptureSink {
+    /// A sink for one recording. Resets the detector and applies the policy's
+    /// hangover tail, so no state carries over from the previous recording.
+    pub fn new(
+        mut vad: CaptureVad,
+        policy: VadPolicy,
+        on_levels: LevelCallback,
+        on_audio: AudioFrameCallback,
+        ready: mpsc::Sender<()>,
+    ) -> Self {
+        if policy != VadPolicy::Disabled {
+            let hangover = vad.hangover_for(policy);
+            vad.detector.set_hangover_frames(hangover);
+            vad.detector.reset();
+        }
+        Self {
+            vad,
+            policy,
+            visualizer: AudioVisualiser::new(
+                constants::WHISPER_SAMPLE_RATE,
+                VISUALIZER_WINDOW,
+                VISUALIZER_BUCKETS,
+                400.0,
+                4000.0,
+            ),
+            on_levels,
+            on_audio,
+            ready: Some(ready),
+            samples: Vec::new(),
+            heard_sound: false,
+            durable: None,
+            on_write_error: None,
+            write_failed: false,
+            write_error: None,
+            #[cfg(test)]
+            fail_next_checkpoint: false,
+        }
+    }
+
+    pub fn on_write_error(mut self, callback: Arc<dyn Fn(String) + Send + Sync>) -> Self {
+        self.on_write_error = Some(callback);
+        self
+    }
+
+    pub fn with_durable_wav(mut self, path: &std::path::Path) -> anyhow::Result<Self> {
+        let mut writer = hound::WavWriter::create(
+            path,
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: 16000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            },
+        )?;
+        writer.flush()?;
+        self.durable = Some(writer);
+        Ok(self)
+    }
+
+    /// The detector, from a sink that never recorded (its start failed).
+    pub fn into_vad(self) -> CaptureVad {
+        self.vad
+    }
+
+    /// Hands back the recording and the detector. Logs what VAD still held
+    /// back when the recording stopped.
+    pub fn finish(self) -> CapturedAudio {
+        // Diagnostic for audio still withheld when capture stopped; it is not
+        // conclusive in either direction.
+        if self.policy != VadPolicy::Disabled {
+            if let Some(report) = self.vad.detector.tail_report() {
+                log::debug!(
+                    "VAD at stop: withheld tail {} frames (~{}ms, {} voiced), in_speech={}, onset_counter={}, hangover_counter={}",
+                    report.withheld_frames,
+                    report.withheld_frames * self.vad.frame_samples() * 1000
+                        / constants::WHISPER_SAMPLE_RATE as usize,
+                    report.withheld_voiced_frames,
+                    report.in_speech,
+                    report.onset_counter,
+                    report.hangover_counter
+                );
+            }
+        }
+        CapturedAudio {
+            samples: self.samples,
+            // `ready` is spent on the first chunk, so `None` means audio came.
+            input_silent: self.ready.is_none() && !self.heard_sound,
+            vad: self.vad,
+            write_failed: self.write_failed,
+            write_error: self.write_error,
+        }
+    }
+
+    fn emit(samples: &mut Vec<f32>, on_audio: &AudioFrameCallback, frame: &[f32]) {
+        samples.extend_from_slice(frame);
+        on_audio(frame);
+    }
+}
+
+impl Sink for CaptureSink {
+    fn process_chunk(&mut self, chunk: AudioChunk<'_>) {
+        if self.write_failed {
+            return;
+        }
+        if let Some(ready) = self.ready.take() {
+            let _ = ready.send(());
+        }
+        if !self.heard_sound && !chunk.is_digital_silence() {
+            self.heard_sound = true;
+        }
+
+        // Mono by construction: the recorder mixes down or picks one channel.
+        let real = &chunk.samples[..chunk.valid_frames];
+        if let Some(writer) = self.durable.as_mut() {
+            let result = real
+                .iter()
+                .try_for_each(|sample| {
+                    writer.write_sample((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+                })
+                .and_then(|_| writer.flush());
+            #[cfg(test)]
+            let result = if self.fail_next_checkpoint {
+                Err(hound::Error::IoError(std::io::Error::other(
+                    "injected disk write failure",
+                )))
+            } else {
+                result
+            };
+            if let Err(error) = result {
+                self.write_failed = true;
+                self.write_error = Some(error.to_string());
+                if let Some(callback) = &self.on_write_error {
+                    callback(error.to_string());
+                }
+                return;
+            }
+        }
+        if let Some(levels) = self.visualizer.feed(real) {
+            (self.on_levels)(levels);
+        }
+
+        if self.policy == VadPolicy::Disabled {
+            Self::emit(&mut self.samples, &self.on_audio, real);
+            return;
+        }
+
+        // The detector needs whole frames, so the final chunk goes in with its
+        // zero padding; at most one frame of silence reaches the recording.
+        match self
+            .vad
+            .detector
+            .push_frame(chunk.samples)
+            .unwrap_or(VadFrame::Speech(chunk.samples))
+        {
+            VadFrame::Speech(frame) => Self::emit(&mut self.samples, &self.on_audio, frame),
+            VadFrame::Noise => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

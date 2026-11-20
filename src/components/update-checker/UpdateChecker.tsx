@@ -64,10 +64,18 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   // "Update via GitHub" link.
   const [fallbackUpdateAvailable, setFallbackUpdateAvailable] = useState(false);
 
-  const { settings, isLoading } = useSettings();
-  const settingsLoaded = !isLoading && settings !== null;
+  const { settings, isLoading, updateChecksLocked } = useSettings();
+  // Wait for the lock state too (null = not loaded yet), otherwise the first
+  // render could fire an update check before HANDY_DISABLE_UPDATER is known.
+  const settingsLoaded =
+    !isLoading && settings !== null && updateChecksLocked !== null;
+  // Forced-off by system configuration (HANDY_DISABLE_UPDATER) overrides the
+  // stored preference without persisting it, mirroring the backend's effective
+  // updater state.
   const updateChecksEnabled =
-    (settings?.update_checks_enabled ?? false) && !isInAppUpdaterDisabled();
+    (settings?.update_checks_enabled ?? false) &&
+    updateChecksLocked === false &&
+    !isInAppUpdaterDisabled();
 
   const upToDateTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const isManualCheckRef = useRef(false);
@@ -145,7 +153,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
       if (update) {
         setUpdateAvailable(true);
         setShowUpToDate(false);
-        // Portable installs can't self-update in place — the manual dialog links
+        // Portable installs can't self-update in place â€” the manual dialog links
         // straight at the matching installer from this manifest instead.
         setPortableInstallerUrl(
           resolvePortableInstallerUrl(update.rawJson, platform(), arch()),
@@ -275,18 +283,18 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
     <>
       {showPortableUpdateDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-background border border-mid-gray/20 rounded-lg p-6 max-w-md w-full mx-4 space-y-4">
+          <div className="bg-background border border-line rounded-lg p-6 max-w-md w-full mx-4 space-y-4">
             <h2 className="text-base font-semibold">
               {t("footer.portableUpdateTitle")}
             </h2>
-            <p className="text-sm text-text/70">
+            <p className="text-sm text-ink-2">
               {hasDirectInstaller
                 ? t("footer.portableUpdateMessage")
                 : t("footer.portableUpdateBrowseMessage")}
             </p>
             <div className="flex gap-2 justify-end">
               <button
-                className="px-3 py-1.5 text-sm rounded border border-mid-gray/20 hover:bg-mid-gray/10 transition-colors"
+                className="px-3 py-1.5 text-sm rounded border border-line hover:bg-wash transition-colors"
                 onClick={() => setShowPortableUpdateDialog(false)}
               >
                 {t("common.close")}
@@ -321,7 +329,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
             {getUpdateStatusText()}
           </button>
         ) : (
-          <span className="text-text/60 tabular-nums">
+          <span className="text-ink-2 tabular-nums">
             {getUpdateStatusText()}
           </span>
         )}

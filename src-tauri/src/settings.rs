@@ -1,3 +1,4 @@
+use crate::utils;
 use log::{debug, warn};
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -93,6 +94,18 @@ pub struct LLMPrompt {
     pub prompt: String,
 }
 
+/// Request format a post-processing endpoint speaks. Built-in providers have a
+/// fixed format; only the custom provider lets the user change it.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum PostProcessApiFormat {
+    /// OpenAI-compatible Chat Completions (`/chat/completions`)
+    #[default]
+    OpenAi,
+    /// Anthropic Messages (`/messages`)
+    Anthropic,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct PostProcessProvider {
     pub id: String,
@@ -104,6 +117,8 @@ pub struct PostProcessProvider {
     pub models_endpoint: Option<String>,
     #[serde(default)]
     pub supports_structured_output: bool,
+    #[serde(default)]
+    pub api_format: PostProcessApiFormat,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
@@ -167,12 +182,43 @@ pub enum DeliveryTarget {
     Clipboard,
 }
 
+/// How the transcribe shortcut's key events drive a recording.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ShortcutActivation {
+    /// Press to start, press again to stop.
+    Toggle,
+    /// Hold to record, release to stop.
+    PushToTalk,
+    /// Hold to record and release to stop, or tap to keep recording until the
+    /// next press. Which one it was is decided by how long the key was held
+    /// (`hold_threshold_ms`).
+    #[default]
+    HoldOrToggle,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ClipboardHandling {
     #[default]
     DontModify,
     CopyToClipboard,
+}
+
+/// Script applied to Mandarin and Cantonese output. Traditional carries its region
+/// (Taiwan vs Hong Kong forms, e.g. 裡/裏) rather than guessing it.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ChineseScript {
+    /// Keep whatever script the model produced.
+    #[default]
+    AsTranscribed,
+    Simplified,
+    /// Traditional, Taiwan forms. Also reads legacy `traditional` (migrated on load).
+    #[serde(alias = "traditional")]
+    TraditionalTw,
+    /// Traditional, in Hong Kong's standard forms.
+    TraditionalHk,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
@@ -199,6 +245,9 @@ pub enum RecordingRetentionPeriod {
 pub enum KeyboardImplementation {
     Tauri,
     HandyKeys,
+    /// No built-in global shortcuts; trigger Handy via CLI flags or signals
+    /// (e.g. from a Wayland compositor keybinding).
+    None,
 }
 
 impl Default for KeyboardImplementation {
@@ -303,14 +352,22 @@ pub enum TranscribeAcceleratorSetting {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum OrtAcceleratorSetting {
+pub enum VadBackend {
     #[default]
-    Auto,
-    Cpu,
-    Cuda,
-    #[serde(rename = "directml")]
-    DirectMl,
-    Rocm,
+    Silero,
+    Earshot,
+}
+
+/// When Handy's spoken-language detector picks the language for Auto.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LanguageDetectionMode {
+    /// Only for models that can't detect the language themselves.
+    #[default]
+    WhenNeeded,
+    /// For every model except streaming ones, restricted to the languages
+    /// the person speaks.
+    Always,
 }
 
 #[derive(Clone, Serialize, Deserialize, Type)]
@@ -359,8 +416,14 @@ pub struct AppSettings {
     /// default bindings for any missing keys before the settings are used.
     #[serde(default)]
     pub bindings: HashMap<String, ShortcutBinding>,
-    #[serde(default = "default_push_to_talk")]
-    pub push_to_talk: bool,
+    /// Replaces the pre-0.10 `push_to_talk` bool; stores missing this key are
+    /// migrated from it in `apply_settings_migrations`.
+    #[serde(default)]
+    pub shortcut_activation: ShortcutActivation,
+    /// Hold-or-toggle only: a press held at least this long is push-to-talk,
+    /// anything shorter is a tap that locks recording on.
+    #[serde(default = "default_hold_threshold_ms")]
+    pub hold_threshold_ms: u64,
     #[serde(default)]
     pub audio_feedback: bool,
     #[serde(default = "default_audio_feedback_volume")]
@@ -404,6 +467,10 @@ pub struct AppSettings {
     pub translate_to_english: bool,
     #[serde(default = "default_selected_language")]
     pub selected_language: String,
+    /// Every language the person dictates in (codes, e.g. ["en", "zh"]),
+    /// picked during onboarding. Empty until then.
+    #[serde(default)]
+    pub spoken_languages: Vec<String>,
     #[serde(default = "default_overlay_position")]
     pub overlay_position: OverlayPosition,
     #[serde(default = "default_debug_mode")]
@@ -456,6 +523,11 @@ pub struct AppSettings {
     pub experimental_enabled: bool,
     #[serde(default)]
     pub lazy_stream_close: bool,
+    /// Experimental, macOS only: move a Bluetooth headset (AirPods) to this
+    /// Mac while recording, so its microphone does not return silence while
+    /// another Apple device is playing through it.
+    #[serde(default)]
+    pub airpods_mode: bool,
     #[serde(default)]
     pub keyboard_implementation: KeyboardImplementation,
     #[serde(default = "default_show_tray_icon")]
@@ -477,10 +549,12 @@ pub struct AppSettings {
     pub filler_word_removal_enabled: bool,
     #[serde(default)]
     pub custom_filler_words: Option<Vec<String>>,
+    /// Fresh installs default from the OS locale; existing stores are migrated
+    /// in `apply_settings_migrations`.
+    #[serde(default)]
+    pub chinese_script: ChineseScript,
     #[serde(default)]
     pub transcribe_accelerator: TranscribeAcceleratorSetting,
-    #[serde(default)]
-    pub ort_accelerator: OrtAcceleratorSetting,
     /// Stable transcribe.cpp device selector. This is derived from the backend's
     /// `device_id` when available (or its name for backends such as Metal),
     /// never from the process-local device registry index.
@@ -493,6 +567,20 @@ pub struct AppSettings {
     pub extra_recording_buffer_ms: u64,
     #[serde(default = "default_vad_enabled")]
     pub vad_enabled: bool,
+    /// Experimental detector implementation. Silero remains the stable default.
+    #[serde(default)]
+    pub vad_backend: VadBackend,
+    /// Decode long audio in chunks cut at pauses, for models whose accuracy
+    /// degrades on long audio. Independent of `vad_enabled`, which only
+    /// decides whether silence is dropped from recordings.
+    #[serde(default = "default_long_form_chunking")]
+    pub long_form_chunking: bool,
+    #[serde(default)]
+    pub language_detection: LanguageDetectionMode,
+    /// Seconds of speech the language detector hears (debug). Read through
+    /// [`AppSettings::language_detection_window_samples`], which clamps it.
+    #[serde(default = "default_language_detection_window_secs")]
+    pub language_detection_window_secs: u32,
     /// Which recording overlay to show: None / Minimal / Live. Streaming mode is
     /// not gated on this — that follows model capability. Migrated from the old
     /// `overlay_position` (position `none` → style `None`).
@@ -510,8 +598,8 @@ fn default_settings_schema_version() -> u32 {
     CURRENT_SETTINGS_SCHEMA_VERSION
 }
 
-fn default_push_to_talk() -> bool {
-    true
+fn default_hold_threshold_ms() -> u64 {
+    300
 }
 
 fn default_always_on_microphone() -> bool {
@@ -569,8 +657,25 @@ fn default_floating_bar_enabled() -> bool {
     true
 }
 
+fn default_long_form_chunking() -> bool {
+    true
+}
+
+fn default_language_detection_window_secs() -> u32 {
+    5
+}
+
 fn default_filler_word_removal_enabled() -> bool {
     true
+}
+
+fn default_chinese_script() -> ChineseScript {
+    crate::system_languages::suggested_chinese_script(
+        crate::system_languages::system_languages()
+            .iter()
+            .map(String::as_str),
+    )
+    .unwrap_or_default()
 }
 
 fn default_debug_mode() -> bool {
@@ -644,6 +749,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            api_format: PostProcessApiFormat::OpenAi,
         },
         PostProcessProvider {
             id: "zai".to_string(),
@@ -652,6 +758,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            api_format: PostProcessApiFormat::OpenAi,
         },
         PostProcessProvider {
             id: "openrouter".to_string(),
@@ -660,6 +767,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            api_format: PostProcessApiFormat::OpenAi,
         },
         PostProcessProvider {
             id: "anthropic".to_string(),
@@ -668,6 +776,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: false,
+            api_format: PostProcessApiFormat::Anthropic,
         },
         PostProcessProvider {
             id: "groq".to_string(),
@@ -676,6 +785,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: false,
+            api_format: PostProcessApiFormat::OpenAi,
         },
         PostProcessProvider {
             id: "cerebras".to_string(),
@@ -684,6 +794,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            api_format: PostProcessApiFormat::OpenAi,
         },
     ];
 
@@ -700,6 +811,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: None,
             supports_structured_output: true,
+            api_format: PostProcessApiFormat::OpenAi,
         });
     }
 
@@ -711,6 +823,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
         allow_base_url_edit: false,
         models_endpoint: Some("/models".to_string()),
         supports_structured_output: true,
+        api_format: PostProcessApiFormat::OpenAi,
     });
 
     // Custom provider always comes last
@@ -721,6 +834,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
         allow_base_url_edit: true,
         models_endpoint: Some("/models".to_string()),
         supports_structured_output: false,
+        api_format: PostProcessApiFormat::OpenAi,
     });
 
     providers
@@ -806,6 +920,17 @@ fn ensure_post_process_defaults(settings: &mut AppSettings) -> bool {
                     existing.supports_structured_output = provider.supports_structured_output;
                     changed = true;
                 }
+
+                // Built-in providers have a fixed API format (migration); the
+                // custom provider's format is a user choice and is left alone.
+                if provider.id != "custom" && existing.api_format != provider.api_format {
+                    debug!(
+                        "Updating api_format for provider '{}' from {:?} to {:?}",
+                        provider.id, existing.api_format, provider.api_format
+                    );
+                    existing.api_format = provider.api_format;
+                    changed = true;
+                }
             }
             None => {
                 // Provider doesn't exist, add it
@@ -849,7 +974,7 @@ pub fn get_default_settings() -> AppSettings {
     #[cfg(target_os = "macos")]
     let default_shortcut = "option+space";
     #[cfg(target_os = "linux")]
-    let default_shortcut = "ctrl+space";
+    let default_shortcut = "ctrl+alt+space";
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     let default_shortcut = "alt+space";
 
@@ -869,7 +994,7 @@ pub fn get_default_settings() -> AppSettings {
     #[cfg(target_os = "macos")]
     let default_post_process_shortcut = "option+shift+space";
     #[cfg(target_os = "linux")]
-    let default_post_process_shortcut = "ctrl+shift+space";
+    let default_post_process_shortcut = "ctrl+alt+shift+space";
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     let default_post_process_shortcut = "alt+shift+space";
 
@@ -898,7 +1023,8 @@ pub fn get_default_settings() -> AppSettings {
     AppSettings {
         settings_schema_version: default_settings_schema_version(),
         bindings,
-        push_to_talk: default_push_to_talk(),
+        shortcut_activation: ShortcutActivation::default(),
+        hold_threshold_ms: default_hold_threshold_ms(),
         audio_feedback: false,
         audio_feedback_volume: default_audio_feedback_volume(),
         sound_theme: default_sound_theme(),
@@ -911,6 +1037,7 @@ pub fn get_default_settings() -> AppSettings {
         onboarding_completed: false,
         always_on_microphone: false,
         floating_bar_enabled: default_floating_bar_enabled(),
+        spoken_languages: Vec::new(),
         selected_microphone: None,
         selected_channel: None,
         clamshell_microphone: None,
@@ -943,6 +1070,7 @@ pub fn get_default_settings() -> AppSettings {
         theme: default_theme(),
         experimental_enabled: false,
         lazy_stream_close: false,
+        airpods_mode: false,
         keyboard_implementation: KeyboardImplementation::default(),
         show_tray_icon: default_show_tray_icon(),
         paste_delay_ms: default_paste_delay_ms(),
@@ -952,11 +1080,15 @@ pub fn get_default_settings() -> AppSettings {
         external_script_path: None,
         filler_word_removal_enabled: default_filler_word_removal_enabled(),
         custom_filler_words: None,
+        chinese_script: default_chinese_script(),
         transcribe_accelerator: TranscribeAcceleratorSetting::default(),
-        ort_accelerator: OrtAcceleratorSetting::default(),
         transcribe_gpu_device: default_transcribe_gpu_device(),
         extra_recording_buffer_ms: 0,
         vad_enabled: default_vad_enabled(),
+        vad_backend: VadBackend::default(),
+        long_form_chunking: default_long_form_chunking(),
+        language_detection: LanguageDetectionMode::default(),
+        language_detection_window_secs: default_language_detection_window_secs(),
         overlay_style: default_overlay_style(),
     }
 }
@@ -967,7 +1099,17 @@ impl Default for AppSettings {
     }
 }
 
+/// The language detector's window bounds: below 2 s it guesses, and it only
+/// scores the first 30 s of what it's given.
+pub const LANGUAGE_DETECTION_WINDOW_SECS: std::ops::RangeInclusive<u32> = 2..=30;
+
 impl AppSettings {
+    /// Samples (16 kHz) of speech the language detector hears.
+    pub fn language_detection_window_samples(&self) -> usize {
+        let (min, max) = LANGUAGE_DETECTION_WINDOW_SECS.into_inner();
+        self.language_detection_window_secs.clamp(min, max) as usize * 16_000
+    }
+
     pub fn active_post_process_provider(&self) -> Option<&PostProcessProvider> {
         self.post_process_providers
             .iter()
@@ -1132,6 +1274,73 @@ fn apply_settings_migrations(
         updated = true;
     }
 
+    // One-time shortcut activation migration (only while the new key is
+    // absent): the retired `push_to_talk` bool maps onto the two legacy modes so
+    // upgrading users keep exactly the behavior they had. Only fresh installs
+    // get the hold-or-toggle default.
+    if settings_value.get("shortcut_activation").is_none() {
+        if let Some(push_to_talk) = settings_value.get("push_to_talk").and_then(|v| v.as_bool()) {
+            settings.shortcut_activation = if push_to_talk {
+                ShortcutActivation::PushToTalk
+            } else {
+                ShortcutActivation::Toggle
+            };
+            updated = true;
+        }
+    }
+
+    // One-time spoken languages backfill for users onboarded before it was asked.
+    // The guess always includes English, so it never decides a transcription
+    // (`effective_language` only uses a lone language). Must run before the
+    // Chinese script migrations: it reads `zh-Hans`/`zh-Hant`, and they read it.
+    if settings.onboarding_completed && settings.spoken_languages.is_empty() {
+        settings.spoken_languages = guessed_spoken_languages(settings, settings_value);
+        updated = true;
+    }
+
+    // One-time Chinese script migration: the script used to be chosen through
+    // `zh-Hans`/`zh-Hant` language intents. Split those into the recognition
+    // language and the script setting; every other upgrading user keeps the
+    // unconverted output they had. Only fresh installs get the locale default.
+    if settings_value.get("chinese_script").is_none() {
+        settings.chinese_script = match settings.selected_language.as_str() {
+            "zh-Hans" => ChineseScript::Simplified,
+            "zh-Hant" => ChineseScript::TraditionalTw,
+            _ => ChineseScript::AsTranscribed,
+        };
+        if settings.chinese_script != ChineseScript::AsTranscribed {
+            settings.selected_language = "zh".to_string();
+        }
+        updated = true;
+    }
+
+    // One-time Traditional split: `traditional` took its regional forms from
+    // what was spoken (Hong Kong's for Cantonese, Taiwan's for Mandarin).
+    // Keep Hong Kong's for people who speak Cantonese or whose OS's first
+    // Traditional Chinese language is Hong Kong's or Macau's. People who
+    // dictated both now get one region's forms for both.
+    if settings_value
+        .get("chinese_script")
+        .and_then(|v| v.as_str())
+        == Some("traditional")
+    {
+        let hong_kong = settings.spoken_languages.iter().any(|l| l == "yue")
+            || os_languages().iter().find_map(|tag| {
+                match crate::chinese_script::chinese_script_for_locale(tag) {
+                    Some(s @ (ChineseScript::TraditionalTw | ChineseScript::TraditionalHk)) => {
+                        Some(s)
+                    }
+                    _ => None,
+                }
+            }) == Some(ChineseScript::TraditionalHk);
+        settings.chinese_script = if hong_kong {
+            ChineseScript::TraditionalHk
+        } else {
+            ChineseScript::TraditionalTw
+        };
+        updated = true;
+    }
+
     let stored_schema_version = settings_value
         .get("settings_schema_version")
         .and_then(|v| v.as_u64())
@@ -1198,6 +1407,116 @@ fn apply_settings_migrations(
     updated
 }
 
+/// Likely spoken languages from existing settings and the OS; always includes English.
+fn guessed_spoken_languages(
+    settings: &AppSettings,
+    settings_value: &serde_json::Value,
+) -> Vec<String> {
+    // Read the stored value: a missing key may hold the locale default, not a choice.
+    let picked_script = settings_value
+        .get("chinese_script")
+        .and_then(|v| v.as_str())
+        .is_some_and(|script| script != "as_transcribed");
+    let intent = settings.selected_language.as_str();
+    // A script says Chinese, unless the language they picked already does.
+    let picked_chinese = crate::chinese_script::chinese_script_for_locale(intent).is_some();
+    let tags = [
+        (intent != "auto").then_some(intent),
+        (picked_script && !picked_chinese).then_some("zh"),
+        Some(settings.app_language.as_str()),
+    ]
+    .into_iter()
+    .flatten()
+    .chain(os_languages().iter().map(String::as_str));
+    crate::system_languages::suggested_languages(tags)
+}
+
+/// The OS's languages; empty under test so migrations are deterministic.
+fn os_languages() -> &'static [String] {
+    if cfg!(test) {
+        &[]
+    } else {
+        crate::system_languages::system_languages()
+    }
+}
+
+/// How this build was packaged, as far as the updater is concerned. Mirrors
+/// the Linux cases of `tauri::utils::platform::BundleType`; `Other` covers
+/// every other stamped type and `None` (at the call site) a binary the bundler
+/// did not stamp, such as a source, AUR or other distro build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+enum BundleKind {
+    AppImage,
+    Deb,
+    Rpm,
+    Other,
+}
+
+/// Whether the updater plugin can install an update on Linux. It runs
+/// `dpkg -i` for a deb build, `rpm -U` for an rpm build, and otherwise swaps
+/// the running AppImage. A build with no bundle type, or one whose tool is
+/// missing (the deb repacked for Arch), would only fail after a password
+/// prompt. Pure so it can be tested on any OS.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn linux_self_update_possible(kind: Option<BundleKind>, has_tool: impl Fn(&str) -> bool) -> bool {
+    match kind {
+        Some(BundleKind::AppImage) => true,
+        Some(BundleKind::Deb) => has_tool("dpkg"),
+        Some(BundleKind::Rpm) => has_tool("rpm"),
+        Some(BundleKind::Other) | None => false,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn self_update_possible() -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    use tauri::utils::config::BundleType;
+    use tauri::utils::platform::bundle_type;
+
+    let kind = bundle_type().map(|b| match b {
+        BundleType::AppImage => BundleKind::AppImage,
+        BundleType::Deb => BundleKind::Deb,
+        BundleType::Rpm => BundleKind::Rpm,
+        _ => BundleKind::Other,
+    });
+    let has_tool = |name: &str| {
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        std::env::split_paths(&path)
+            .chain(["/usr/bin", "/bin", "/usr/sbin", "/sbin"].map(std::path::PathBuf::from))
+            .any(|dir| {
+                std::fs::metadata(dir.join(name))
+                    .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+                    .unwrap_or(false)
+            })
+    };
+    linux_self_update_possible(kind, has_tool)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn self_update_possible() -> bool {
+    true
+}
+
+/// Update checks are forced off (without touching the persisted setting) when
+/// `HANDY_DISABLE_UPDATER` is set — e.g. by the Nix package, since self-update
+/// can't work against an immutable /nix/store install — or when this build
+/// cannot install its own update (see `linux_self_update_possible`).
+pub fn update_checks_forced_disabled() -> bool {
+    use std::sync::OnceLock;
+    static IS_UPDATER_DISABLED: OnceLock<bool> = OnceLock::new();
+    *IS_UPDATER_DISABLED
+        .get_or_init(|| utils::env_flag_enabled("HANDY_DISABLE_UPDATER") || !self_update_possible())
+}
+
+/// Effective updater state: the user's stored preference, overridden to `false`
+/// while `HANDY_DISABLE_UPDATER` is set. Callers deciding whether to actually
+/// check for updates must use this rather than reading `update_checks_enabled`
+/// directly, so the forced-off state never leaks into the persisted setting.
+pub fn update_checks_effectively_enabled(settings: &AppSettings) -> bool {
+    settings.update_checks_enabled && !update_checks_forced_disabled()
+}
+
 pub fn write_settings(app: &AppHandle, settings: AppSettings) {
     let store = app
         .store(crate::portable::store_path(SETTINGS_STORE_PATH))
@@ -1212,12 +1531,12 @@ pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {
     settings.bindings
 }
 
-pub fn get_stored_binding(app: &AppHandle, id: &str) -> ShortcutBinding {
-    let bindings = get_bindings(app);
-
-    let binding = bindings.get(id).unwrap().clone();
-
-    binding
+pub fn get_stored_binding(settings: &AppSettings, id: &str) -> Result<ShortcutBinding, String> {
+    settings
+        .bindings
+        .get(id)
+        .cloned()
+        .ok_or_else(|| format!("Binding with id '{}' not found", id))
 }
 
 pub fn get_history_limit(app: &AppHandle) -> usize {
@@ -1233,6 +1552,24 @@ pub fn get_recording_retention_period(app: &AppHandle) -> RecordingRetentionPeri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stored_binding_returns_the_requested_binding() {
+        let settings = get_default_settings();
+
+        let result = get_stored_binding(&settings, "transcribe");
+
+        assert_eq!(result.unwrap().id, "transcribe");
+    }
+
+    #[test]
+    fn unknown_stored_binding_returns_an_error() {
+        let settings = get_default_settings();
+
+        let result = get_stored_binding(&settings, "unknown");
+
+        assert_eq!(result.unwrap_err(), "Binding with id 'unknown' not found");
+    }
 
     fn default_settings_json() -> serde_json::Value {
         serde_json::to_value(get_default_settings()).unwrap()
@@ -1284,7 +1621,11 @@ mod tests {
     fn empty_store_parses_with_defaults() {
         let settings: AppSettings = serde_json::from_value(serde_json::json!({}))
             .expect("all AppSettings fields need serde defaults");
-        assert!(settings.push_to_talk);
+        assert_eq!(
+            settings.shortcut_activation,
+            ShortcutActivation::HoldOrToggle
+        );
+        assert_eq!(settings.hold_threshold_ms, default_hold_threshold_ms());
         assert!(!settings.audio_feedback);
         assert!(settings.filler_word_removal_enabled);
         // Bindings default to empty; the load path merges the real defaults in.
@@ -1407,6 +1748,11 @@ mod tests {
         assert_eq!(settings.log_level, LogLevel::Debug);
         assert_eq!(settings.sound_theme, SoundTheme::Pop);
         assert!(settings.filler_word_removal_enabled);
+        assert_eq!(settings.vad_backend, VadBackend::Silero);
+        assert!(
+            settings.long_form_chunking,
+            "chunking is on for settings saved before it existed"
+        );
 
         // The 0.1 integer device index is cleared once for transcribe.cpp 0.2.
         // Without an exact device, the retired generic GPU choice becomes Auto.
@@ -1419,6 +1765,9 @@ mod tests {
             settings.transcribe_accelerator,
             TranscribeAcceleratorSetting::Auto
         );
+        // The retired push_to_talk bool (false in this fixture) becomes the
+        // matching legacy mode rather than the new hold-or-toggle default.
+        assert_eq!(settings.shortcut_activation, ShortcutActivation::Toggle);
         assert_eq!(settings.transcribe_gpu_device, None);
     }
 
@@ -1461,6 +1810,20 @@ mod tests {
         assert_eq!(salvaged.paste_delay_ms, default_paste_delay_ms());
         assert_eq!(salvaged.sound_theme, default_sound_theme());
         assert_eq!(salvaged.custom_words, vec!["handy".to_string()]);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn default_shortcuts_do_not_conflict_with_ibus_input_method_switch() {
+        let defaults = get_default_settings();
+        assert_eq!(
+            defaults.bindings["transcribe"].current_binding,
+            "ctrl+alt+space"
+        );
+        assert_eq!(
+            defaults.bindings["transcribe_with_post_process"].current_binding,
+            "ctrl+alt+shift+space",
+        );
     }
 
     #[test]
@@ -1577,6 +1940,153 @@ mod tests {
     }
 
     #[test]
+    fn chinese_script_migration_only_carries_over_legacy_intents() {
+        for (intent, language, script) in [
+            ("zh-Hans", "zh", ChineseScript::Simplified),
+            ("zh-Hant", "zh", ChineseScript::TraditionalTw),
+            ("auto", "auto", ChineseScript::AsTranscribed),
+        ] {
+            let mut settings = get_default_settings();
+            settings.selected_language = intent.to_string();
+            settings.chinese_script = ChineseScript::TraditionalTw;
+            let raw = serde_json::json!({ "selected_language": intent });
+
+            assert!(apply_settings_migrations(&mut settings, &raw));
+            assert_eq!(settings.selected_language, language);
+            assert_eq!(settings.chinese_script, script);
+        }
+    }
+
+    /// Spoken languages backfilled for an onboarded upgrader with these stored
+    /// settings (merged over the defaults, as a stored file deserializes).
+    fn backfilled(stored: serde_json::Value) -> AppSettings {
+        let mut raw = serde_json::json!({
+            "onboarding_completed": true,
+            "selected_language": "auto",
+            "app_language": "en"
+        });
+        raw.as_object_mut()
+            .unwrap()
+            .extend(stored.as_object().unwrap().clone());
+        let mut settings: AppSettings = serde_json::from_value(raw.clone()).unwrap();
+        apply_settings_migrations(&mut settings, &raw);
+        settings
+    }
+
+    #[test]
+    fn spoken_languages_backfill_guesses_with_english_included() {
+        for (stored, spoken) in [
+            (
+                serde_json::json!({ "selected_language": "de" }),
+                vec!["de", "en"],
+            ),
+            (serde_json::json!({ "selected_language": "en" }), vec!["en"]),
+            (
+                serde_json::json!({ "selected_language": "zh-Hant" }),
+                vec!["zh", "en"],
+            ),
+            (
+                serde_json::json!({ "chinese_script": "traditional" }),
+                vec!["zh", "en"],
+            ),
+            (
+                serde_json::json!({ "chinese_script": "as_transcribed" }),
+                vec!["en"],
+            ),
+            // A picked language leads, the app's follows.
+            (
+                serde_json::json!({ "selected_language": "fr", "app_language": "de" }),
+                vec!["fr", "de", "en"],
+            ),
+        ] {
+            assert_eq!(
+                backfilled(stored.clone()).spoken_languages,
+                spoken,
+                "{stored}"
+            );
+        }
+    }
+
+    #[test]
+    fn spoken_languages_backfill_keeps_cantonese_on_hong_kong_forms() {
+        let settings = backfilled(serde_json::json!({
+            "selected_language": "yue",
+            "chinese_script": "traditional"
+        }));
+
+        assert_eq!(settings.spoken_languages, vec!["yue", "en"]);
+        assert_eq!(settings.chinese_script, ChineseScript::TraditionalHk);
+    }
+
+    #[test]
+    fn spoken_languages_backfill_leaves_chosen_and_unasked_alone() {
+        let chosen = backfilled(serde_json::json!({
+            "selected_language": "de",
+            "spoken_languages": ["ja"]
+        }));
+        assert_eq!(chosen.spoken_languages, vec!["ja"]);
+
+        let unasked = backfilled(serde_json::json!({
+            "onboarding_completed": false,
+            "selected_language": "de"
+        }));
+        assert!(unasked.spoken_languages.is_empty());
+    }
+
+    #[test]
+    fn shortcut_activation_migration_maps_push_to_talk_true() {
+        let mut settings = get_default_settings();
+        let raw = serde_json::json!({
+            "selected_model": "",
+            "push_to_talk": true
+        });
+
+        assert!(apply_settings_migrations(&mut settings, &raw));
+        assert_eq!(settings.shortcut_activation, ShortcutActivation::PushToTalk);
+    }
+
+    #[test]
+    fn shortcut_activation_migration_maps_push_to_talk_false() {
+        let mut settings = get_default_settings();
+        let raw = serde_json::json!({
+            "selected_model": "",
+            "push_to_talk": false
+        });
+
+        assert!(apply_settings_migrations(&mut settings, &raw));
+        assert_eq!(settings.shortcut_activation, ShortcutActivation::Toggle);
+    }
+
+    #[test]
+    fn shortcut_activation_migration_respects_explicit_new_key() {
+        let mut settings = get_default_settings();
+        settings.shortcut_activation = ShortcutActivation::HoldOrToggle;
+        let raw = serde_json::json!({
+            "selected_model": "",
+            "push_to_talk": true,
+            "shortcut_activation": "hold_or_toggle"
+        });
+
+        apply_settings_migrations(&mut settings, &raw);
+        assert_eq!(
+            settings.shortcut_activation,
+            ShortcutActivation::HoldOrToggle
+        );
+    }
+
+    #[test]
+    fn shortcut_activation_defaults_to_hold_or_toggle_without_legacy_key() {
+        let mut settings = get_default_settings();
+        let raw = serde_json::json!({ "selected_model": "" });
+
+        apply_settings_migrations(&mut settings, &raw);
+        assert_eq!(
+            settings.shortcut_activation,
+            ShortcutActivation::HoldOrToggle
+        );
+    }
+
+    #[test]
     fn gpu_device_migration_resets_legacy_positive_selection_to_auto() {
         let mut settings = get_default_settings();
         settings.transcribe_accelerator = TranscribeAcceleratorSetting::Gpu;
@@ -1646,6 +2156,7 @@ mod tests {
             "onboarding_completed": false,
             "whats_new_last_seen_version": default_whats_new_last_seen_version(),
             "overlay_style": "live",
+            "chinese_script": "as_transcribed",
             "transcribe_accelerator": "gpu",
             "transcribe_gpu_device": settings.transcribe_gpu_device
         });
@@ -1655,6 +2166,25 @@ mod tests {
             settings.transcribe_gpu_device.as_deref(),
             Some("[\"vulkan\",\"id\",\"0000:01:00.0\"]")
         );
+    }
+
+    #[test]
+    fn post_process_defaults_sync_builtin_api_format_but_keep_custom() {
+        let mut settings = get_default_settings();
+        for provider in settings.post_process_providers.iter_mut() {
+            match provider.id.as_str() {
+                // Settings saved before the built-in provider moved to Messages
+                "anthropic" => provider.api_format = PostProcessApiFormat::OpenAi,
+                "custom" => provider.api_format = PostProcessApiFormat::Anthropic,
+                _ => {}
+            }
+        }
+
+        assert!(ensure_post_process_defaults(&mut settings));
+
+        let format_of = |id: &str| settings.post_process_provider(id).unwrap().api_format;
+        assert_eq!(format_of("anthropic"), PostProcessApiFormat::Anthropic);
+        assert_eq!(format_of("custom"), PostProcessApiFormat::Anthropic);
     }
 
     #[test]
@@ -1684,5 +2214,35 @@ mod tests {
         let out = format!("{:?}", map);
         assert!(!out.contains("secret"));
         assert!(out.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn linux_self_update_possible_depends_on_bundle_and_tool() {
+        let all = |_: &str| true;
+        let none = |_: &str| false;
+        let only = |want: &'static str| move |name: &str| name == want;
+
+        assert!(linux_self_update_possible(Some(BundleKind::AppImage), none));
+        assert!(linux_self_update_possible(Some(BundleKind::Deb), all));
+        assert!(linux_self_update_possible(
+            Some(BundleKind::Deb),
+            only("dpkg")
+        ));
+        assert!(!linux_self_update_possible(Some(BundleKind::Deb), none));
+        assert!(!linux_self_update_possible(
+            Some(BundleKind::Deb),
+            only("rpm")
+        ));
+        assert!(linux_self_update_possible(
+            Some(BundleKind::Rpm),
+            only("rpm")
+        ));
+        assert!(!linux_self_update_possible(Some(BundleKind::Rpm), none));
+        assert!(!linux_self_update_possible(
+            Some(BundleKind::Rpm),
+            only("dpkg")
+        ));
+        assert!(!linux_self_update_possible(Some(BundleKind::Other), all));
+        assert!(!linux_self_update_possible(None, all));
     }
 }

@@ -1,6 +1,7 @@
+use crate::managers::transcription::TranscriptionManager;
 use crate::managers::{
     history::{HistoryManager, PaginatedHistory},
-    transcription::TranscriptionManager,
+    transcription_jobs::TranscriptionJobManager,
 };
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -511,7 +512,10 @@ fn queue_retry(app: &AppHandle, capture_id: String) -> Result<(), String> {
     Ok(())
 }
 
-fn import_local_audio_file(app: AppHandle, source_path: String) -> Result<String, String> {
+pub(crate) fn import_local_audio_file(
+    app: AppHandle,
+    source_path: String,
+) -> Result<String, String> {
     use crate::storage::models::IntegrityState;
     use crate::storage::repositories::{captures, transcriptions};
 
@@ -693,14 +697,18 @@ pub async fn get_audio_file_path(
 pub async fn delete_history_entry(
     _app: AppHandle,
     history_manager: State<'_, Arc<HistoryManager>>,
+    jobs: State<'_, Arc<TranscriptionJobManager>>,
     id: i64,
 ) -> Result<(), String> {
+    jobs.cancel(id);
     history_manager
         .delete_entry(id)
         .await
         .map_err(|e| e.to_string())
 }
 
+/// Queues the entry to be transcribed again with the current model. Its
+/// progress and outcome arrive as `TranscriptionJob` events.
 #[tauri::command]
 #[specta::specta]
 pub async fn retry_history_entry_transcription(
@@ -890,4 +898,21 @@ mod canonical_history_tests {
             .unwrap();
         assert_eq!(raw, "newer Handy");
     }
+}
+
+/// Stops the entry's background transcription: a queued one is dropped, a
+/// running one stops after the chunk it is on. The entry keeps the text it
+/// had before.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_history_entry_transcription(jobs: State<'_, Arc<TranscriptionJobManager>>, id: i64) {
+    jobs.cancel(id);
+}
+
+/// Adds an audio or video file to History and queues its transcription.
+/// Fails without adding anything if the file has no audio Handy can read.
+#[tauri::command]
+#[specta::specta]
+pub async fn transcribe_file(app: AppHandle, path: String) -> Result<String, String> {
+    import_local_audio(app, path).await
 }

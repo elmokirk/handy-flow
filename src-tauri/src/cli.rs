@@ -4,6 +4,10 @@ use std::path::PathBuf;
 #[derive(Parser, Debug, Clone, Default)]
 #[command(name = "handy", about = "Handy - Speech to Text")]
 pub struct CliArgs {
+    #[arg(long, hide = true, requires = "canonical_import")]
+    pub canonical_sandbox: Option<PathBuf>,
+    #[arg(long, hide = true, requires = "canonical_sandbox")]
+    pub canonical_import: Option<PathBuf>,
     /// Internal line-oriented worker protocol; not an interactive CLI mode.
     #[arg(long, hide = true)]
     pub transcription_worker: bool,
@@ -32,8 +36,9 @@ pub struct CliArgs {
     pub debug: bool,
 
     /// Transcribe this WAV (16 kHz mono) headlessly and exit. Runs the same
-    /// batch transcription path as the app — no mic, no VAD, no download
-    /// (the model must already be installed).
+    /// batch transcription path as the app — no mic, no silence removal, no
+    /// download (the model must already be installed). Long audio is still
+    /// chunked at pauses, as in the app.
     #[arg(short = 'f', long, value_name = "WAV")]
     pub transcribe_file: Option<PathBuf>,
 

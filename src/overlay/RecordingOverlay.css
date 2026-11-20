@@ -7,6 +7,21 @@
 
 :root {
   --s-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Near-opaque app surface (theme.css --color-background at 98%). Auto-flips
+     light/dark with --color-background, so no dark-mode override is needed. */
+  --s-surface: color-mix(in srgb, var(--color-background) 98%, transparent);
+  /* Accent = logo pink; flips automatically via --color-logo-primary. */
+  --s-accent: var(--color-logo-primary);
+  /* The rest come from theme.css, which already follows the theme setting. */
+  --s-accent-soft: color-mix(
+    in srgb,
+    var(--color-logo-primary) 20%,
+    transparent
+  );
+  --s-muted: var(--color-ink-2);
+  --s-faint: var(--color-ink-3);
+  --s-border: var(--color-line);
+  --s-hair: var(--color-wash);
   /* Brand posture: black surface, orange accents, white hairline border —
      the same pill spec as the in-app footer ping, kept readable over any
      content in light and dark regardless of --color-background. */
@@ -54,41 +69,6 @@
   --ov-base-h: 40px; /* control-row height (.sbase) */
   --ov-cap-max-h: 64px; /* max height of the scrolling live-text region */
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --s-accent-soft: var(--dark-s-accent-soft);
-    --s-muted: var(--dark-s-muted);
-    --s-faint: var(--dark-s-faint);
-    --s-border: var(--dark-s-border);
-    --s-hair: var(--dark-s-hair);
-  }
-}
-
-/*
- * Explicit theme override, matching the `data-theme` blocks in theme.css.
- * `--s-surface` and `--s-accent` honour the setting for free because they derive
- * from shared palette tokens, but the neutrals above are chosen here, so without
- * this block a forced theme on a differently-themed OS mixes the two — e.g. dark
- * surface with light-theme secondary text at ~2.8:1 contrast. macOS masks that
- * (setting the app appearance flips the webview's `prefers-color-scheme` to
- * match), so this is what Windows and Linux need.
- */
-:root[data-theme="light"] {
-  --s-accent-soft: var(--light-s-accent-soft);
-  --s-muted: var(--light-s-muted);
-  --s-faint: var(--light-s-faint);
-  --s-border: var(--light-s-border);
-  --s-hair: var(--light-s-hair);
-}
-
-:root[data-theme="dark"] {
-  --s-accent-soft: var(--dark-s-accent-soft);
-  --s-muted: var(--dark-s-muted);
-  --s-faint: var(--dark-s-faint);
-  --s-border: var(--dark-s-border);
-  --s-hair: var(--dark-s-hair);
-}
-
 /* ============================================================
    Unified overlay stage — one fixed, transparent container shared by the compact
    pill and the Live panel (both render the same `.scard` base). The card is
@@ -157,6 +137,10 @@
    The radius stays 9999px in every state so the card is always a true pill. */
 .scard {
   width: var(--ov-pill-w);
+  /* Never wider than the window: an unaccounted content zoom degrades to a
+     narrower card instead of clipping. 2px = our border (no border-box reset). */
+  max-width: calc(100vw - 2px);
+  border-radius: 24px;
   border-radius: 9999px;
   overflow: hidden;
   display: flex;
@@ -202,13 +186,63 @@
    width transition (intrinsic max-content can't be transitioned, and every label
    is short enough to fit the resting pill, so content-sizing produced no visible
    grow). The resting pill hugs the waveform; the working pill is roomy enough to
-   center the longest label — the .swork-label ellipsis is only a safety net past it. */
+   center the longest label — the .swork-label ellipsis is only a safety net past it.
+   A notice hugs its title instead, so RecordingOverlay.tsx measures that width and
+   sets it inline, which keeps it animatable. */
 .scard.compact {
   animation: none;
   width: var(--ov-rest-w);
 }
 .scard.compact.cworking {
   width: var(--ov-work-w);
+}
+
+/* Notice: badge and title, in the pill and the Live panel. */
+.scard.cnotice {
+  cursor: pointer;
+}
+.scard.cnotice:not(.open) {
+  border-radius: 24px;
+}
+.scard.level-error {
+  --notice: var(--color-error);
+}
+.scard.level-warning {
+  --notice: var(--color-warning);
+}
+.sbase.snotice {
+  grid-template-columns: auto minmax(0, max-content);
+  justify-content: center;
+  gap: 7px;
+  padding: 0 13px;
+}
+.nglyph {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--notice);
+}
+.nlabel {
+  font-size: 12px;
+  color: var(--color-text);
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Measures the full title, since the visible one can be cut off. */
+.nlabel.nprobe {
+  position: absolute;
+  visibility: hidden;
+  overflow: visible;
+}
+.stext-cap .ndetail {
+  display: block;
+  color: var(--s-muted);
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 /* text region — auto-height open via grid-rows trick; region fades as a whole */
@@ -229,7 +263,9 @@
   min-height: 0;
 }
 .stext-cap {
-  max-height: var(--ov-cap-max-h);
+  /* Vertical counterpart of the .scard clamp: show fewer lines rather than clip.
+     20px = cap padding (12) + card borders (2) + 6px slack for zoom rounding. */
+  max-height: min(var(--ov-cap-max-h), calc(100vh - var(--ov-base-h) - 20px));
   overflow-y: auto;
   overscroll-behavior: contain;
   display: flex;
@@ -260,6 +296,9 @@
 .stext-cap .tentative {
   color: inherit;
 }
+.stext-cap .sloading {
+  color: var(--s-muted);
+}
 .scaret {
   display: inline-block;
   width: 2px;
@@ -280,6 +319,7 @@
    Same structure for pill & panel; the dot stays anchored left in both. */
 .sbase {
   height: var(--ov-base-h);
+  flex: none; /* the control row never squashes; only the text region gives */
   padding: 0 10px;
   display: grid;
   /* Equal side columns (min 22px to hold the cancel button) keep the center item

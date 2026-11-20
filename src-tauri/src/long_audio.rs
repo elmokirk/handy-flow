@@ -27,15 +27,25 @@ pub const OVERLAP_SAMPLES: u64 = 2 * SAMPLE_RATE as u64;
 /// Audio file extensions accepted by the import pipeline. Recognition and
 /// validation are content-based (rodio/Symphonia probes the media, not the
 /// name), so the extension list only decides which files we even accept.
-/// AAC (M4A/MP4/ADTS), Vorbis-in-OGG and FLAC are decoded natively; Opus and
-/// AMR recordings have no native decoder yet and are rejected here.
+/// AAC, Vorbis and FLAC use the regular decoder; Opus/WebM can use the
+/// bounded Symphonia/libopus fallback. AMR remains unsupported.
 pub const SUPPORTED_IMPORT_EXTENSIONS: &[&str] = &[
-    "wav", "mp3", "m4a", "mp4", "m4b", "m4r", "aac", "flac", "ogg", "oga", "mov",
+    "wav", "mp3", "m4a", "mp4", "m4b", "m4r", "aac", "flac", "ogg", "oga", "mov", "opus", "webm",
 ];
 // ponytail: six-minute one-shot ceiling preserves foreground dictation UX;
 // the isolated child falls back to small windows if a device cannot run it.
 const SINGLE_PASS_MAX_SAMPLES: u64 = 6 * 60 * SAMPLE_RATE as u64;
-const NO_SPEECH_ERROR: &str = "Audio contains no recognized speech";
+pub(crate) const NO_SPEECH_ERROR: &str = "Audio contains no recognized speech";
+pub(crate) const NO_MODEL_SELECTED_ERROR: &str = "No model selected";
+
+fn selected_job_model(model_id: Option<&str>, selected_model: &str) -> Result<String, String> {
+    let model = model_id.unwrap_or(selected_model);
+    if model.trim().is_empty() {
+        Err(NO_MODEL_SELECTED_ERROR.into())
+    } else {
+        Ok(model.to_string())
+    }
+}
 
 /// Discard only a confirmed empty live dictation; never use this for model or
 /// recorder failures that may contain recoverable speech.
@@ -137,7 +147,7 @@ fn silence_cut(path: &Path, start: u64, end: u64, total: u64) -> Result<u64, Str
 /// the formats that would have worked.
 pub fn unsupported_import_error(extension: &str) -> String {
     format!(
-        "Unsupported audio file type '.{extension}'. Supported: WAV, MP3, M4A/MP4 (AAC), AAC, FLAC, OGG. Opus and AMR recordings are not supported yet."
+        "Unsupported audio file type '.{extension}'. Supported: WAV, MP3, M4A/MP4/M4B/M4R (AAC), AAC, FLAC, OGG/OGA, MOV, Opus, WebM. AMR recordings are not supported yet."
     )
 }
 
@@ -254,6 +264,13 @@ pub fn prepare_working_wav(
     if inspect_wav(&work_path).is_ok() {
         return Ok(work_path);
     }
+    if matches!(extension.as_str(), "opus" | "webm") {
+        log::info!("Using bounded Opus/WebM import fallback");
+        let samples =
+            crate::audio_toolkit::audio::decode_audio_file(source).map_err(|e| e.to_string())?;
+        crate::audio_toolkit::save_wav_file(&work_path, &samples).map_err(|e| e.to_string())?;
+        return Ok(work_path);
+    }
     let file = File::open(source).map_err(|e| e.to_string())?;
     let decoder = Decoder::try_from(file).map_err(|e| format!("Cannot decode audio: {e}"))?;
     let staging = work_dir.join(format!("{capture_id}.part"));
@@ -267,7 +284,11 @@ pub fn prepare_working_wav(
         },
     )
     .map_err(|e| e.to_string())?;
-    let converted = UniformSourceIterator::new(decoder, 1, SAMPLE_RATE);
+    let converted = UniformSourceIterator::new(
+        decoder,
+        std::num::NonZeroU16::new(1).unwrap(),
+        std::num::NonZeroU32::new(SAMPLE_RATE).unwrap(),
+    );
     let mut count = 0_u64;
     for sample in converted {
         let scaled = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
@@ -666,7 +687,7 @@ pub struct TranscriptionQueue {
 
 pub struct LiveJob {
     pub post_process: bool,
-    pub generation: u64,
+    pub session: crate::actions::DictationSession,
     pub stopped_at: Instant,
     pub duration_samples: u64,
     pub target_window: Option<isize>,
@@ -768,15 +789,18 @@ impl TranscriptionQueue {
                     &mut loaded_model,
                     &live_for_worker,
                 ) {
-                    let was_live = live_for_worker
-                        .lock()
-                        .unwrap()
-                        .remove(&job.attempt_id)
-                        .is_some();
-                    if should_discard_silent_live_job(&error, job.audio_duration_ms, was_live) {
+                    let live_job = live_for_worker.lock().unwrap().remove(&job.attempt_id);
+                    if should_discard_silent_live_job(
+                        &error,
+                        job.audio_duration_ms,
+                        live_job.is_some(),
+                    ) {
                         let original = hm.recordings_dir().join(&job.audio_file_name);
                         match discard_silent_live_capture(&db, &job.capture_id, &original) {
                             Ok(()) => {
+                                if let Some(meta) = live_job {
+                                    crate::actions::report_live_failure(&app, meta, error.clone());
+                                }
                                 log::debug!("Discarded silent live dictation {}", job.capture_id);
                                 let _ = app.emit("canonical-history-changed", ());
                                 continue;
@@ -810,7 +834,12 @@ impl TranscriptionQueue {
                         .join(format!("{}.part", job.capture_id));
                     let _ = std::fs::remove_file(part);
                     let _ = app.emit("canonical-history-changed", ());
-                    let _ = app.emit("transcription-error", error);
+                    let _ = app.emit("transcription-error", &error);
+                    if failed.is_ok() {
+                        if let Some(meta) = live_job {
+                            crate::actions::report_live_failure(&app, meta, error);
+                        }
+                    }
                     if let Err(db_error) = failed {
                         log::error!(
                             "Could not persist failed attempt {}: {db_error}",
@@ -830,9 +859,20 @@ impl TranscriptionQueue {
         let _ = self.wake_tx.send(());
     }
 
-    pub fn register_live(&self, attempt_id: String, job: LiveJob) {
-        self.live.lock().unwrap().insert(attempt_id, job);
+    /// Hold registration across the durable insert. A worker already awake
+    /// may discover the new attempt immediately; its completion must wait for
+    /// this metadata before deciding whether the result belongs to dictation.
+    pub fn register_live(&self, job: LiveJob, prepare: impl FnOnce() -> Option<String>) -> bool {
+        let mut live = self.live.lock().unwrap();
+        let registered = if let Some(attempt_id) = prepare() {
+            live.insert(attempt_id, job);
+            true
+        } else {
+            false
+        };
+        drop(live);
         self.wake();
+        registered
     }
 }
 
@@ -859,10 +899,10 @@ fn process_one_chunk(
     let chunks =
         transcriptions::chunks_for_attempt(db, &job.attempt_id).map_err(|e| e.to_string())?;
     let start = chunks.last().map_or(0_u64, |chunk| chunk.end_sample as u64);
-    let model_id = job
-        .model_id
-        .clone()
-        .unwrap_or_else(|| crate::settings::get_settings(app).selected_model);
+    let model_id = selected_job_model(
+        job.model_id.as_deref(),
+        &crate::settings::get_settings(app).selected_model,
+    )?;
     if start >= total {
         finish_job(
             app,
@@ -1076,6 +1116,134 @@ fn finish_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_metadata_is_registered_before_an_awake_worker_can_complete() {
+        let (wake_tx, _wake_rx) = mpsc::channel();
+        let queue = Arc::new(TranscriptionQueue {
+            wake_tx,
+            live: Arc::new(Mutex::new(HashMap::new())),
+        });
+        let registering = queue.clone();
+        let (inserted_tx, inserted_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let registration = std::thread::spawn(move || {
+            registering.register_live(
+                LiveJob {
+                    post_process: false,
+                    session: crate::actions::DictationSession::for_test(1, 0),
+                    stopped_at: Instant::now(),
+                    duration_samples: 16_000,
+                    target_window: None,
+                },
+                || {
+                    inserted_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                    Some("attempt".into())
+                },
+            )
+        });
+        inserted_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(
+            matches!(
+                queue.live.try_lock(),
+                Err(std::sync::TryLockError::WouldBlock)
+            ),
+            "completion must wait while the attempt becomes visible in SQLite"
+        );
+        release_tx.send(()).unwrap();
+        assert!(registration.join().unwrap());
+        assert!(queue.live.lock().unwrap().remove("attempt").is_some());
+    }
+
+    #[test]
+    fn missing_model_is_detected_before_starting_a_worker() {
+        assert_eq!(
+            selected_job_model(Some(""), "fallback"),
+            Err(NO_MODEL_SELECTED_ERROR.into())
+        );
+        assert_eq!(
+            selected_job_model(None, ""),
+            Err(NO_MODEL_SELECTED_ERROR.into())
+        );
+        assert_eq!(
+            selected_job_model(Some("chosen"), "other"),
+            Ok("chosen".into())
+        );
+        assert_eq!(selected_job_model(None, "fallback"), Ok("fallback".into()));
+    }
+
+    #[test]
+    fn missing_model_failure_keeps_the_capture_and_exact_attempt_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let (db, _) =
+            crate::storage::migrations::open_and_migrate(dir.path().join("history.db"), "test")
+                .unwrap();
+        let error = selected_job_model(Some(""), "another model").unwrap_err();
+        let capture_id = crate::delivery::pipeline::complete_failed_prepared_dictation(
+            &db,
+            "Recording without model",
+            Some("kept.wav"),
+            None,
+            None,
+            &error,
+            None,
+            None,
+        )
+        .unwrap();
+        let capture = captures::get_capture(&db, &capture_id).unwrap().unwrap();
+        assert_eq!(capture.audio_file_name.as_deref(), Some("kept.wav"));
+        let attempts = transcriptions::attempts_for_capture(&db, &capture_id).unwrap();
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].status, "failed");
+        assert_eq!(attempts[0].error.as_deref(), Some(NO_MODEL_SELECTED_ERROR));
+        assert!(transcriptions::incomplete_jobs(&db).unwrap().is_empty());
+    }
+
+    #[test]
+    fn long_float_wav_import_streams_beyond_fallback_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("long.wav");
+        let mut writer = hound::WavWriter::create(
+            &source,
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: SAMPLE_RATE,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        let frames = 9_000_000_u32;
+        for _ in 0..frames {
+            writer.write_sample(0.1_f32).unwrap();
+        }
+        writer.finalize().unwrap();
+        assert!(source.metadata().unwrap().len() > 32 * 1024 * 1024);
+        let output = prepare_working_wav(&source, dir.path(), "streamed").unwrap();
+        assert_ne!(source, output);
+        assert_eq!(inspect_wav(&output).unwrap(), u64::from(frames));
+    }
+
+    #[test]
+    fn canonical_opus_webm_import_uses_bounded_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["tone_440hz_mono.opus", "tone_440hz_stereo_120ms.webm"] {
+            let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(name);
+            let output = prepare_working_wav(&source, dir.path(), name).unwrap();
+            assert!(inspect_wav(&output).is_ok());
+        }
+        let oversized = dir.path().join("oversized.opus");
+        File::create(&oversized)
+            .unwrap()
+            .set_len(32 * 1024 * 1024 + 1)
+            .unwrap();
+        assert!(prepare_working_wav(&oversized, dir.path(), "oversized")
+            .unwrap_err()
+            .contains("IMPORT_FALLBACK_LIMIT"));
+    }
 
     #[test]
     fn only_short_live_no_speech_is_discardable() {
@@ -1293,6 +1461,12 @@ mod tests {
         let error = prepare_working_wav(&path, &dir.path().join("work"), "capture").unwrap_err();
         assert!(error.contains("Unsupported audio file type"), "{error}");
         assert!(error.contains("Opus"), "{error}");
+        assert!(error.contains("Opus, WebM"), "{error}");
+        assert!(
+            error.contains("AMR recordings are not supported yet"),
+            "{error}"
+        );
+        assert!(!error.contains("Opus and AMR"), "{error}");
     }
 
     #[test]

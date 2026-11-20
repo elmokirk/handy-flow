@@ -1,4 +1,3 @@
-use crate::managers::audio::AudioRecordingManager;
 use crate::managers::transcription::TranscriptionManager;
 use crate::shortcut;
 use crate::TranscriptionCoordinator;
@@ -12,6 +11,23 @@ use tauri::{AppHandle, Manager};
 // the blanket re-export is gone so `utils` no longer looks like a paste API.
 pub use crate::overlay::*;
 pub use crate::tray::*;
+
+/// Main window's opening and minimum page size, in logical pixels.
+#[cfg(target_os = "macos")]
+pub const MAIN_WINDOW_SIZE: (f64, f64) = (720.0, 600.0);
+
+/// Title bar height in logical pixels (macOS draws it inside the inner size).
+/// Call on the main thread.
+#[cfg(target_os = "macos")]
+pub fn measure_title_bar(window: &tauri::WebviewWindow) -> f64 {
+    let Ok(ptr) = window.ns_window() else {
+        return 0.0;
+    };
+    // SAFETY: `ns_window` is the live NSWindow behind `window`, and this runs
+    // on the main thread.
+    let ns_window = unsafe { &*(ptr as *const objc2_app_kit::NSWindow) };
+    (ns_window.frame().size.height - ns_window.contentLayoutRect().size.height).max(0.0)
+}
 
 #[cfg(any(test, all(target_os = "windows", target_arch = "x86_64")))]
 const IMAGE_FILE_MACHINE_ARM64: u16 = 0xaa64;
@@ -81,22 +97,21 @@ pub fn cancel_current_operation(app: &AppHandle) {
     shortcut::unregister_cancel_shortcut(app);
 
     // Cancel any ongoing recording
-    let audio_manager = app.state::<Arc<AudioRecordingManager>>();
-    let recording_was_active = audio_manager.is_recording();
-    audio_manager.cancel_recording();
-    if recording_was_active {
-        crate::actions::record_cancelled_capture(app);
-    }
+    let (recording_was_active, session) = crate::actions::cancel_recording_capture(app);
 
-    // Abandon any live streaming transcription
+    // Stop a transcription already in progress.
     let tm = app.state::<Arc<TranscriptionManager>>();
-    tm.cancel_stream();
+    tm.cancel_transcription();
 
     // Update tray icon and hide overlay
-    set_tray_state(app, crate::tray::TrayIconState::Idle);
-    hide_recording_overlay(app);
+    crate::actions::update_dictation_ui(app, session, |app| {
+        set_tray_state(app, crate::tray::TrayIconState::Idle);
+        hide_recording_overlay(app);
+    });
 
-    // Unload model if immediate unload is enabled
+    // Unload model if immediate unload is enabled. Done before notifying the
+    // coordinator, so a recording started next always loads afresh; it
+    // doesn't wait for the cancelled work, so it never blocks this thread.
     tm.maybe_unload_immediately("cancellation");
 
     // Notify coordinator so it can keep lifecycle state coherent.
@@ -131,9 +146,79 @@ pub fn is_kde_wayland() -> bool {
     is_wayland() && is_kde_plasma()
 }
 
+/// Check if running on GNOME desktop environment
+#[cfg(target_os = "linux")]
+pub fn is_gnome() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .map(|v| v.to_uppercase().contains("GNOME"))
+        .unwrap_or(false)
+}
+
+/// Check if running on GNOME with Wayland
+#[cfg(target_os = "linux")]
+pub fn is_gnome_wayland() -> bool {
+    is_wayland() && is_gnome()
+}
+
+/// Returns true when the environment variable is set to a truthy value
+/// (e.g. "1", "true", "yes", "on").
+/// "0", "false", "no", "off" and empty string are treated as falsy (case-insensitive).
+/// Returns false when the variable is not set.
+pub fn env_flag_enabled(name: &str) -> bool {
+    match std::env::var(name) {
+        Ok(v) => !matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "" | "0" | "false" | "no" | "off"
+        ),
+        Err(_) => false,
+    }
+}
+
+/// The `GDK_BACKEND` value requested through `HANDY_GDK_BACKEND`, if any.
+/// Empty or whitespace-only values count as unset.
+#[cfg(target_os = "linux")]
+fn requested_gdk_backend(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|v| !v.is_empty())
+}
+
+/// Copy `HANDY_GDK_BACKEND` into `GDK_BACKEND` when it is set.
+///
+/// The AppImage's `apprun-hooks/linuxdeploy-plugin-gtk.sh` unconditionally
+/// runs `export GDK_BACKEND=x11` (a workaround for tauri-apps/tauri#8541) after
+/// the user's environment, so `GDK_BACKEND=wayland ./Handy.AppImage` never
+/// reaches Handy. The hook cannot overwrite a variable it does not know about,
+/// so `HANDY_GDK_BACKEND=wayland ./Handy.AppImage` is the opt-in to native
+/// Wayland (cjpais/Handy#1729, #2034). Must run before GTK initializes.
+#[cfg(target_os = "linux")]
+pub fn apply_handy_gdk_backend() {
+    let requested = std::env::var("HANDY_GDK_BACKEND").ok();
+    if let Some(backend) = requested_gdk_backend(requested.as_deref()) {
+        std::env::set_var("GDK_BACKEND", backend);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn requested_gdk_backend_ignores_unset_and_blank() {
+        assert_eq!(requested_gdk_backend(None), None);
+        assert_eq!(requested_gdk_backend(Some("")), None);
+        assert_eq!(requested_gdk_backend(Some("  ")), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn requested_gdk_backend_keeps_the_value() {
+        assert_eq!(requested_gdk_backend(Some("wayland")), Some("wayland"));
+        assert_eq!(requested_gdk_backend(Some(" x11 ")), Some("x11"));
+        assert_eq!(
+            requested_gdk_backend(Some("wayland,x11")),
+            Some("wayland,x11")
+        );
+    }
 
     #[test]
     fn arm64_native_machine_is_the_only_match() {
@@ -141,5 +226,25 @@ mod tests {
         assert!(!native_machine_is_arm64(Some(0x8664))); // AMD64
         assert!(!native_machine_is_arm64(Some(0x014c))); // I386
         assert!(!native_machine_is_arm64(None)); // API unavailable or failed
+    }
+
+    #[test]
+    fn env_flag_enabled_true_for_truthy_values() {
+        for value in ["1", "true", "TRUE", "yes", "on", " 1 "] {
+            std::env::set_var("HANDY_TEST_FLAG_TRUTHY", value);
+            assert!(env_flag_enabled("HANDY_TEST_FLAG_TRUTHY"), "{value:?}");
+        }
+        std::env::remove_var("HANDY_TEST_FLAG_TRUTHY");
+    }
+
+    #[test]
+    fn env_flag_enabled_false_for_falsy_or_unset() {
+        assert!(!env_flag_enabled("HANDY_TEST_FLAG_UNSET"));
+
+        for value in ["0", "false", "FALSE", "no", "off", ""] {
+            std::env::set_var("HANDY_TEST_FLAG_FALSY", value);
+            assert!(!env_flag_enabled("HANDY_TEST_FLAG_FALSY"), "{value:?}");
+        }
+        std::env::remove_var("HANDY_TEST_FLAG_FALSY");
     }
 }

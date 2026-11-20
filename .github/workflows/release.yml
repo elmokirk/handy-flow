@@ -35,7 +35,19 @@ jobs:
               target_commitish: context.sha,
               draft: true,
               prerelease: false,
-              body: 'Storage healing (STOR-260): history entries no longer disappear silently. Retention default is now Never (one-time migration only for installs still on the old default pair), a paginated trash view in History settings offers restore and confirmed purge (bulk restore via explicit selection), purge deletes the audio file before the database row with visible errors on locked files, and entries whose audio file is missing stay visible with an audio-file-missing badge. Also clears the full clippy --all-targets --all-features gate debt of the codebase. The owner validates the installed release; report any regression before wider rollout.',
+              body: `UP-700 integrates upstream v0.10 with the fork transcription pipeline.
+
+                Architecture: microphone capture now uses handy-recorder. The fork retains isolated transcription workers, durable WAV capture and resumable chunks, queue priorities, History-only late results and disabled live preview.
+
+                Models: ONNX speech models are retired in favor of transcribe-cpp GGML/GGUF models. Use the model migration screen to select and download a compatible replacement; existing ONNX model files cannot be used for inference. Check the selected model before dictating.
+
+                Imports: Opus and WebM join WAV, MP3, AAC/M4A/MP4/M4B/M4R, FLAC, OGG/OGA and MOV audio tracks, subject to supported codecs. AMR remains unsupported. The regular import path streams to a working WAV; the fallback decoder used for formats such as Opus/WebM is limited to 32 MiB input and six minutes of decoded audio. This is not a universal whole-app memory guarantee. This release does not implement audio compression.
+
+                Settings: upstream Custom Words and language detection controls are integrated.
+
+                Shortcuts: recording starts on key-down. In Hold or Toggle mode, releasing before the configured hold threshold locks recording until the next press; holding at least the threshold stops on release. Push to Talk stops on release; Toggle ignores release and stops on the next press. These transitions are covered by automated coordinator tests; installed hardware behavior still needs owner validation.
+
+                Validation limitations: local automated gates and isolated synthetic imports do not replace owner acceptance. Real microphone and checkpoint failure/restart, failed-start with a pending old result, notices/onboarding/session flows, target-app delivery, Floating-Pill, Custom Words reachability, real-format imports, old settings, the installed 0.9.17 to 0.10.1 updater path and a real 15-minute dictation remain owner checks. Publication requires the release gate and any explicitly recorded owner exceptions; preparation alone is not approval.`,
               generate_release_notes: true
             })
             return data.id

@@ -93,7 +93,9 @@ impl HistoryAdapter {
     }
 }
 
-use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
+use crate::settings::{
+    get_settings, update_checks_forced_disabled, write_settings, AppSettings, LogLevel,
+};
 use crate::utils::cancel_current_operation;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
@@ -153,6 +155,12 @@ pub fn wispr_run_import(
     )?;
     let _ = app.emit("canonical-history-changed", ());
     Ok(report)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn is_update_checks_locked() -> bool {
+    update_checks_forced_disabled()
 }
 
 #[tauri::command]
@@ -319,5 +327,57 @@ pub fn initialize_shortcuts(app: AppHandle) -> Result<(), String> {
     crate::secure_input::reconcile_fallback(&app);
 
     log::info!("Shortcuts initialized successfully");
+    Ok(())
+}
+
+/// Mark onboarding as finished; called when its last screen closes, so quitting
+/// midway resumes the flow.
+#[specta::specta]
+#[tauri::command]
+pub fn complete_onboarding(app: AppHandle) -> Result<(), String> {
+    let mut settings = crate::settings::get_settings(&app);
+    settings.onboarding_completed = true;
+    crate::settings::write_settings(&app, settings);
+    Ok(())
+}
+
+/// A macOS privacy permission Handy asks for during onboarding.
+#[derive(Clone, Copy, Debug, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum MacPermission {
+    Accessibility,
+    Microphone,
+}
+
+/// Clears Handy's macOS grant for `permission` before asking for it. A grant is
+/// tied to the app's code signature, so after an update the old entry stays in
+/// System Settings without matching the new build: macOS neither honors it nor
+/// asks again, and onboarding waits forever (#1618). Only called while the
+/// permission reads as not granted, so there is no working grant to lose.
+#[tauri::command]
+#[specta::specta]
+pub fn reset_macos_permission(app: AppHandle, permission: MacPermission) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let service = match permission {
+            MacPermission::Accessibility => "Accessibility",
+            MacPermission::Microphone => "Microphone",
+        };
+        let identifier = app.config().identifier.clone();
+        let output = std::process::Command::new("/usr/bin/tccutil")
+            .args(["reset", service, &identifier])
+            .output()
+            .map_err(|e| format!("Failed to run tccutil: {e}"))?;
+        if !output.status.success() {
+            // Asking is still worth trying: on a first install there may be
+            // nothing to reset.
+            log::warn!(
+                "tccutil reset {service} failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, permission);
     Ok(())
 }

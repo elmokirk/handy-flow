@@ -9,4 +9,5 @@ pub mod notes;
 pub mod prompt_profiles;
 pub mod snippets;
 pub mod transcription;
+pub mod transcription_jobs;
 pub mod wispr_import;
