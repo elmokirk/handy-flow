@@ -118,6 +118,22 @@ pub fn run(app: &AppHandle, args: &CliArgs) -> Result<i32, String> {
     app.manage(Arc::new(
         HistoryManager::new(app).map_err(|e| e.to_string())?,
     ));
+    // This acceptance route owns a fresh private sandbox, never an existing history.
+    let readback = || {
+        history::canonical_history_page(
+            app.clone(),
+            history::CanonicalHistoryFilter {
+                from_ms: None,
+                to_ms: None,
+                origin: None,
+            },
+            200,
+            None,
+        )
+    };
+    if !readback()?.entries.is_empty() {
+        return Err("canonical sandbox requires empty history".into());
+    }
     app.manage(crate::long_audio::TranscriptionQueue::start(app.clone()));
     let import = history::import_local_audio_file(
         app.clone(),
@@ -129,22 +145,23 @@ pub fn run(app: &AppHandle, args: &CliArgs) -> Result<i32, String> {
     );
     let end = Instant::now() + Duration::from_secs(120);
     loop {
-        let page = history::canonical_history_page(
-            app.clone(),
-            history::CanonicalHistoryFilter {
-                from_ms: None,
-                to_ms: None,
-                origin: Some("manual".into()),
-            },
-            200,
-            None,
-        )?;
-        if page.entries.len() == 1
-            && matches!(
-                page.entries[0].attempt_status.as_str(),
-                "success" | "failed"
-            )
+        let page = readback()?;
+        // On success the importer supplies the capture ID. On preparation failure it
+        // returns only the original error: the sole new row in this verified-empty,
+        // private sandbox is its capture, including corrupt-audio failure evidence.
+        let entry = match &import {
+            Ok(id) => page.entries.iter().find(|entry| &entry.capture_id == id),
+            Err(_) if page.entries.len() == 1 => page.entries.first(),
+            Err(_) if page.entries.is_empty() => None,
+            Err(_) => return Err("canonical sandbox has unexpected captures".into()),
+        };
+        let rejected_before_capture = import.is_err() && entry.is_none();
+        if rejected_before_capture
+            || entry
+                .is_some_and(|entry| matches!(entry.attempt_status.as_str(), "success" | "failed"))
         {
+            let success =
+                import.is_ok() && entry.is_some_and(|entry| entry.attempt_status == "success");
             let payload = serde_json::json!({"import": import, "history": page});
             std::fs::write(
                 args.canonical_sandbox
@@ -155,16 +172,12 @@ pub fn run(app: &AppHandle, args: &CliArgs) -> Result<i32, String> {
             )
             .map_err(|e| e.to_string())?;
             println!("{payload}");
-            return Ok(if page.entries[0].attempt_status == "success" {
-                0
-            } else {
-                1
-            });
+            return Ok(if success { 0 } else { 1 });
         }
         if Instant::now() >= end {
             return Err("canonical import timeout".into());
         }
-        std::thread::sleep(Duration::from_millis(25));
+        std::thread::sleep(Duration::from_millis(250));
     }
 }
 

@@ -102,7 +102,13 @@ portable marker and `UP700-SANDBOX` containing `synthetic-only`, input beneath
 `inputs`, local TEMP/TMP/HF paths and offline mode. Reparse points and conflicting
 CLI modes are rejected. This is an acceptance interface for self-created test
 data, not a general unattended importer. Use a newly created sandbox per case;
-never point it at an installed app directory. Settings/model/native DLL copies
+never point it at an installed app directory. History must be empty before import;
+successful imports are matched by their returned capture ID. Rejections before
+capture creation immediately write the original error and empty history to
+`result.json` and exit 1. Preparation failures retain their failed capture/attempt
+readback. Polling is every 250 ms with a finite 120-second deadline.
+The path walk assumes no concurrent hostile sandbox mutation; it is not a
+continuous filesystem security boundary. Settings/model/native DLL copies
 are prepared outside the measured process; no downloads are needed.
 
 The external Windows runner creates the root suspended, assigns it to a
@@ -114,7 +120,8 @@ with subprocess.run(timeout=...) or a PID snapshot. The runner smoke also checks
 live child/grandchild job membership and waits on retained process handles.
 
 The workspace `status/runs/UP-700-canonical-headless-*` evidence records Opus and
-WebM successes, corrupt supported input and missing selected model failures.
+WebM successes, corrupt supported input, missing selected model, unsupported
+extension and empty supported input failures.
 Certain chunks are pruned during successful promotion, so their final count is
 zero for these short fixtures; retained compressed source hashes are compared
 with the caller input, not with the prepared WAV. Maintain these checks when
